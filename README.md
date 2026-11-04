@@ -181,66 +181,128 @@ app/src/main/java/com/platojobs/pkotlinapp/
 - `externalId = 规范化大写 MAC`（`AA:BB:CC:DD:EE:FF`）
 - iOS 端使用 `CBPeripheral.identifier` 作为 `externalId`，两端通过该唯一键对齐。
 
-同步 API（`SyncApi`，Base URL 见下节）：
+同步 API（`SyncApi`，字段与 `PJGoIoT/api/openapi.yaml` 对齐，Base URL 见下节）：
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| `POST` | `api/v1/auth/anonymous` | 匿名登录，返回 `{ token }` |
-| `GET` | `api/v1/sync/changes?cursor=` | 增量拉取，返回 `{ changes, nextCursor }` |
+| `POST` | `api/v1/auth/anonymous` | 匿名登录，请求体可为空，`201` 返回 `{ userId, token }` |
+| `GET` | `api/v1/sync/changes?cursor=<整数>&limit=` | 增量拉取，返回 `{ changes, nextCursor, hasMore }` |
 | `POST` | `api/v1/sync/push` | 批量推送，Header 带 `Authorization` 与 `Idempotency-Key` |
+
+契约与本地模型的映射：
+
+- push 请求体为 `{ clientId, devices: [...] }`；`clientId` 使用安装时生成的 installId。
+- 设备字段：`alias` ↔ 本地 `name`；`scanRecords[{rssi, at}]` ↔ `lastRssi` / `lastSeenTimestamp`；
+  `updatedAt` / `deletedAt` 为 RFC 3339 字符串，本地 Room 存 epoch millis。
+- Android 的 `mac` 元数据为小写 MAC，`externalId` 为规范化大写 MAC；iOS 无 `mac`（`externalId` 为 CBPeripheral.identifier）。
+- 增量 cursor 是服务端整数序列号，本地以字符串透传。
+- push 响应为 `{ applied, conflicts, nextCursor }`；`applied[].status` 为 `applied` / `unchanged`。
 
 实现要点：
 
 - **Token 安全**：匿名 token 仅写入 `EncryptedSharedPreferences`（MasterKey 由 Android Keystore 保护），不落明文数据库、不打印日志；401 时清除并重新匿名登录一次。
-- **幂等推送**：`IdempotencyKeys.forBatch` 对同一批未变化记录生成稳定的 SHA-256 key；网络失败重试时服务端可据此去重。
-- **冲突处理**：服务端返回 `conflicts` 时以服务端版本覆盖本地，但结果会通过 `SyncOutcome.conflicts` 上报，并显示在「我的」页，**不静默覆盖**。
+- **幂等推送**：`IdempotencyKeys.forBatch` 对同一批记录（含 alias/RSSI/时间）生成稳定的 SHA-256 key；同一 key + 同一请求体重放会命中服务端幂等缓存（`Idempotent-Replayed: true`），同一 key + 不同请求体返回 `409 IDEMPOTENCY_CONFLICT`。
+- **冲突处理**：服务端按 LWW 返回 `conflicts`（如 `server_newer`）时以服务端版本覆盖本地，但结果会通过 `SyncOutcome.conflicts` 上报，并显示在「我的」页，**不静默覆盖**。
 - **拉取合并**：若本地记录为 `pending` 且 `updatedAt` 更新，则不被较旧的服务端版本覆盖；服务端 tombstone 直接删除本地记录。
 - **WorkManager**：`SyncWorker` 在 `NetworkType.CONNECTED` 约束下批量 push，成功后置 `synced`；失败按指数退避重试。
 - **冷启动**：`PKotlinApplication` 启动后先拉增量，`MainActivity` 最多等待 3 秒再渲染；超时或失败直接展示本地数据，不白屏。
 - **降级**：连续失败 3 次进入纯本地模式并持久化，主界面顶部横幅与「我的」页同步卡片都会提示；本地 Room 功能不受影响，用户可手动同步恢复。
-- **测试**：`SyncEngineTest` 覆盖幂等重试、冲突落败上报、tombstone 删除与拉取合并。
+- **测试**：`SyncEngineTest` 覆盖幂等重试、冲突落败上报、tombstone 删除与拉取合并；`Rfc3339Test` 覆盖 Go 纳秒时间与带时区偏移的解析；`SyncDtoMappingTest` 覆盖 push DTO 的字段归一化、iOS 无 MAC、tombstone 与非法 id 回退。
 
-同步往返样例（服务端契约为约定，需以真实后端为准）：
+同步往返样例（与 `openapi.yaml` 一致）：
 
 ```json
-// POST /api/v1/auth/anonymous
-{ "installId": "uuid", "platform": "android" }
-{ "token": "<anonymous-token>" }
-
-// GET /api/v1/sync/changes?cursor=cursor-1
-{
-  "changes": [
-    {
-      "id": "client-uuid",
-      "platform": "android",
-      "externalId": "AA:BB:CC:DD:EE:FF",
-      "name": "BLE Tracker",
-      "lastRssi": -55,
-      "lastSeenTimestamp": 1762300000000,
-      "updatedAt": 1762300000000,
-      "deletedAt": null
-    }
-  ],
-  "nextCursor": "cursor-2"
-}
+// POST /api/v1/auth/anonymous   -> 201
+{ "userId": "2a1b...", "token": "<anonymous-token>" }
 
 // POST /api/v1/sync/push
 {
-  "records": [
+  "clientId": "install-uuid",
+  "devices": [
     {
       "id": "client-uuid",
       "platform": "android",
       "externalId": "AA:BB:CC:DD:EE:FF",
-      "name": "BLE Tracker",
-      "lastRssi": -55,
-      "lastSeenTimestamp": 1762300000000,
-      "updatedAt": 1762300000000,
-      "deletedAt": null
+      "mac": "aa:bb:cc:dd:ee:ff",
+      "alias": "BLE Tracker",
+      "group": "",
+      "rules": {},
+      "scanRecords": [{ "rssi": -55, "at": "2026-11-05T01:00:00Z" }],
+      "updatedAt": "2026-11-05T01:00:00Z",
+      "deleted": false
     }
   ]
 }
-{ "accepted": ["AA:BB:CC:DD:EE:FF"], "conflicts": [] }
+// -> 200
+{
+  "applied": [
+    { "id": "client-uuid", "platform": "android", "externalId": "AA:BB:CC:DD:EE:FF",
+      "mac": "aa:bb:cc:dd:ee:ff", "status": "applied", "serverSeq": 1 }
+  ],
+  "conflicts": [],
+  "nextCursor": 1
+}
+
+// GET /api/v1/sync/changes?cursor=0
+{
+  "changes": [
+    {
+      "seq": 1,
+      "entity": "user_device",
+      "entityId": "<user-id>:android:AA:BB:CC:DD:EE:FF",
+      "op": "upsert",
+      "payload": {
+        "id": "client-uuid",
+        "platform": "android",
+        "externalId": "AA:BB:CC:DD:EE:FF",
+        "mac": "aa:bb:cc:dd:ee:ff",
+        "alias": "BLE Tracker",
+        "scanRecords": [{ "rssi": -55, "at": "2026-11-05T01:00:00Z" }],
+        "updatedAt": "2026-11-05T01:00:00Z",
+        "deletedAt": null
+      },
+      "serverTs": "2026-11-05T01:00:00.123456789Z"
+    }
+  ],
+  "nextCursor": 1,
+  "hasMore": false
+}
 ```
+
+### 契约端到端联调（e2eContract）
+
+默认**不进入 CI**，因为它依赖本机 Go 服务。前置条件：
+
+- Go 1.22+（本机实测 Go 1.27.3）；
+- JDK 21；
+- 与本仓库同级的 `PJGoIoT` 目录（也可用 `PJGOIOT_DIR=/path/to/PJGoIoT` 指定）。
+
+```bash
+./scripts/e2e-contract.sh
+```
+
+脚本行为：
+
+1. 从 `${PJGOIOT_DIR:-../PJGoIoT}` 构建并启动 `STORE=fixture` 的 Go 服务，默认端口 `8080`；
+   若 8080 已被占用则自动改用 `18080` 并打印说明；
+2. 轮询 `/api/v1/health` 直到 200（最多 30 秒）；
+3. 执行 `./gradlew :app:e2eContract -Pe2eBaseUrl=http://127.0.0.1:<port>`；
+4. 结束后关闭服务，失败时打印 Go 服务日志最后 60 行并返回非零退出码。
+
+JVM 测试用 OkHttp 直连本地服务，不依赖模拟器，覆盖：
+
+- `/api/v1/health` 200 且 `store=fixture`；
+- 匿名登录返回 UUID `userId` 与非空 token；
+- 未带 token 访问 changes / push 返回 `401 UNAUTHORIZED`；
+- 一次 push 两条设备（android + ios 同型号），校验 `applied` 与 `platform/externalId`；
+- changes 校验 `seq/entity/entityId/op/payload/serverTs` 形状、RFC 3339 时间、`nextCursor/hasMore`；
+- 同一 `Idempotency-Key` + 同一请求体重放：`Idempotent-Replayed: true`，且不产生新 change；
+- LWW 冲突：旧 `updatedAt` 推送返回 `server_newer` 冲突，服务端数据不被覆盖、不产生新 change；
+- 同一 key + 不同请求体返回 `409 IDEMPOTENCY_CONFLICT`；
+- 跨用户访问他人设备返回 `404 NOT_FOUND`，且 changes 按用户隔离；
+- 生产 Retrofit `SyncApi` 的匿名登录、changes 解析与 push（`toPushDto` 映射）实际调用通过。
+
+本机实跑结果（2026-11-05）：上述用例全部通过；另验证了 8080 被占用时自动回退 18080。
 
 ### 网络配置（BASE_URL）
 
@@ -268,9 +330,11 @@ export JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk-21.jdk/Contents/Home
 
 ./gradlew assembleDebug        # Debug APK
 ./gradlew lintDebug            # Lint
-./gradlew testDebugUnitTest    # 单元测试：RssiLevel 4 项 + SyncEngine 5 项
+./gradlew testDebugUnitTest    # 单元测试：RssiLevel 4 + SyncEngine 5 + Rfc3339 3 + SyncDtoMapping 4
 ./gradlew assembleRelease      # 签名 Release APK
 ./gradlew bundleRelease        # 签名 Release AAB
+
+./scripts/e2e-contract.sh      # 契约联调（需先具备本地 PJGoIoT，默认不进 CI）
 ```
 
 Debug 包路径：`app/build/outputs/apk/debug/app-debug.apk`
@@ -354,7 +418,7 @@ release {
 
 ## 10. 已知限制与真机自测项
 
-以下内容仅完成**编译与静态验证**，需要在真实 Android 设备上自测：
+以下 BLE/系统行为仍需在真实 Android 设备上自测；同步契约已在 JVM 层对 `STORE=fixture` 的 Go 后端跑通。
 
 - [ ] BLE 扫描能否发现真实设备、RSSI 是否随距离变化。
 - [ ] 点击设备 `connectGatt()` 后的连接状态流转与 `readRemoteRssi` 轮询。
@@ -368,7 +432,7 @@ release {
 
 其他限制：
 
-- **同步后端尚未提供/联调**：当前按约定的 v1 契约实现，`accepted / conflicts / nextCursor` 字段以服务端实际返回为准；本地没有 Go 服务时同步会失败并降级，需接后端后做真机联调。
+- **同步契约已在 fixture 后端验证**：`scripts/e2e-contract.sh` 跑通匿名登录、push、changes、幂等重放、LWW 冲突、401、跨用户 404；生产存储、正式域名与真机 WorkManager 仍需后续验证。本地没有 Go 服务时同步会失败并降级，不影响本地功能。
 - 匿名 token 使用 `EncryptedSharedPreferences`（Keystore 包装）；该 API 已被 AndroidX 标记为 deprecated，但当前功能可用，后续可平滑替换为自实现 Keystore 封装。
 - 未实现真实 OTA、GATT 服务发现与写入，仅展示型号库中的 GATT 元数据。
 - 产品 / 市场 / 设备详情依赖同一可配置 Base URL，本地后端未启动时显示真实错误空状态。
@@ -377,6 +441,7 @@ release {
 
 ## 11. 版本记录
 
+- `v0.3.1`：按 `PJGoIoT/api/openapi.yaml` 修正同步 DTO（`{clientId,devices}` / `{applied,conflicts,nextCursor}` / `changes[].payload`），时间统一 RFC 3339，新增 `scripts/e2e-contract.sh` 与本机 Go 后端端到端契约联调（含幂等重放、LWW 冲突、401、跨用户 404）。
 - `v0.3.0`：接入多设备同步客户端（匿名登录、加密 token、增量拉取、幂等批量推送、冲突上报、tombstone），Room v1→v2 迁移，WorkManager 后台同步与纯本地降级，「我的」同步状态卡片，同步单测。
 - `v0.2.0`：项目定位改为 BLE 设备数据面板；五模块底部导航、BLE 扫描/连接、Room、Retrofit、规则引擎、Android 16 适配、签名 Release、GitHub Actions CI。
 - `v0.1.0`：初始纯 Kotlin + View 待办 Demo（已被本版本覆盖）。

@@ -68,13 +68,25 @@ interface SyncCursorStore {
 /**
  * 推送批次幂等键：同一批未变化记录总是得到同一个 key，
  * 网络失败重试时服务端可据此去重。
+ *
+ * key 覆盖实际推送的业务内容（含 alias/RSSI/时间），确保「同 key + 同请求体」重放，
+ * 内容变化时不会命中旧的幂等缓存而以 409 失败。
  */
 object IdempotencyKeys {
     fun forBatch(records: List<SyncRecord>): String {
         val canonical = records
             .sortedWith(compareBy({ it.platform }, { it.externalId }, { it.updatedAt }))
-            .joinToString(";") {
-                "${it.platform}:${it.externalId}:${it.updatedAt}:${it.deletedAt ?: 0}"
+            .joinToString("\u001F") {
+                listOf(
+                    it.platform,
+                    it.externalId,
+                    it.id,
+                    it.name,
+                    it.lastRssi,
+                    it.lastSeenTimestamp,
+                    it.updatedAt,
+                    it.deletedAt ?: 0L,
+                ).joinToString("\u001E")
             }
         val digest = java.security.MessageDigest.getInstance("SHA-256")
             .digest(canonical.toByteArray(Charsets.UTF_8))

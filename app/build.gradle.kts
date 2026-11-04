@@ -31,8 +31,8 @@ android {
         applicationId = "com.platojobs.pkotlinapp"
         minSdk = 24
         targetSdk = 36
-        versionCode = 3
-        versionName = "0.3.0"
+        versionCode = 4
+        versionName = "0.3.1"
         buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
     }
 
@@ -83,6 +83,40 @@ kotlin {
 
 ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
+}
+
+// 依赖本机 Go 服务的契约联调测试默认不进入普通单测与 CI。
+tasks.withType<Test>().configureEach {
+    if (name == "testDebugUnitTest" || name == "testReleaseUnitTest") {
+        filter {
+            excludeTestsMatching("*E2eContractTest")
+        }
+    }
+}
+
+tasks.register<Test>("e2eContract") {
+    group = "verification"
+    description = "对本机 PJGoIoT（STORE=fixture）执行端到端契约联调，需先启动服务。"
+    dependsOn("testDebugUnitTest")
+
+    val unitTest = tasks.named<Test>("testDebugUnitTest")
+    testClassesDirs = unitTest.get().testClassesDirs
+    classpath = unitTest.get().classpath
+
+    filter {
+        includeTestsMatching("com.platojobs.pkotlinapp.e2e.E2eContractTest")
+    }
+    systemProperty(
+        "e2eBaseUrl",
+        providers.gradleProperty("e2eBaseUrl").orNull ?: "http://127.0.0.1:8080",
+    )
+    testLogging {
+        showStandardStreams = true
+        events("passed", "failed", "skipped")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
+    reports.junitXml.outputLocation.set(layout.buildDirectory.dir("test-results/e2eContract"))
+    reports.html.outputLocation.set(layout.buildDirectory.dir("reports/tests/e2eContract"))
 }
 
 dependencies {

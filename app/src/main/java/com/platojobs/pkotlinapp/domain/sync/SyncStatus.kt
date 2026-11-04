@@ -7,5 +7,7 @@ data class SyncStatus(
     val consecutiveFailures: Int = 0,
     val lastConflictCount: Int = 0,
     val localOnly: Boolean = false,
+    /** 401：登录失效，同步已暂停，等待用户确认后重新登录。 */
+    val authExpired: Boolean = false,
     val lastError: String? = null,
 )

@@ -132,6 +132,17 @@
     <string name="profile_sync_running">同步中…</string>
     <string name="profile_sync_success">同步完成：上传 %1$d 条，拉取 %2$d 条</string>
     <string name="profile_sync_failure">同步失败：%1$s</string>
+    <string name="profile_sync_last_error">最近错误：%1$s</string>
+    <string name="profile_sync_error_network">网络不可用，请检查网络后重试</string>
+    <string name="profile_sync_error_timeout">请求超时，请稍后重试</string>
+    <string name="profile_sync_error_auth">登录已失效，请点击“重新登录”</string>
+    <string name="profile_sync_error_conflict">存在未解决的同步冲突，请稍后重试</string>
+    <string name="profile_sync_error_server">服务端暂时不可用，请稍后重试</string>
+    <string name="profile_sync_error_unknown">未知错误，请稍后重试</string>
+    <string name="profile_sync_auth_expired">登录已失效，同步已暂停；本地数据与同步游标仍保留。</string>
+    <string name="profile_relogin">重新登录</string>
+    <string name="profile_relogin_title">重新登录</string>
+    <string name="profile_relogin_message">将清除失效的登录凭证并申请新的匿名账号，本机现有设备数据会同步到新账号。旧账号中的数据不会被删除或覆盖。确定继续吗？</string>
     <string name="profile_permissions_title">权限自检</string>
     <string name="profile_permission_scan">蓝牙扫描权限</string>
     <string name="profile_permission_connect">蓝牙连接权限</string>
@@ -160,7 +171,7 @@
     <string name="scan_log_clear_message">确定清空全部本地扫描日志吗？</string>
 
     <string name="error_network">网络请求失败</string>
-    <string name="error_no_permission">缺少蓝牙权限，请先在“我的”页检查授权</string>
+    <string name="error_no_permission">缺少蓝牙连接权限，请在系统设置中授权后重试</string>
     <string name="error_connect_failed">无法发起连接，请确认蓝牙已开启且已授权</string>
     <string name="error_unknown">未知错误</string>
 

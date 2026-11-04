@@ -11,6 +11,7 @@ import com.platojobs.pkotlinapp.data.remote.SyncScanRecordDto
 import com.platojobs.pkotlinapp.domain.model.PLATFORM_ANDROID
 import com.platojobs.pkotlinapp.domain.model.SyncState
 import com.platojobs.pkotlinapp.domain.model.normalizeExternalId
+import com.platojobs.pkotlinapp.domain.sync.AuthExpiredException
 import com.platojobs.pkotlinapp.domain.sync.Rfc3339
 import com.platojobs.pkotlinapp.domain.sync.SyncConflict
 import com.platojobs.pkotlinapp.domain.sync.SyncPullPage
@@ -36,7 +37,7 @@ import java.util.UUID
  */
 class RemoteSyncDataSource(
     private val api: SyncApi,
-    private val tokenStore: SecureTokenStore,
+    private val tokenStore: TokenStore,
     private val installId: String,
 ) : SyncRemote {
 
@@ -64,15 +65,18 @@ class RemoteSyncDataSource(
             )
         }
 
+    /**
+     * 401 与 iOS 保持一致：不自动重新匿名登录（自动重登会切换到另一个账号，
+     * 造成同步游标错位并把本机数据推到新账号上），只抛出 [AuthExpiredException]，
+     * 交由上层暂停同步并等待用户显式重新登录。
+     */
     private suspend fun <T> withToken(block: suspend (String) -> T): T {
         val token = token() ?: throw IllegalStateException("匿名登录未返回 token")
         return try {
             block("Bearer $token")
         } catch (e: HttpException) {
-            if (e.code() != 401) throw e
-            tokenStore.clear()
-            val refreshed = token() ?: throw IllegalStateException("匿名登录刷新失败")
-            block("Bearer $refreshed")
+            if (e.code() == 401) throw AuthExpiredException(cause = e)
+            throw e
         }
     }
 

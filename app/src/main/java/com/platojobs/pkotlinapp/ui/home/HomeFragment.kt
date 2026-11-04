@@ -1,6 +1,9 @@
 package com.platojobs.pkotlinapp.ui.home
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
@@ -51,8 +54,10 @@ class HomeFragment : Fragment() {
                 viewModel.startScan()
             }
         } else {
+            // 用户拒绝系统弹窗后，如果不再触发「不再询问」，只能去设置页恢复权限。
             currentBinding.scanStatus.setText(R.string.status_permission_missing)
             Snackbar.make(currentBinding.root, R.string.status_permission_missing, Snackbar.LENGTH_LONG)
+                .setAction(R.string.action_open_settings) { openAppSettings() }
                 .show()
         }
     }
@@ -211,6 +216,15 @@ class HomeFragment : Fragment() {
         } else {
             Snackbar.make(binding.root, R.string.error_connect_failed, Snackbar.LENGTH_LONG).show()
         }
+    }
+
+    private fun openAppSettings() {
+        startActivity(
+            Intent(
+                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.fromParts("package", requireContext().packageName, null),
+            ),
+        )
     }
 
     private fun renderScanState(state: HomeViewModel.ScanState) {

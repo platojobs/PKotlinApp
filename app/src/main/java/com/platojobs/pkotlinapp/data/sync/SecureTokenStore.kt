@@ -8,7 +8,7 @@ import androidx.security.crypto.MasterKey
  * 匿名登录 token 只写入 EncryptedSharedPreferences（MasterKey 由 Android Keystore 保护），
  * 不落明文数据库，也不写入日志。
  */
-class SecureTokenStore(context: Context) {
+class SecureTokenStore(context: Context) : TokenStore {
 
     private val prefs by lazy {
         val masterKey = MasterKey.Builder(context.applicationContext)
@@ -23,13 +23,13 @@ class SecureTokenStore(context: Context) {
         )
     }
 
-    fun token(): String? = prefs.getString(KEY_TOKEN, null)
+    override fun token(): String? = prefs.getString(KEY_TOKEN, null)
 
-    fun saveToken(token: String) {
+    override fun saveToken(token: String) {
         prefs.edit().putString(KEY_TOKEN, token).apply()
     }
 
-    fun clear() {
+    override fun clear() {
         prefs.edit().remove(KEY_TOKEN).apply()
     }
 

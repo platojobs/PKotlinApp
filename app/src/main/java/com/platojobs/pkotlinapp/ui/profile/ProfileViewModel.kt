@@ -6,9 +6,12 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.platojobs.pkotlinapp.PKotlinApplication
+import com.platojobs.pkotlinapp.R
 import com.platojobs.pkotlinapp.data.prefs.AppSettings
 import com.platojobs.pkotlinapp.data.prefs.ThemeMode
+import com.platojobs.pkotlinapp.data.sync.SyncErrorKind
 import com.platojobs.pkotlinapp.data.sync.SyncManager
+import com.platojobs.pkotlinapp.data.sync.classifySyncError
 import com.platojobs.pkotlinapp.domain.model.ScanLog
 import com.platojobs.pkotlinapp.domain.repository.ScanLogRepository
 import com.platojobs.pkotlinapp.domain.sync.SyncStatus
@@ -65,23 +68,56 @@ class ProfileViewModel(
                 val outcome = syncManager.manualSync()
                 _syncMessage.emit(
                     appContext.getString(
-                        com.platojobs.pkotlinapp.R.string.profile_sync_success,
+                        R.string.profile_sync_success,
                         outcome.pushed,
                         outcome.pulled,
                     ),
                 )
             } catch (e: Exception) {
-                val message = e.message?.takeIf { it.isNotBlank() } ?: e.javaClass.simpleName
-                _syncMessage.emit(
-                    appContext.getString(
-                        com.platojobs.pkotlinapp.R.string.profile_sync_failure,
-                        message,
-                    ),
-                )
+                _syncMessage.emit(failureText(e))
             } finally {
                 _syncing.value = false
             }
         }
+    }
+
+    /**
+     * 用户确认重新登录：换新匿名账号并同步本机数据。
+     * 旧账号的数据不会被删除或覆盖。
+     */
+    fun relogin() {
+        if (_syncing.value) return
+        viewModelScope.launch {
+            _syncing.value = true
+            try {
+                val outcome = syncManager.relogin()
+                _syncMessage.emit(
+                    appContext.getString(
+                        R.string.profile_sync_success,
+                        outcome.pushed,
+                        outcome.pulled,
+                    ),
+                )
+            } catch (e: Exception) {
+                _syncMessage.emit(failureText(e))
+            } finally {
+                _syncing.value = false
+            }
+        }
+    }
+
+    private fun failureText(error: Throwable): String {
+        val reason = appContext.getString(
+            when (classifySyncError(error)) {
+                SyncErrorKind.NETWORK -> R.string.profile_sync_error_network
+                SyncErrorKind.TIMEOUT -> R.string.profile_sync_error_timeout
+                SyncErrorKind.AUTH -> R.string.profile_sync_error_auth
+                SyncErrorKind.CONFLICT -> R.string.profile_sync_error_conflict
+                SyncErrorKind.SERVER -> R.string.profile_sync_error_server
+                SyncErrorKind.UNKNOWN -> R.string.profile_sync_error_unknown
+            },
+        )
+        return appContext.getString(R.string.profile_sync_failure, reason)
     }
 
     fun setTheme(mode: ThemeMode) {

@@ -65,6 +65,7 @@ class ProfileFragment : Fragment() {
         binding.githubButton.setOnClickListener { openRepository() }
         binding.clearLogsButton.setOnClickListener { confirmClearLogs() }
         binding.syncNowButton.setOnClickListener { viewModel.manualSync() }
+        binding.reloginButton.setOnClickListener { confirmRelogin() }
 
         binding.themeGroup.check(
             when (viewModel.themeMode.value) {
@@ -106,6 +107,7 @@ class ProfileFragment : Fragment() {
                 launch {
                     viewModel.syncing.collect { syncing ->
                         binding.syncNowButton.isEnabled = !syncing
+                        binding.reloginButton.isEnabled = !syncing
                         binding.syncNowButton.setText(
                             if (syncing) R.string.profile_sync_running else R.string.profile_sync_now,
                         )
@@ -146,6 +148,27 @@ class ProfileFragment : Fragment() {
             status.lastConflictCount,
         )
         binding.syncLocalOnly.visibility = if (status.localOnly) View.VISIBLE else View.GONE
+
+        // 登录失效：展示暂停说明与「重新登录」入口，同时隐藏普通同步按钮。
+        binding.syncAuthExpired.visibility = if (status.authExpired) View.VISIBLE else View.GONE
+        binding.reloginButton.visibility = if (status.authExpired) View.VISIBLE else View.GONE
+        binding.syncNowButton.visibility = if (status.authExpired) View.GONE else View.VISIBLE
+
+        // 后台同步的最近错误；登录失效时由上面的说明文案覆盖，不重复展示。
+        val lastError = status.lastError?.takeIf { it.isNotBlank() && !status.authExpired }
+        binding.syncLastError.text = lastError?.let {
+            getString(R.string.profile_sync_last_error, it)
+        }
+        binding.syncLastError.visibility = if (lastError != null) View.VISIBLE else View.GONE
+    }
+
+    private fun confirmRelogin() {
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.profile_relogin_title)
+            .setMessage(R.string.profile_relogin_message)
+            .setNegativeButton(R.string.action_cancel, null)
+            .setPositiveButton(R.string.action_confirm) { _, _ -> viewModel.relogin() }
+            .show()
     }
 
     private fun renderPermissions(status: PermissionStatus) {

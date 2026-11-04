@@ -105,6 +105,8 @@ class AppContainer(context: Context) {
                 cursorStore = syncPrefs,
             ),
             statusStore = syncStatusStore,
+            tokenStore = secureTokenStore,
+            cursorStore = syncPrefs,
         )
     }
 

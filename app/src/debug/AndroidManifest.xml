@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+        Debug 构建允许明文 HTTP，便于连接本机/局域网的 Go 服务（默认 http://10.0.2.2:8080/）。
+        Release 不放开明文流量，发布时必须使用 HTTPS 的 BASE_URL。
+    -->
+    <application android:usesCleartextTraffic="true" />
+
+</manifest>

@@ -16,9 +16,9 @@ class SyncWorker(
             app.container.syncManager.syncNow()
             Result.success()
         } catch (_: Exception) {
-            // 连续失败达到阈值后进入纯本地模式，停止无意义的重试；
-            // 用户可在「我的」页手动同步恢复。
-            if (app.container.syncManager.isLocalOnly()) {
+            // 登录失效时停止重试，等待用户在「我的」页确认重新登录；
+            // 连续失败达到阈值后进入纯本地模式，用户可手动同步恢复。
+            if (app.container.syncManager.isLocalOnly() || app.container.syncManager.isAuthExpired()) {
                 Result.success()
             } else {
                 Result.retry()

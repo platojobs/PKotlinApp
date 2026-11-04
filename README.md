@@ -54,7 +54,7 @@
 - **不包含购物车、订单、支付等任何假交易能力**，页面有明确免责声明。
 
 ### 我的 Profile（`ui/profile`）
-- 同步状态：上次同步时间、待上传条数、最近冲突数、纯本地模式提示、手动「立即同步」，数据来自真实同步状态与 Room 统计。
+- 同步状态：上次同步时间、待上传条数、最近冲突数、最近错误、纯本地模式提示、手动「立即同步」；登录失效时改为「重新登录」入口（需用户确认），数据来自真实同步状态与 Room 统计。
 - 权限自检：读取真实的蓝牙扫描/连接/定位授权状态，并跳转系统应用设置。
 - 扫描日志：Room 本地记录（扫描会话中每个设备首次出现写一条），可清空。
 - 版本与关于：读取 `BuildConfig` 的真实版本号与构建类型。
@@ -200,14 +200,15 @@ app/src/main/java/com/platojobs/pkotlinapp/
 
 实现要点：
 
-- **Token 安全**：匿名 token 仅写入 `EncryptedSharedPreferences`（MasterKey 由 Android Keystore 保护），不落明文数据库、不打印日志；401 时清除并重新匿名登录一次。
+- **Token 安全**：匿名 token 仅写入 `EncryptedSharedPreferences`（MasterKey 由 Android Keystore 保护），不落明文数据库、不打印日志。**401 不自动重新登录**：停止同步、保留本地数据与游标，在「我的」页显示「登录已失效」+「重新登录」，由用户确认后才换新匿名账号（旧账号数据不会被删除或覆盖）。
+- **重新登录**：清空失效 token、重置游标、把本机记录重新排队推送到新账号；确认框会明确提示这一行为。
 - **幂等推送**：`IdempotencyKeys.forBatch` 对同一批记录（含 alias/RSSI/时间）生成稳定的 SHA-256 key；同一 key + 同一请求体重放会命中服务端幂等缓存（`Idempotent-Replayed: true`），同一 key + 不同请求体返回 `409 IDEMPOTENCY_CONFLICT`。
 - **冲突处理**：服务端按 LWW 返回 `conflicts`（如 `server_newer`）时以服务端版本覆盖本地，但结果会通过 `SyncOutcome.conflicts` 上报，并显示在「我的」页，**不静默覆盖**。
 - **拉取合并**：若本地记录为 `pending` 且 `updatedAt` 更新，则不被较旧的服务端版本覆盖；服务端 tombstone 直接删除本地记录。
 - **WorkManager**：`SyncWorker` 在 `NetworkType.CONNECTED` 约束下批量 push，成功后置 `synced`；失败按指数退避重试。
 - **冷启动**：`PKotlinApplication` 启动后先拉增量，`MainActivity` 最多等待 3 秒再渲染；超时或失败直接展示本地数据，不白屏。
 - **降级**：连续失败 3 次进入纯本地模式并持久化，主界面顶部横幅与「我的」页同步卡片都会提示；本地 Room 功能不受影响，用户可手动同步恢复。
-- **测试**：`SyncEngineTest` 覆盖幂等重试、冲突落败上报、tombstone 删除与拉取合并；`Rfc3339Test` 覆盖 Go 纳秒时间与带时区偏移的解析；`SyncDtoMappingTest` 覆盖 push DTO 的字段归一化、iOS 无 MAC、tombstone 与非法 id 回退。
+- **测试**：`SyncEngineTest` 覆盖幂等重试、冲突落败上报、tombstone 删除与拉取合并；`Rfc3339Test` 覆盖 Go 纳秒时间与带时区偏移的解析；`SyncDtoMappingTest` 覆盖 push DTO 的字段归一化、iOS 无 MAC、tombstone 与非法 id 回退；`SyncErrorKindTest` 覆盖网络/超时/401/403/409/500/未知分类；`RemoteSyncTokenTest` 覆盖「401 不自动重登、保留 token、其它错误原样抛出」。
 
 同步往返样例（与 `openapi.yaml` 一致）：
 
@@ -312,7 +313,7 @@ JVM 测试用 OkHttp 直连本地服务，不依赖模拟器，覆盖：
 2. `local.properties`：`apiBaseUrl=http://10.0.2.2:8080/`
 3. 默认值：`http://10.0.2.2:8080/`（Android 模拟器访问宿主机的本地 Go 服务）
 
-Debug / Release 都可通过 `apiBaseUrl` 切换；发布前请传入正式域名并确认 HTTPS。产品、市场、设备详情与同步接口均使用该 Base URL，本地没有后端时这些网络页面会显示错误空状态并提供重试，不会崩溃或展示假数据。
+Debug / Release 都可通过 `apiBaseUrl` 切换；发布前请传入正式域名并确认 HTTPS。Debug 构建通过 `app/src/debug/AndroidManifest.xml` 允许明文 HTTP（便于连接局域网 Go 服务），Release 不放开明文，必须使用 `https://` 地址。产品、市场、设备详情与同步接口均使用该 Base URL，本地没有后端时这些网络页面会显示错误空状态并提供重试，不会崩溃或展示假数据。
 
 ### 断网降级
 
@@ -330,7 +331,7 @@ export JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk-21.jdk/Contents/Home
 
 ./gradlew assembleDebug        # Debug APK
 ./gradlew lintDebug            # Lint
-./gradlew testDebugUnitTest    # 单元测试：RssiLevel 4 + SyncEngine 5 + Rfc3339 3 + SyncDtoMapping 4
+./gradlew testDebugUnitTest    # 单元测试：RssiLevel 4 + SyncEngine 5 + Rfc3339 3 + SyncDtoMapping 4 + SyncErrorKind 7 + RemoteSyncToken 4
 ./gradlew assembleRelease      # 签名 Release APK
 ./gradlew bundleRelease        # 签名 Release AAB
 
@@ -338,6 +339,12 @@ export JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk-21.jdk/Contents/Home
 ```
 
 Debug 包路径：`app/build/outputs/apk/debug/app-debug.apk`
+
+### 验收与排障文档
+
+- [真机验收清单](docs/acceptance.md)：五模块走查、BLE、Android 16 广播、权限、横竖屏、断网降级、Room 迁移、Release/R8，逐项写预期与失败判定。
+- [常见问题排查](docs/troubleshooting.md)：JDK、SDK、Go 服务、端口占用、keystore、BASE_URL 更换。
+- [发布说明](docs/releasenotes.md)：v0.1.0 → 当前版本的实际变更。
 
 ---
 
@@ -441,6 +448,7 @@ release {
 
 ## 11. 版本记录
 
+- `v0.4.0`：新增 `docs/acceptance.md` / `docs/troubleshooting.md` / `docs/releasenotes.md`；401 改为「停止同步 + 用户确认重新登录」（与 iOS 对齐），同步错误分类展示，同步卡片显示最近错误；权限被拒后 Snackbar 增加「打开应用设置」；Debug 构建允许明文 HTTP；新增同步 401 与错误分类单测。
 - `v0.3.1`：按 `PJGoIoT/api/openapi.yaml` 修正同步 DTO（`{clientId,devices}` / `{applied,conflicts,nextCursor}` / `changes[].payload`），时间统一 RFC 3339，新增 `scripts/e2e-contract.sh` 与本机 Go 后端端到端契约联调（含幂等重放、LWW 冲突、401、跨用户 404）。
 - `v0.3.0`：接入多设备同步客户端（匿名登录、加密 token、增量拉取、幂等批量推送、冲突上报、tombstone），Room v1→v2 迁移，WorkManager 后台同步与纯本地降级，「我的」同步状态卡片，同步单测。
 - `v0.2.0`：项目定位改为 BLE 设备数据面板；五模块底部导航、BLE 扫描/连接、Room、Retrofit、规则引擎、Android 16 适配、签名 Release、GitHub Actions CI。

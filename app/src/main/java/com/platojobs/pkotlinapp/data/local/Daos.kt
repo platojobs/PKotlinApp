@@ -52,6 +52,10 @@ interface DeviceDao {
     @Query("UPDATE devices SET syncState = 'synced' WHERE externalId IN (:externalIds)")
     suspend fun markSyncedByExternalIds(externalIds: List<String>)
 
+    /** 重新登录到新匿名账号后，把本机全部记录重新排队，推送到新账号。 */
+    @Query("UPDATE devices SET syncState = 'pending'")
+    suspend fun markAllPending()
+
     @Query("DELETE FROM devices WHERE externalId = :externalId")
     suspend fun deleteByExternalId(externalId: String)
 }

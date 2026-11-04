@@ -1,7 +1,10 @@
 package com.platojobs.pkotlinapp.ui.devices
 
 import android.app.AlertDialog
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
@@ -129,7 +132,9 @@ class DevicesFragment : Fragment() {
     private fun onDeviceClick(device: Device) {
         val context = requireContext()
         if (!BlePermissions.hasConnect(context)) {
-            Snackbar.make(binding.root, R.string.error_no_permission, Snackbar.LENGTH_LONG).show()
+            Snackbar.make(binding.root, R.string.error_no_permission, Snackbar.LENGTH_LONG)
+                .setAction(R.string.action_open_settings) { openAppSettings() }
+                .show()
             return
         }
         if (!BlePermissions.bluetoothEnabled(context)) {
@@ -148,6 +153,15 @@ class DevicesFragment : Fragment() {
         } else {
             Snackbar.make(binding.root, R.string.error_connect_failed, Snackbar.LENGTH_LONG).show()
         }
+    }
+
+    private fun openAppSettings() {
+        startActivity(
+            Intent(
+                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.fromParts("package", requireContext().packageName, null),
+            ),
+        )
     }
 
     private fun confirmDeleteDevice(device: Device) {

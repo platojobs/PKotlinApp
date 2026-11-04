@@ -56,7 +56,20 @@ class SyncStatusStore(context: Context) {
                 consecutiveFailures = 0,
                 lastConflictCount = conflicts,
                 localOnly = false,
+                authExpired = false,
                 lastError = null,
+            ),
+        )
+    }
+
+    /**
+     * 401 登录失效：只标记暂停，不计入连续失败阈值，也不清空本地数据与游标。
+     */
+    fun recordAuthExpired(message: String = AUTH_EXPIRED_MESSAGE) {
+        update(
+            _state.value.copy(
+                authExpired = true,
+                lastError = message,
             ),
         )
     }
@@ -82,6 +95,18 @@ class SyncStatusStore(context: Context) {
         )
     }
 
+    /** 用户确认重新登录后清除失效态；本地数据与 lastSyncAt 保留。 */
+    fun resetForRelogin() {
+        update(
+            _state.value.copy(
+                consecutiveFailures = 0,
+                localOnly = false,
+                authExpired = false,
+                lastError = null,
+            ),
+        )
+    }
+
     fun withPendingCount(pendingCount: Int): SyncStatus =
         _state.value.copy(pendingCount = pendingCount)
 
@@ -92,6 +117,7 @@ class SyncStatusStore(context: Context) {
             putInt(KEY_FAILURES, newState.consecutiveFailures)
             putInt(KEY_CONFLICTS, newState.lastConflictCount)
             putBoolean(KEY_LOCAL_ONLY, newState.localOnly)
+            putBoolean(KEY_AUTH_EXPIRED, newState.authExpired)
             putString(KEY_LAST_ERROR, newState.lastError)
         }
     }
@@ -103,6 +129,7 @@ class SyncStatusStore(context: Context) {
             consecutiveFailures = prefs.getInt(KEY_FAILURES, 0),
             lastConflictCount = prefs.getInt(KEY_CONFLICTS, 0),
             localOnly = prefs.getBoolean(KEY_LOCAL_ONLY, false),
+            authExpired = prefs.getBoolean(KEY_AUTH_EXPIRED, false),
             lastError = prefs.getString(KEY_LAST_ERROR, null),
         )
     }
@@ -113,7 +140,9 @@ class SyncStatusStore(context: Context) {
         const val KEY_FAILURES = "consecutive_failures"
         const val KEY_CONFLICTS = "last_conflict_count"
         const val KEY_LOCAL_ONLY = "local_only"
+        const val KEY_AUTH_EXPIRED = "auth_expired"
         const val KEY_LAST_ERROR = "last_error"
         const val LOCAL_ONLY_THRESHOLD = 3
+        const val AUTH_EXPIRED_MESSAGE = "登录已失效，同步已暂停"
     }
 }

@@ -5,5 +5,12 @@ import com.platojobs.pkotlinapp.di.AppContainer
 
 class PKotlinApplication : Application() {
 
-    val container: AppContainer by lazy { AppContainer(this) }
+    lateinit var container: AppContainer
+        private set
+
+    override fun onCreate() {
+        super.onCreate()
+        container = AppContainer(this)
+        container.settings.applyTheme()
+    }
 }

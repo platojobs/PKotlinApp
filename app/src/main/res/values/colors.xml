@@ -1,7 +1,7 @@
 <resources>
     <color name="brand_primary">#3F51B5</color>
-    <color name="progress_track">#E8EAF6</color>
-    <color name="text_primary">#1F2430</color>
+    <color name="signal_active">#2E7D32</color>
+    <color name="signal_inactive">#D6D9E3</color>
     <color name="text_secondary">#6B7280</color>
     <color name="ic_launcher_background">#3F51B5</color>
 </resources>

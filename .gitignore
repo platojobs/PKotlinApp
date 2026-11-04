@@ -9,3 +9,9 @@
 .cxx
 local.properties
 app/build
+
+# 签名密钥与密码文件不入库
+keystore.properties
+*.jks
+*.keystore
+*.p12

@@ -1,27 +1,202 @@
 <resources>
-    <string name="app_name">PKotlinApp</string>
-    <string name="toolbar_title">我的待办</string>
+    <string name="app_name">BLE 设备面板</string>
 
-    <string name="add_todo">新增待办</string>
-    <string name="todo_add_title">新增待办</string>
-    <string name="todo_edit_title">编辑待办</string>
-    <string name="todo_title_label">标题</string>
-    <string name="todo_note_label">备注（可选）</string>
-    <string name="todo_delete_desc">删除待办</string>
+    <string name="nav_home">首页</string>
+    <string name="nav_devices">设备</string>
+    <string name="nav_products">产品</string>
+    <string name="nav_market">市场</string>
+    <string name="nav_profile">我的</string>
 
-    <string name="action_save">保存</string>
+    <string name="action_retry">重试</string>
     <string name="action_cancel">取消</string>
+    <string name="action_save">保存</string>
     <string name="action_delete">删除</string>
+    <string name="action_confirm">确定</string>
+    <string name="action_open_settings">打开应用设置</string>
+    <string name="action_connect">连接</string>
+    <string name="action_disconnect">断开连接</string>
+    <string name="action_scan">开始扫描</string>
+    <string name="action_stop_scan">停止扫描</string>
+    <string name="action_rescan">重新扫描</string>
+    <string name="action_reload">重新加载</string>
 
-    <string name="error_title_required">标题不能为空</string>
+    <string name="status_scanning">正在扫描附近 BLE 设备…</string>
+    <string name="status_scan_idle">未在扫描</string>
+    <string name="status_bluetooth_off">蓝牙未开启，请先开启蓝牙</string>
+    <string name="status_ble_unsupported">当前设备不支持 BLE</string>
+    <string name="status_permission_missing">缺少蓝牙或附近设备权限</string>
+    <string name="status_scan_failed">扫描失败（错误码 %1$d）</string>
+    <string name="status_connected_to">正在连接 %1$s…</string>
 
-    <string name="todo_delete_title">删除待办</string>
-    <string name="todo_delete_message">确定删除「%1$s」吗？删除后无法恢复。</string>
+    <string name="device_unknown">未知设备</string>
+    <string name="device_rssi_value">%1$d dBm</string>
+    <string name="device_rssi_unknown">-- dBm</string>
+    <string name="device_last_seen">上次出现：%1$s</string>
 
-    <string name="todo_empty_title">还没有待办</string>
-    <string name="todo_empty_hint">把今天要做的事记下来，完成后会自动保存到本地</string>
-    <string name="todo_empty_action">添加第一条待办</string>
+    <string name="home_title">首页</string>
+    <string name="home_live_title">附近设备</string>
+    <string name="home_recent_title">最近设备</string>
+    <string name="home_recent_empty">暂无历史设备，扫描后会自动保存</string>
+    <string name="home_empty_title">还没有发现设备</string>
+    <string name="home_empty_hint">开启蓝牙并授权附近设备权限后开始扫描</string>
 
-    <string name="todo_progress_label">已完成 %1$d / %2$d</string>
-    <string name="todo_progress_percent">%1$d%%</string>
+    <string name="devices_title">设备</string>
+    <string name="devices_saved_title">已保存设备</string>
+    <string name="devices_count">共 %1$d 台设备</string>
+    <string name="devices_empty_title">暂无已保存设备</string>
+    <string name="devices_empty_hint">在首页扫描到的设备会自动保存到这里</string>
+    <string name="devices_connected">已连接</string>
+    <string name="devices_connecting">连接中</string>
+    <string name="devices_disconnected">未连接</string>
+    <string name="devices_trend">趋势：%1$s</string>
+    <string name="devices_trend_up">上升 %1$d dBm</string>
+    <string name="devices_trend_down">下降 %1$d dBm</string>
+    <string name="devices_trend_flat">持平</string>
+    <string name="devices_trend_unknown">暂无趋势数据</string>
+    <string name="devices_delete_desc">移除设备</string>
+    <string name="devices_delete_title">移除设备</string>
+    <string name="devices_delete_message">确定从本地记录中移除「%1$s」吗？</string>
+
+    <string name="rules_title">本地规则</string>
+    <string name="rules_add">新增规则</string>
+    <string name="rules_empty">暂无规则，新增后会在扫描或连接时记录并提示</string>
+    <string name="rule_low_rssi">RSSI 低于阈值</string>
+    <string name="rule_disconnected">设备断开</string>
+    <string name="rule_bond_lost">绑定信息丢失</string>
+    <string name="rule_threshold_value">阈值 %1$d dBm</string>
+    <string name="rule_add_title">新增本地规则</string>
+    <string name="rule_type_label">规则类型</string>
+    <string name="rule_threshold_hint">RSSI 阈值（-100 ~ 0）</string>
+    <string name="rule_threshold_error">请输入 -100 到 0 之间的整数</string>
+    <string name="rule_desc_low_rssi">扫描到设备信号低于阈值时记录一条事件</string>
+    <string name="rule_desc_disconnected">已连接设备断开时记录一条事件</string>
+    <string name="rule_desc_bond_lost">收到绑定丢失广播时记录并提示重新配对</string>
+    <string name="rule_enabled_desc">规则已启用</string>
+    <string name="rule_disabled_desc">规则已停用</string>
+    <string name="rule_channel_name">设备规则提醒</string>
+
+    <string name="events_title">最近触发</string>
+    <string name="events_empty">暂无规则触发记录</string>
+
+    <string name="detail_title">设备详情</string>
+    <string name="detail_status_title">连接状态</string>
+    <string name="detail_connecting">正在连接…</string>
+    <string name="detail_connected">已连接</string>
+    <string name="detail_disconnected">未连接</string>
+    <string name="detail_key_missing_title">设备绑定信息丢失，请重新配对</string>
+    <string name="detail_key_missing_hint">已停止自动重连。请在系统蓝牙设置中移除并重新配对后手动重试。</string>
+    <string name="detail_key_missing_action">已重新配对，重试连接</string>
+    <string name="detail_rssi_label">RSSI</string>
+    <string name="detail_info_title">设备信息</string>
+    <string name="detail_info_loading">正在读取设备信息…</string>
+    <string name="detail_info_error">设备信息读取失败：%1$s</string>
+    <string name="detail_vendor">厂商</string>
+    <string name="detail_device_type">设备类型</string>
+    <string name="detail_firmware">固件版本</string>
+    <string name="detail_unknown_value">未知</string>
+    <string name="detail_security_title">Android 16 安全事件</string>
+    <string name="detail_security_hint">监听 ACTION_KEY_MISSING 与 ACTION_ENCRYPTION_CHANGE，收到绑定丢失广播后会禁止自动重连。</string>
+    <string name="detail_encryption_idle">尚未收到加密状态广播</string>
+    <string name="detail_encryption_enabled">已加密</string>
+    <string name="detail_encryption_disabled">未加密</string>
+    <string name="detail_encryption_changed">最近一次加密广播：%1$s</string>
+    <string name="detail_mac_label">MAC</string>
+
+    <string name="products_title">产品</string>
+    <string name="products_subtitle">型号库：厂商、固件版本与 GATT 服务/特征</string>
+    <string name="products_empty_title">暂无型号数据</string>
+    <string name="products_empty_hint">检查网络连接后重试加载</string>
+    <string name="products_error">加载失败：%1$s</string>
+    <string name="product_firmware">固件 %1$s</string>
+    <string name="product_services">GATT 服务与特征</string>
+    <string name="product_characteristics">特征</string>
+
+    <string name="market_title">市场</string>
+    <string name="market_subtitle">仅展示配件与固件信息，不含交易能力</string>
+    <string name="market_empty_title">暂无市场数据</string>
+    <string name="market_empty_hint">检查网络连接后重试加载</string>
+    <string name="market_error">加载失败：%1$s</string>
+    <string name="market_version">版本 %1$s</string>
+    <string name="market_compatibility">兼容性：%1$s</string>
+
+    <string name="profile_title">我的</string>
+    <string name="profile_permissions_title">权限自检</string>
+    <string name="profile_permission_scan">蓝牙扫描权限</string>
+    <string name="profile_permission_connect">蓝牙连接权限</string>
+    <string name="profile_permission_location">定位权限（Android 11 及以下）</string>
+    <string name="profile_permission_granted">已授权</string>
+    <string name="profile_permission_denied">未授权</string>
+    <string name="profile_permission_not_required">当前系统版本无需该权限</string>
+    <string name="profile_permission_settings_hint">权限被拒绝时，请到系统设置中手动开启</string>
+    <string name="profile_logs_title">扫描日志</string>
+    <string name="profile_logs_clear">清空</string>
+    <string name="profile_logs_empty">暂无扫描日志，去首页扫描后会自动记录</string>
+    <string name="profile_logs_count">最近 %1$d 条</string>
+    <string name="profile_settings_title">设置</string>
+    <string name="profile_theme_title">主题</string>
+    <string name="profile_theme_system">跟随系统</string>
+    <string name="profile_theme_light">浅色</string>
+    <string name="profile_theme_dark">深色</string>
+    <string name="profile_about_title">关于</string>
+    <string name="profile_version">版本 %1$s（versionCode %2$d）</string>
+    <string name="profile_build_type">构建类型：%1$s</string>
+    <string name="profile_about_desc">纯 Kotlin + View 体系的 BLE 设备数据面板参考实现</string>
+    <string name="profile_github">项目仓库</string>
+    <string name="profile_scan_log_line">%1$s · %2$d dBm</string>
+
+    <string name="scan_log_clear_title">清空扫描日志</string>
+    <string name="scan_log_clear_message">确定清空全部本地扫描日志吗？</string>
+
+    <string name="error_network">网络请求失败</string>
+    <string name="error_no_permission">缺少蓝牙权限，请先在“我的”页检查授权</string>
+    <string name="error_connect_failed">无法发起连接，请确认蓝牙已开启且已授权</string>
+    <string name="error_unknown">未知错误</string>
+
+    <string name="channel_rules_desc">本地规则触发时的提醒</string>
+    <string name="notification_rule_title">设备规则触发</string>
+
+    <string name="rssi_desc_strong">信号很强</string>
+    <string name="rssi_desc_good">信号良好</string>
+    <string name="rssi_desc_fair">信号一般</string>
+    <string name="rssi_desc_weak">信号较弱</string>
+    <string name="rssi_desc_unknown">无信号数据</string>
+    <string name="rssi_content_desc">信号强度：%1$s</string>
+
+    <string name="empty_state_icon_desc">空状态图标</string>
+    <string name="toolbar_back">返回</string>
+
+    <string name="time_just_now">刚刚</string>
+    <string name="time_minutes_ago">%1$d 分钟前</string>
+    <string name="time_hours_ago">%1$d 小时前</string>
+    <string name="time_days_ago">%1$d 天前</string>
+    <string name="time_unknown">未知</string>
+    <string name="time_format">MM-dd HH:mm</string>
+
+    <string name="products_retry">重试加载型号库</string>
+    <string name="market_retry">重试加载市场数据</string>
+    <string name="rule_type_unknown">未知规则</string>
+    <string name="rule_threshold_not_applicable">不需要阈值</string>
+    <string name="devices_rssi_label">RSSI</string>
+    <string name="devices_section_rules">本地规则</string>
+    <string name="devices_section_events">最近触发</string>
+
+    <string name="detail_connect">重新连接</string>
+    <string name="detail_info_retry">重试读取设备信息</string>
+    <string name="detail_disconnected_hint">当前未连接。连接成功后会从服务端读取厂商与固件信息。</string>
+
+    <string name="profile_theme_desc">选择浅色/深色或跟随系统，立即生效</string>
+    <string name="profile_location_not_required">当前系统版本无需定位权限</string>
+    <string name="profile_about_version">版本信息</string>
+    <string name="profile_logs_desc">扫描记录保存在本机 Room 数据库</string>
+
+    <string name="market_disclaimer">本页仅展示配件与固件信息，不提供下单、支付或订单能力。</string>
+    <string name="home_permission_hint">需要蓝牙扫描与连接权限才能发现设备</string>
+
+    <string name="rule_event_low_rssi">%1$s 信号 %2$d dBm，低于阈值 %3$d dBm</string>
+    <string name="rule_event_disconnected">%1$s 已断开连接</string>
+    <string name="rule_event_bond_lost">%1$s 绑定信息丢失，请重新配对</string>
+
+    <string name="product_service_item">%1$s（%2$s）</string>
+    <string name="product_characteristics_item">特征：%1$s</string>
+    <string name="product_no_gatt">该型号未提供 GATT 服务信息</string>
 </resources>

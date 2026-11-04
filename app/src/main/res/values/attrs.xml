@@ -1,7 +1,7 @@
 <resources>
-    <declare-styleable name="TodoProgressView">
-        <attr name="tpv_trackColor" format="color|reference" />
-        <attr name="tpv_progressColor" format="color|reference" />
-        <attr name="tpv_labelColor" format="color|reference" />
+    <declare-styleable name="RssiSignalView">
+        <attr name="rsv_activeColor" format="color|reference" />
+        <attr name="rsv_inactiveColor" format="color|reference" />
+        <attr name="rsv_barCount" format="integer" />
     </declare-styleable>
 </resources>

@@ -132,6 +132,10 @@ private fun DeviceEntity.toDomain() = Device(
     updatedAt = updatedAt,
     deletedAt = deletedAt,
     syncState = if (syncState == "synced") SyncState.SYNCED else SyncState.PENDING,
+    deviceType = deviceType,
+    vendor = vendor,
+    firmwareVersion = firmwareVersion,
+    compatibility = compatibility,
 )
 
 private fun Device.toEntity() = DeviceEntity(
@@ -145,6 +149,10 @@ private fun Device.toEntity() = DeviceEntity(
     updatedAt = updatedAt,
     deletedAt = deletedAt,
     syncState = syncState.name.lowercase(),
+    deviceType = deviceType,
+    vendor = vendor,
+    firmwareVersion = firmwareVersion,
+    compatibility = compatibility,
 )
 
 private fun RuleEntity.toDomain() = DeviceRule(

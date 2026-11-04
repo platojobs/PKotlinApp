@@ -69,6 +69,7 @@ class AppContainer(context: Context) {
             api = apiService,
             syncApi = syncApi,
             tokenStore = secureTokenStore,
+            deviceDao = database.deviceDao(),
         )
     }
 

@@ -13,6 +13,11 @@ data class SyncRecord(
     val updatedAt: Long,
     val deletedAt: Long? = null,
     val syncState: SyncState = SyncState.SYNCED,
+    // enrich 字段：仅在本地缓存或 catalog 匹配到时才回传，null 表示不覆盖服务端旧值。
+    val deviceType: String? = null,
+    val vendor: String? = null,
+    val firmwareVersion: String? = null,
+    val compatibility: String? = null,
 )
 
 data class SyncPullPage(
@@ -86,6 +91,7 @@ object IdempotencyKeys {
                     it.lastSeenTimestamp,
                     it.updatedAt,
                     it.deletedAt ?: 0L,
+                    it.deviceType.orEmpty(),
                 ).joinToString("\u001E")
             }
         val digest = java.security.MessageDigest.getInstance("SHA-256")

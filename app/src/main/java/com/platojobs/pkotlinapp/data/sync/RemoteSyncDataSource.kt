@@ -8,6 +8,7 @@ import com.platojobs.pkotlinapp.data.remote.SyncChangeDto
 import com.platojobs.pkotlinapp.data.remote.SyncDeviceDto
 import com.platojobs.pkotlinapp.data.remote.SyncPushRequest
 import com.platojobs.pkotlinapp.data.remote.SyncScanRecordDto
+import com.platojobs.pkotlinapp.data.remote.displayLabel
 import com.platojobs.pkotlinapp.domain.model.PLATFORM_ANDROID
 import com.platojobs.pkotlinapp.domain.model.SyncState
 import com.platojobs.pkotlinapp.domain.model.normalizeExternalId
@@ -109,6 +110,8 @@ internal fun SyncRecord.toPushDto(): PushDeviceDto {
         externalId = normalizedExternalId,
         // Android 的 mac 元数据由服务端规范化为小写；iOS 无 MAC。
         mac = if (platform == PLATFORM_ANDROID) normalizedExternalId.lowercase() else null,
+        // 只有本地/云端 enrich 匹配到型号时才上报；null 字段不会序列化，服务端沿用旧值。
+        deviceType = deviceType?.takeIf { it.isNotBlank() },
         alias = name,
         group = "",
         rules = emptyMap(),
@@ -158,6 +161,10 @@ internal fun SyncDeviceDto.toDomain(): SyncRecord? {
         updatedAt = updatedAt,
         deletedAt = Rfc3339.parse(deletedAt),
         syncState = SyncState.SYNCED,
+        deviceType = deviceType?.takeIf { it.isNotBlank() },
+        vendor = vendor?.takeIf { it.isNotBlank() },
+        firmwareVersion = firmwareVersion?.takeIf { it.isNotBlank() },
+        compatibility = compatibility?.displayLabel()?.takeIf { it.isNotBlank() },
     )
 }
 

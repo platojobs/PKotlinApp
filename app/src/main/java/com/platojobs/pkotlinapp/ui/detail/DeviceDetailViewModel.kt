@@ -7,8 +7,10 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.platojobs.pkotlinapp.PKotlinApplication
 import com.platojobs.pkotlinapp.data.ble.BleConnectionManager
 import com.platojobs.pkotlinapp.data.ble.BleConnectionState
+import com.platojobs.pkotlinapp.domain.model.Compatibility
 import com.platojobs.pkotlinapp.domain.model.DeviceInfo
 import com.platojobs.pkotlinapp.domain.repository.DeviceInfoRepository
+import com.platojobs.pkotlinapp.domain.repository.DeviceRepository
 import com.platojobs.pkotlinapp.domain.rule.RuleEngine
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,6 +30,7 @@ class DeviceDetailViewModel(
     private val deviceName: String,
     private val bleConnectionManager: BleConnectionManager,
     private val deviceInfoRepository: DeviceInfoRepository,
+    private val deviceRepository: DeviceRepository,
     private val ruleEngine: RuleEngine,
 ) : ViewModel() {
 
@@ -83,11 +86,33 @@ class DeviceDetailViewModel(
         if (_info.value is InfoState.Loading) return
         viewModelScope.launch {
             _info.value = InfoState.Loading
-            _info.value = runCatching { deviceInfoRepository.fetchDeviceInfo(mac) }
-                .fold(
-                    onSuccess = { InfoState.Success(it) },
-                    onFailure = { InfoState.Error(it.message) },
-                )
+            val remote = runCatching { deviceInfoRepository.fetchDeviceInfo(mac) }
+            _info.value = remote.fold(
+                onSuccess = { InfoState.Success(it) },
+                onFailure = { error ->
+                    // 云端 enrich 失败时只用本地缓存降级，不覆盖、不伪造字段。
+                    val local = runCatching { deviceRepository.getDevice(mac) }.getOrNull()
+                    if (local == null) {
+                        InfoState.Error(error.message)
+                    } else {
+                        InfoState.Success(
+                            DeviceInfo(
+                                mac = local.mac,
+                                vendor = local.vendor,
+                                deviceType = local.deviceType,
+                                deviceTypeKey = local.deviceType,
+                                firmwareVersion = local.firmwareVersion,
+                                alias = local.name,
+                                lastSeenTimestamp = local.lastSeenTimestamp,
+                                compatibility = local.compatibility?.let {
+                                    Compatibility(protocol = it)
+                                },
+                                fromLocalCache = true,
+                            ),
+                        )
+                    }
+                },
+            )
         }
     }
 
@@ -128,6 +153,7 @@ class DeviceDetailViewModel(
                     deviceName = name,
                     bleConnectionManager = container.bleConnectionManager,
                     deviceInfoRepository = container.deviceInfoRepository,
+                    deviceRepository = container.deviceRepository,
                     ruleEngine = container.ruleEngine,
                 )
             }

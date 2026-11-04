@@ -51,6 +51,10 @@ private fun DeviceEntity.toSyncRecord() = SyncRecord(
     updatedAt = updatedAt,
     deletedAt = deletedAt,
     syncState = if (syncState == "synced") SyncState.SYNCED else SyncState.PENDING,
+    deviceType = deviceType,
+    vendor = vendor,
+    firmwareVersion = firmwareVersion,
+    compatibility = compatibility,
 )
 
 private fun SyncRecord.toEntity(macOverride: String? = null): DeviceEntity {
@@ -70,5 +74,9 @@ private fun SyncRecord.toEntity(macOverride: String? = null): DeviceEntity {
         updatedAt = updatedAt,
         deletedAt = null,
         syncState = "synced",
+        deviceType = deviceType,
+        vendor = vendor,
+        firmwareVersion = firmwareVersion,
+        compatibility = compatibility,
     )
 }

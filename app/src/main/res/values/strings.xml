@@ -94,6 +94,13 @@
     <string name="detail_device_type">设备类型</string>
     <string name="detail_firmware">固件版本</string>
     <string name="detail_unknown_value">未知</string>
+    <string name="detail_device_type_unknown">型号未知</string>
+    <string name="detail_alias">别名</string>
+    <string name="detail_group">分组</string>
+    <string name="detail_group_empty">未分组</string>
+    <string name="detail_last_seen">最后出现</string>
+    <string name="detail_compatibility">兼容性</string>
+    <string name="detail_offline_hint">网络不可用，以下为本地缓存数据。</string>
     <string name="detail_security_title">Android 16 安全事件</string>
     <string name="detail_security_hint">监听 ACTION_KEY_MISSING 与 ACTION_ENCRYPTION_CHANGE，收到绑定丢失广播后会禁止自动重连。</string>
     <string name="detail_encryption_idle">尚未收到加密状态广播</string>
@@ -118,6 +125,11 @@
     <string name="market_error">加载失败：%1$s</string>
     <string name="market_version">SKU：%1$s</string>
     <string name="market_compatibility">兼容性：%1$s</string>
+    <string name="market_vendor">厂商：%1$s</string>
+    <string name="market_filter_all">全部</string>
+    <string name="market_filter_empty_title">没有符合条件的配件</string>
+    <string name="market_filter_empty_hint">调整厂商或兼容性筛选后再试。</string>
+    <string name="market_filter_reset">清除筛选</string>
 
     <string name="profile_title">我的</string>
 

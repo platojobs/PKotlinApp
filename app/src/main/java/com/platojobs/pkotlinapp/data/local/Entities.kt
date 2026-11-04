@@ -16,6 +16,11 @@ data class DeviceEntity(
     @ColumnInfo(defaultValue = "0") val updatedAt: Long,
     val deletedAt: Long?,
     @ColumnInfo(defaultValue = "'pending'") val syncState: String,
+    // openapi 0.3.2 enrich 字段的本地缓存（可为 null，未注册型号保持 null）。
+    val deviceType: String? = null,
+    val vendor: String? = null,
+    val firmwareVersion: String? = null,
+    val compatibility: String? = null,
 )
 
 @Entity(tableName = "rules")

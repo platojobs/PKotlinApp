@@ -52,6 +52,20 @@ interface DeviceDao {
     @Query("UPDATE devices SET syncState = 'synced' WHERE externalId IN (:externalIds)")
     suspend fun markSyncedByExternalIds(externalIds: List<String>)
 
+    /** 只更新 enrich 缓存，不改变同步状态与本地修改时间。 */
+    @Query(
+        "UPDATE devices SET deviceType = :deviceType, vendor = :vendor, " +
+            "firmwareVersion = :firmwareVersion, compatibility = :compatibility " +
+            "WHERE externalId = :externalId",
+    )
+    suspend fun updateEnrich(
+        externalId: String,
+        deviceType: String?,
+        vendor: String?,
+        firmwareVersion: String?,
+        compatibility: String?,
+    )
+
     /** 重新登录到新匿名账号后，把本机全部记录重新排队，推送到新账号。 */
     @Query("UPDATE devices SET syncState = 'pending'")
     suspend fun markAllPending()

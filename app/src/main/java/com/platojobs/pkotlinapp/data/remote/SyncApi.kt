@@ -32,6 +32,11 @@ data class SyncDeviceDto(
     val updatedAt: String? = null,
     val deletedAt: String? = null,
     val serverSeq: Long? = null,
+    // openapi 0.3.2 enrich 字段；未注册型号时为 null。
+    val deviceType: String? = null,
+    val vendor: String? = null,
+    val firmwareVersion: String? = null,
+    val compatibility: CompatibilityDto? = null,
 )
 
 data class SyncScanRecordDto(
@@ -55,6 +60,11 @@ data class PushDeviceDto(
     val platform: String,
     val externalId: String,
     val mac: String? = null,
+    /**
+     * 可选设备型号：只有本地缓存或 catalog 能匹配时才填写。
+     * 为 null 时 Moshi 不序列化该字段，服务端沿用旧值而不是覆盖为空。
+     */
+    val deviceType: String? = null,
     val alias: String? = null,
     val group: String? = null,
     val rules: Map<String, Any?> = emptyMap(),

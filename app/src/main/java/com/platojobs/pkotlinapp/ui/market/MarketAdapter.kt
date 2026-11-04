@@ -29,6 +29,9 @@ class MarketAdapter : ListAdapter<MarketItem, MarketAdapter.ViewHolder>(DIFF) {
             val context = binding.root.context
             binding.category.text = item.category
             binding.title.text = item.title
+            binding.vendor.text = context.getString(R.string.market_vendor, item.vendor)
+            binding.vendor.visibility =
+                if (item.vendor.isBlank()) View.GONE else View.VISIBLE
             binding.version.text = context.getString(R.string.market_version, item.version)
             // fixture 中部分配件没有 SKU，不展示空的「SKU：」行。
             binding.version.visibility = if (item.version.isBlank()) View.GONE else View.VISIBLE

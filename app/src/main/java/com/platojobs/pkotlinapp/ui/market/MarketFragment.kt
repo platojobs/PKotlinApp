@@ -12,6 +12,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.google.android.material.chip.Chip
+import com.google.android.material.chip.ChipGroup
 import com.platojobs.pkotlinapp.PKotlinApplication
 import com.platojobs.pkotlinapp.R
 import com.platojobs.pkotlinapp.databinding.FragmentMarketBinding
@@ -61,7 +63,8 @@ class MarketFragment : Fragment() {
 
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                viewModel.state.collect { state -> render(state) }
+                launch { viewModel.state.collect { state -> render(state) } }
+                launch { viewModel.filters.collect { filter -> renderFilters(filter) } }
             }
         }
     }
@@ -87,9 +90,17 @@ class MarketFragment : Fragment() {
                 binding.marketList.visibility = if (empty) View.GONE else View.VISIBLE
                 binding.emptyContainer.visibility = if (empty) View.VISIBLE else View.GONE
                 if (empty) {
-                    emptyState.setTitle(getString(R.string.market_empty_title))
-                    emptyState.setHint(getString(R.string.market_empty_hint))
-                    emptyState.setAction(getString(R.string.market_retry)) { viewModel.load() }
+                    if (viewModel.filters.value.hasActiveFilter) {
+                        emptyState.setTitle(getString(R.string.market_filter_empty_title))
+                        emptyState.setHint(getString(R.string.market_filter_empty_hint))
+                        emptyState.setAction(getString(R.string.market_filter_reset)) {
+                            viewModel.clearFilters()
+                        }
+                    } else {
+                        emptyState.setTitle(getString(R.string.market_empty_title))
+                        emptyState.setHint(getString(R.string.market_empty_hint))
+                        emptyState.setAction(getString(R.string.market_retry)) { viewModel.load() }
+                    }
                 }
             }
 
@@ -102,5 +113,60 @@ class MarketFragment : Fragment() {
                 emptyState.setAction(getString(R.string.market_retry)) { viewModel.load() }
             }
         }
+    }
+
+    private fun renderFilters(filter: MarketFilterState) {
+        binding.vendorFilterScroll.visibility =
+            if (filter.vendors.isEmpty()) View.GONE else View.VISIBLE
+        binding.compatibilityFilterScroll.visibility =
+            if (filter.compatibilities.isEmpty()) View.GONE else View.VISIBLE
+
+        binding.vendorFilters.removeAllViews()
+        if (filter.vendors.isNotEmpty()) {
+            addFilterChip(
+                group = binding.vendorFilters,
+                label = getString(R.string.market_filter_all),
+                checked = filter.selectedVendor == null,
+            ) { viewModel.selectVendor(null) }
+            filter.vendors.forEach { vendor ->
+                addFilterChip(
+                    group = binding.vendorFilters,
+                    label = vendor,
+                    checked = filter.selectedVendor == vendor,
+                ) { viewModel.selectVendor(vendor) }
+            }
+        }
+
+        binding.compatibilityFilters.removeAllViews()
+        if (filter.compatibilities.isNotEmpty()) {
+            addFilterChip(
+                group = binding.compatibilityFilters,
+                label = getString(R.string.market_filter_all),
+                checked = filter.selectedCompatibility == null,
+            ) { viewModel.selectCompatibility(null) }
+            filter.compatibilities.forEach { tag ->
+                addFilterChip(
+                    group = binding.compatibilityFilters,
+                    label = tag,
+                    checked = filter.selectedCompatibility == tag,
+                ) { viewModel.selectCompatibility(tag) }
+            }
+        }
+    }
+
+    private fun addFilterChip(
+        group: ChipGroup,
+        label: String,
+        checked: Boolean,
+        onClick: () -> Unit,
+    ) {
+        group.addView(
+            Chip(requireContext()).apply {
+                text = label
+                isCheckable = true
+                isChecked = checked
+                setOnClickListener { onClick() }
+            },
+        )
     }
 }

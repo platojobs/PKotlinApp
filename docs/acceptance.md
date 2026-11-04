@@ -3,7 +3,7 @@
 本清单用于「执行人不在开发现场」时也能照着做完验收。每项都写明**操作步骤、预期现象、失败判定**。
 所有结果请记录到文末的「验收记录表」；未实际执行的项不要填 PASS。
 
-- 适用版本：`versionName = 0.3.2`（`versionCode = 5`）
+- 适用版本：`versionName = 0.3.4`（`versionCode = 7`）
 - 应用包名：`com.platojobs.pkotlinapp`
 - 主界面：`com.platojobs.pkotlinapp.ui.MainActivity`
 - 设备详情：`com.platojobs.pkotlinapp.ui.detail.DeviceDetailActivity`
@@ -55,7 +55,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versionCode"
 ```
 
-预期：`versionName=0.3.2`、`versionCode=5`。
+预期：`versionName=0.3.4`、`versionCode=7`。
 
 ---
 
@@ -312,7 +312,7 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
 
 ---
 
-## 7. Room v1 → v2 迁移
+## 7. Room v1 → v2 → v3 迁移
 
 > 需要 v0.3.1 的 Debug APK 作为「旧版本」。若手头没有，可从 tag 构建：
 >
@@ -462,6 +462,6 @@ apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk
 - 真实 BLE 扫描、RSSI 变化、GATT 连接与断开时序；
 - Android 16 两个受保护广播是否实际投递；
 - 各厂商 ROM 的权限弹窗行为与设置页跳转；
-- Room v1→v2 在真实旧数据上的迁移（本仓库已导出 schema，但未跑真机迁移）；
+- Room v1→v2→v3 在真实旧数据上的迁移（本仓库已导出 schema，但未跑真机迁移）；
 - WorkManager 在真实网络切换下的调度与退避；
 - 生产后端域名、真实账号体系与跨设备同步。

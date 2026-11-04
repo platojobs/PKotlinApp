@@ -22,6 +22,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import retrofit2.Retrofit
@@ -108,6 +109,8 @@ class E2eContractTest {
             platform = "android",
             externalId = "AA:BB:CC:00:00:01",
             mac = "aa:bb:cc:00:00:01",
+            // 本地/catalog 能匹配到型号时才上报。
+            deviceType = "nordic_uart",
             alias = "共享型号-Android",
             group = "联调",
             scanRecords = listOf(
@@ -129,6 +132,14 @@ class E2eContractTest {
             devices = listOf(androidPush, iosPush),
         )
         val pushJson = pushRequestAdapter.toJson(pushRequest)
+        // 可选 deviceType：匹配到时序列化，未匹配时不写字段（依赖服务端沿用旧值）。
+        assertTrue(pushJson.contains("\"deviceType\":\"nordic_uart\""))
+        assertFalse(pushJson.contains("\"deviceType\":null"))
+        assertFalse(
+            pushRequestAdapter.toJson(
+                SyncPushRequest(clientId = "e2e-android-client", devices = listOf(iosPush)),
+            ).contains("\"deviceType\""),
+        )
         val firstKey = "e2e-${UUID.randomUUID()}"
 
         val firstPush = captureStep("push two devices (android + ios)") {
@@ -159,6 +170,14 @@ class E2eContractTest {
             assertEquals("android", body["platform"])
             assertEquals("AA:BB:CC:00:00:01", body["externalId"])
             assertEquals("共享型号-Android", body["alias"])
+            // 0.3.2 enrich：型号、厂商、固件、兼容性均由云端返回。
+            assertEquals("nordic_uart", body["deviceType"])
+            assertEquals("Nordic Semiconductor", body["vendor"])
+            assertEquals("nRF Connect SDK v2.9.0", body["firmwareVersion"])
+            val compatibility = body["compatibility"] as? Map<*, *>
+                ?: error("missing compatibility")
+            assertEquals(listOf("android", "ios"), compatibility["platforms"])
+            assertEquals("ble-gatt", compatibility["protocol"])
         }
 
         val changes = captureStep("changes returns contract-shaped payload + platform/externalId") {
@@ -284,6 +303,91 @@ class E2eContractTest {
             assertTrue(otherChanges.changes.orEmpty().isEmpty())
         }
 
+        val unregisteredId = UUID.randomUUID().toString()
+        val unregisteredExternalId = "AA:BB:CC:00:00:99"
+        val unregistered = PushDeviceDto(
+            id = unregisteredId,
+            platform = "android",
+            externalId = unregisteredExternalId,
+            mac = unregisteredExternalId.lowercase(),
+            // 未注册型号：不猜 deviceType，保持 null。
+            alias = "未注册型号-Android",
+            group = "未知型号",
+            scanRecords = listOf(
+                SyncScanRecordDto(rssi = -70, at = Rfc3339.format(now)),
+            ),
+            updatedAt = Rfc3339.format(now),
+        )
+        step("unregistered model push -> enrich fields are null, alias/group kept") {
+            val result = push(
+                pushRequestAdapter.toJson(
+                    SyncPushRequest("e2e-android-client", listOf(unregistered)),
+                ),
+                user.token,
+                "e2e-unregistered-${UUID.randomUUID()}",
+            )
+            assertEquals(200, result.code)
+
+            val lookup = get("/my/devices/android/$unregisteredExternalId", user.token)
+            assertEquals(200, lookup.code)
+            val body = parseMap(lookup.body)
+            assertNull(body["deviceType"])
+            assertNull(body["vendor"])
+            assertNull(body["firmwareVersion"])
+            assertNull(body["compatibility"])
+            assertEquals("未注册型号-Android", body["alias"])
+            assertEquals("未知型号", body["group"])
+            assertNotNull(body["updatedAt"])
+        }
+
+        step("optional deviceType accepted when matched, firmware stays null instead of fake") {
+            val marked = unregistered.copy(
+                deviceType = "environmental_sensor",
+                alias = "已标记型号",
+                updatedAt = Rfc3339.format(now + 5_000),
+            )
+            val result = push(
+                pushRequestAdapter.toJson(
+                    SyncPushRequest("e2e-android-client", listOf(marked)),
+                ),
+                user.token,
+                "e2e-marked-${UUID.randomUUID()}",
+            )
+            assertEquals(200, result.code)
+
+            val body = parseMap(
+                get("/my/devices/android/$unregisteredExternalId", user.token).body,
+            )
+            assertEquals("environmental_sensor", body["deviceType"])
+            assertEquals("Bluetooth SIG", body["vendor"])
+            // 公共库没有该 MAC 的固件记录，不能伪造版本。
+            assertNull(body["firmwareVersion"])
+            assertNotNull(body["compatibility"] as? Map<*, *>)
+        }
+
+        step("push without deviceType keeps server value, does not clear it") {
+            val aliasOnly = unregistered.copy(
+                deviceType = null,
+                alias = "仅改别名",
+                updatedAt = Rfc3339.format(now + 10_000),
+            )
+            val result = push(
+                pushRequestAdapter.toJson(
+                    SyncPushRequest("e2e-android-client", listOf(aliasOnly)),
+                ),
+                user.token,
+                "e2e-retain-${UUID.randomUUID()}",
+            )
+            assertEquals(200, result.code)
+
+            val body = parseMap(
+                get("/my/devices/android/$unregisteredExternalId", user.token).body,
+            )
+            assertEquals("仅改别名", body["alias"])
+            assertEquals("environmental_sensor", body["deviceType"])
+            assertEquals("Bluetooth SIG", body["vendor"])
+        }
+
         step("Retrofit SyncApi anonymous login parses production DTO") {
             val login = runBlocking { syncApi.anonymousLogin() }
             val token = login.token?.takeIf { it.isNotBlank() } ?: error("missing token")
@@ -323,14 +427,33 @@ class E2eContractTest {
             val items = types["items"] as? List<*> ?: error("missing items")
             assertTrue(items.isNotEmpty())
 
-            val type = (items.first() as? Map<*, *>)?.get("type") as? String
-                ?: error("missing type")
+            // 选一个 fixture 中同时有固件与配件的类型，避免依赖列表顺序。
+            val type = items.mapNotNull { (it as? Map<*, *>)?.get("type") as? String }
+                .firstOrNull { it == "environmental_sensor" }
+                ?: error("missing environmental_sensor fixture")
             val catalog = parseMap(get("/device-types/$type/catalog").body)
 
             val deviceType = catalog["deviceType"] as? Map<*, *> ?: error("missing deviceType")
             assertEquals(type, deviceType["type"])
-            assertTrue(catalog["firmwares"] is List<*>)
-            assertTrue(catalog["accessories"] is List<*>)
+
+            val firmwares = catalog["firmwares"] as? List<*> ?: error("missing firmwares")
+            assertTrue(firmwares.isNotEmpty())
+            firmwares.forEach { raw ->
+                val firmware = raw as? Map<*, *> ?: error("bad firmware")
+                // 0.3.2：固件带 vendor 与 compatibility，供市场做真实维度筛选。
+                assertTrue(firmware["vendor"] is String)
+                assertNotNull(firmware["compatibility"] as? Map<*, *>)
+            }
+
+            val accessories = catalog["accessories"] as? List<*> ?: error("missing accessories")
+            assertTrue(accessories.isNotEmpty())
+            accessories.forEach { raw ->
+                val accessory = raw as? Map<*, *> ?: error("bad accessory")
+                assertTrue(accessory["vendor"] is String)
+                assertNotNull(accessory["compatibility"] as? Map<*, *>)
+            }
+            // 未注册型号的 catalog 请求应返回 404，而不是 500。
+            assertEquals(404, get("/device-types/not_registered/catalog").code)
         }
 
         println("[E2E] SUMMARY: all contract cases passed")

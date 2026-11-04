@@ -24,6 +24,7 @@ import com.platojobs.pkotlinapp.data.ble.BleConnectionState
 import com.platojobs.pkotlinapp.databinding.ActivityDeviceDetailBinding
 import com.platojobs.pkotlinapp.ui.common.applyBottomInset
 import com.platojobs.pkotlinapp.ui.common.applyHorizontalInsets
+import com.platojobs.pkotlinapp.ui.common.TimeFormat
 import com.platojobs.pkotlinapp.ui.common.applyTopInset
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
@@ -202,16 +203,30 @@ class DeviceDetailActivity : AppCompatActivity() {
             if (state is DeviceDetailViewModel.InfoState.Error) View.VISIBLE else View.GONE
         binding.infoRetryButton.visibility =
             if (state is DeviceDetailViewModel.InfoState.Error) View.VISIBLE else View.GONE
+        binding.infoOfflineHint.visibility = View.GONE
 
         when (state) {
             is DeviceDetailViewModel.InfoState.Success -> {
                 val info = state.info
-                binding.vendorValue.text =
-                    info.vendor.ifBlank { getString(R.string.detail_unknown_value) }
+                val unknown = getString(R.string.detail_unknown_value)
+                binding.infoOfflineHint.visibility =
+                    if (info.fromLocalCache) View.VISIBLE else View.GONE
+
+                binding.vendorValue.text = info.vendor?.takeIf { it.isNotBlank() } ?: unknown
+                // 未注册型号明确显示「型号未知」，不退回厂商/固件字段。
                 binding.deviceTypeValue.text =
-                    info.deviceType.ifBlank { getString(R.string.detail_unknown_value) }
+                    info.deviceType?.takeIf { it.isNotBlank() }
+                        ?: getString(R.string.detail_device_type_unknown)
                 binding.firmwareValue.text =
-                    info.firmwareVersion.ifBlank { getString(R.string.detail_unknown_value) }
+                    info.firmwareVersion?.takeIf { it.isNotBlank() } ?: unknown
+                binding.aliasValue.text =
+                    info.alias.ifBlank { deviceName.ifBlank { unknown } }
+                binding.groupValue.text =
+                    info.group.ifBlank { getString(R.string.detail_group_empty) }
+                binding.lastSeenValue.text =
+                    TimeFormat.relative(this, info.lastSeenTimestamp)
+                binding.compatibilityValue.text =
+                    info.compatibility?.displayLabel()?.takeIf { it.isNotBlank() } ?: unknown
             }
 
             is DeviceDetailViewModel.InfoState.Error -> {

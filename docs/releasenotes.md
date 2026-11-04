@@ -6,6 +6,33 @@
 
 ---
 
+## v0.3.4
+
+**主题：接入 openapi 0.3.2 enrich 字段 + CI action 升级**
+
+- `UserDevice` 接入 `deviceType / vendor / firmwareVersion / compatibility`（均可为 null）；设备详情优先云端 enrich，null 显示「型号未知」/「未知」，未注册型号仍展示 alias/分组/最后出现时间。
+- 设备详情失败时读取 Room 本地缓存降级，并提示「网络不可用，以下为本地缓存数据」；Room 升级到 v3（新增 4 个可空列，`MIGRATION_2_3`）。
+- catalog 的 `firmwares` / `accessories` 接入 `vendor` / `compatibility`；市场新增厂商与兼容性筛选，维度全部来自接口真实值。
+- `PushDevice` 支持可选 `deviceType`：匹配到才上报，未匹配时不序列化，服务端沿用旧值。
+- `E2eContractTest` 新增 enrich、未注册型号 null、可选 `deviceType` 保留、catalog vendor/compatibility 断言。
+- CI action 升级：`checkout@v7`、`setup-java@v6`、`setup-go@v7`、`setup-gradle@v6`、`upload-artifact@v7`。
+
+版本：`versionCode = 7`、`versionName = 0.3.4`。
+
+---
+
+## v0.3.3
+
+**主题：e2e 契约联调纳入 CI**
+
+- 新增 `e2e-contract` job，与 `verify` 并行，仅在 push / PR 触发；checkout `PJGoIoT` 到同级目录，按 `go.mod` 安装 Go，复用 `scripts/e2e-contract.sh`。
+- 失败上传 e2e 测试报告与 Go 服务日志；`e2eContract` 关闭 UP-TO-DATE，避免 CI 假通过。
+- README 新增「CI 里的契约联调」与本地复现说明。
+
+版本：`versionCode = 6`、`versionName = 0.3.3`。
+
+---
+
 ## v0.3.2
 
 **主题：openapi 0.3.1 新端点接入 + 可交付验收 + 登录失效处理对齐 iOS**

@@ -49,7 +49,8 @@
 - GATT 服务行由 Kotlin 代码动态组装（非 XML）；catalog 不返回特征列表时不渲染空行。
 
 ### 市场 Market（`ui/market`）
-- 配件列表：名称、SKU、适用设备类型与描述（数据来自各设备类型的 `catalog.accessories`）。
+- 配件列表：名称、SKU、厂商、兼容性、适用设备类型与描述（数据来自各设备类型的 `catalog.accessories`）。
+- 0.3.2 catalog 的 `accessories.vendor` / `compatibility` 直接驱动筛选：厂商与兼容性均取接口真实值，不编造分类；无数据时筛选条隐藏。
 - 数据经 `MarketDataSource` 接口抽象，`RemoteMarketDataSource` 走 Retrofit（Base URL 可配置）；未来接真实商品后端只需新增实现并替换注入，不改 UI/ViewModel。
 - **不包含购物车、订单、支付等任何假交易能力**，页面有明确免责声明。
 
@@ -225,6 +226,7 @@ app/src/main/java/com/platojobs/pkotlinapp/
       "platform": "android",
       "externalId": "AA:BB:CC:DD:EE:FF",
       "mac": "aa:bb:cc:dd:ee:ff",
+      "deviceType": "nordic_uart",
       "alias": "BLE Tracker",
       "group": "",
       "rules": {},
@@ -260,7 +262,14 @@ app/src/main/java/com/platojobs/pkotlinapp/
         "alias": "BLE Tracker",
         "scanRecords": [{ "rssi": -55, "at": "2026-11-05T01:00:00Z" }],
         "updatedAt": "2026-11-05T01:00:00Z",
-        "deletedAt": null
+        "deletedAt": null,
+        "deviceType": "nordic_uart",
+        "vendor": "Nordic Semiconductor",
+        "firmwareVersion": "nRF Connect SDK v2.9.0",
+        "compatibility": {
+          "platforms": ["android", "ios"],
+          "protocol": "ble-gatt"
+        }
       },
       "serverTs": "2026-11-05T01:00:00.123456789Z"
     }
@@ -269,6 +278,24 @@ app/src/main/java/com/platojobs/pkotlinapp/
   "hasMore": false
 }
 ```
+
+### 设备 enrich 字段（openapi 0.3.2）
+
+`GET /my/devices/android/{externalId}` 的 `UserDevice` 从 0.3.2 起返回：
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `deviceType` | string \| null | 型号键（如 `nordic_uart`）；未注册型号为 null |
+| `vendor` | string \| null | 厂商，优先公共设备库，其次型号库 |
+| `firmwareVersion` | string \| null | 固件版本，无关联时为 null |
+| `compatibility` | object \| null | `platforms` / `minAppVersion` / `protocol` / `features` |
+
+客户端约定：
+
+- 设备详情**优先使用云端 enrich**；字段为 null 时展示「型号未知」/「未知」，不显示 `null` 或空串。未注册型号仍展示 alias、分组与最后出现时间。
+- 成功结果写入 Room（v3 迁移新增 `deviceType/vendor/firmwareVersion/compatibility` 可空列）；断网或网络失败时读取本地缓存降级，并标注「网络不可用，以下为本地缓存数据」。
+- push 的 `PushDevice` 新增**可选** `deviceType`：只有本地缓存或 catalog 能匹配到型号时才填写；未匹配时字段不序列化（Moshi 默认省略 null），服务端沿用旧值，不会把型号清空。
+- `catalog.firmwares` / `catalog.accessories` 的 `vendor` / `compatibility` 用于产品展示与市场真实维度筛选。
 
 ### 契约端到端联调（e2eContract）
 
@@ -301,6 +328,10 @@ JVM 测试用 OkHttp 直连本地服务，不依赖模拟器，覆盖：
 - LWW 冲突：旧 `updatedAt` 推送返回 `server_newer` 冲突，服务端数据不被覆盖、不产生新 change；
 - 同一 key + 不同请求体返回 `409 IDEMPOTENCY_CONFLICT`；
 - 跨用户访问他人设备返回 `404 NOT_FOUND`，且 changes 按用户隔离；
+- UserDevice enrich：`deviceType/vendor/firmwareVersion/compatibility` 均返回且可解析；
+- 未注册型号：4 个 enrich 字段为 null、接口仍 200，alias/group 保留，不返回 500；
+- 可选 `deviceType`：匹配到才序列化，未匹配时字段被省略；再次推送不带该字段时服务端保留旧值；
+- catalog：`firmwares` / `accessories` 均带 `vendor` 与 `compatibility`，未注册型号 catalog 返回 404；
 - 生产 Retrofit `SyncApi` 的匿名登录、changes 解析与 push（`toPushDto` 映射）实际调用通过。
 
 本机实跑结果（2026-11-05）：上述用例全部通过；另验证了 8080 被占用时自动回退 18080。
@@ -311,8 +342,8 @@ GitHub Actions 的 `e2e-contract` job 与 `verify` job **并行**执行，不会
 
 job 做了这些事：
 
-1. checkout 本仓库，并用 `actions/checkout` 的 `path` 把 `platojobs/PJGoIoT` 放到 `PJGoIoT/`；
-2. `actions/setup-go` 按 `PJGoIoT/go.mod` 安装 Go 1.22+，`actions/setup-java` 安装 JDK 21；
+1. checkout 本仓库，并用 `actions/checkout@v7` 的 `path` 把 `platojobs/PJGoIoT` 放到 `PJGoIoT/`；
+2. `actions/setup-go@v7` 按 `PJGoIoT/go.mod` 安装 Go 1.22+，`actions/setup-java@v6` 安装 JDK 21；
 3. 以 `PJGOIOT_DIR=${{ github.workspace }}/PJGoIoT` 执行 `./scripts/e2e-contract.sh`（脚本自带 8080 → 18080 端口回退与 health 轮询）；
 4. 无论成败上传 `app/build/reports/tests/e2eContract` 与 `app/build/test-results/e2eContract`；
 5. 失败时额外上传 `e2e-logs/go-service.log`（CI 使用 `E2E_LOG_LEVEL=info`，本地默认 `warn`）。
@@ -324,7 +355,11 @@ job 做了这些事：
 - **游标类型**：`nextCursor` 按整数游标解析与回传，字符串游标会直接失败；
 - **时间格式**：`serverTs` 必须是 RFC 3339，Go 纳秒精度也要能解析；
 - **复合键**：`platform + externalId`（Android 大写 MAC）查询与 changes 回放；
+- **enrich 字段**：`UserDevice.deviceType/vendor/firmwareVersion/compatibility` 与 catalog 的 `vendor/compatibility` 缺失或改类型会红；
+- **可选字段语义**：未注册型号字段必须为 null（不能 `500` 或假值），未上报 `deviceType` 时服务端不得清空旧值；
 - **鉴权**：缺 token 返回 401、跨用户访问返回 404。
+
+CI action 已升级到当前推荐 major：`checkout@v7`、`setup-java@v6`、`setup-go@v7`、`setup-gradle@v6`、`upload-artifact@v7`，用于消除 Node 20 / 弃用告警。
 
 本地复现失败：
 
@@ -470,7 +505,7 @@ release {
 - [ ] 横屏、大屏、折叠屏的 Edge-to-edge 与列表布局表现。
 - [ ] WorkManager 在网络恢复后自动推送、断网连续失败进入纯本地模式。
 - [ ] 冷启动 3 秒内增量拉取与超时回退本地数据的表现。
-- [ ] v1 → v2 Room 迁移在已有数据的真实设备上执行（本机仅验证 schema 与构建）。
+- [ ] v1 → v2 → v3 Room 迁移在已有数据的真实设备上执行（本机仅验证 schema 与构建）。
 
 其他限制：
 
@@ -483,6 +518,7 @@ release {
 
 ## 11. 版本记录
 
+- `v0.3.4`：接入 PJGoIoT openapi 0.3.2 enrich 字段（`UserDevice.deviceType/vendor/firmwareVersion/compatibility`、catalog 配件/固件 `vendor/compatibility`）；设备详情优先云端并支持本地缓存降级，市场新增厂商/兼容性筛选，push 支持可选 `deviceType` 且不上报时不覆盖旧值；Room v2→v3 迁移；扩展 e2e 断言；CI action 升级到 checkout@v7 / setup-java@v6 / setup-go@v7 / setup-gradle@v6 / upload-artifact@v7。
 - `v0.3.3`：把 `e2e-contract` 纳入 GitHub Actions（与 verify 并行，push/PR 触发），失败上传测试报告与 Go 服务日志；`e2eContract` 强制每次真实执行；README 新增「CI 里的契约联调」。
 - `v0.3.2`：产品 / 市场 / 设备详情改用 `GET /device-types/{type}/catalog`（一次返回 firmware + accessories），设备详情复合键查询改用 `GET /my/devices/android/{externalId}`；新增 `CatalogMappingTest`。同时新增验收 / 排障 / 发布说明文档，401 改为「停止同步 + 用户确认重新登录」（与 iOS 对齐），同步错误分类展示，权限被拒后提供「打开应用设置」，Debug 构建允许明文 HTTP。
 - `v0.3.1`：按 `PJGoIoT/api/openapi.yaml` 修正同步 DTO（`{clientId,devices}` / `{applied,conflicts,nextCursor}` / `changes[].payload`），时间统一 RFC 3339，新增 `scripts/e2e-contract.sh` 与本机 Go 后端端到端契约联调（含幂等重放、LWW 冲突、401、跨用户 404）。

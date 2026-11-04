@@ -193,6 +193,16 @@
                         android:textColor="@color/text_secondary"
                         android:visibility="gone" />
 
+                    <TextView
+                        android:id="@+id/infoOfflineHint"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="@string/detail_offline_hint"
+                        android:textAppearance="?attr/textAppearanceBodySmall"
+                        android:textColor="@color/text_secondary"
+                        android:visibility="gone" />
+
                     <LinearLayout
                         android:id="@+id/infoContent"
                         android:layout_width="match_parent"
@@ -257,6 +267,90 @@
 
                             <TextView
                                 android:id="@+id/firmwareValue"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:textAppearance="?attr/textAppearanceBodyMedium" />
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:layout_width="100dp"
+                                android:layout_height="wrap_content"
+                                android:text="@string/detail_alias"
+                                android:textAppearance="?attr/textAppearanceBodyMedium"
+                                android:textColor="@color/text_secondary" />
+
+                            <TextView
+                                android:id="@+id/aliasValue"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:textAppearance="?attr/textAppearanceBodyMedium" />
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:layout_width="100dp"
+                                android:layout_height="wrap_content"
+                                android:text="@string/detail_group"
+                                android:textAppearance="?attr/textAppearanceBodyMedium"
+                                android:textColor="@color/text_secondary" />
+
+                            <TextView
+                                android:id="@+id/groupValue"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:textAppearance="?attr/textAppearanceBodyMedium" />
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:layout_width="100dp"
+                                android:layout_height="wrap_content"
+                                android:text="@string/detail_last_seen"
+                                android:textAppearance="?attr/textAppearanceBodyMedium"
+                                android:textColor="@color/text_secondary" />
+
+                            <TextView
+                                android:id="@+id/lastSeenValue"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:textAppearance="?attr/textAppearanceBodyMedium" />
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:layout_width="100dp"
+                                android:layout_height="wrap_content"
+                                android:text="@string/detail_compatibility"
+                                android:textAppearance="?attr/textAppearanceBodyMedium"
+                                android:textColor="@color/text_secondary" />
+
+                            <TextView
+                                android:id="@+id/compatibilityValue"
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
                                 android:layout_weight="1"

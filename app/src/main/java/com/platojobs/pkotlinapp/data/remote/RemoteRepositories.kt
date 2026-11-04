@@ -1,5 +1,6 @@
 package com.platojobs.pkotlinapp.data.remote
 
+import com.platojobs.pkotlinapp.data.local.DeviceDao
 import com.platojobs.pkotlinapp.data.sync.TokenStore
 import com.platojobs.pkotlinapp.domain.model.DeviceInfo
 import com.platojobs.pkotlinapp.domain.model.GattServiceSpec
@@ -11,55 +12,101 @@ import com.platojobs.pkotlinapp.domain.repository.DeviceInfoRepository
 import com.platojobs.pkotlinapp.domain.repository.MarketRepository
 import com.platojobs.pkotlinapp.domain.repository.ProductRepository
 import com.platojobs.pkotlinapp.domain.sync.AuthExpiredException
+import com.platojobs.pkotlinapp.domain.sync.Rfc3339
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import retrofit2.HttpException
 
 /**
- * 设备详情：
- * 1. `GET /my/devices/android/{externalId}` 校验设备归属（404 表示尚未同步，可继续）；
- * 2. `GET /devices/{mac}` 取得 deviceType；
- * 3. `GET /device-types/{type}/catalog` 取厂商/型号与最新固件。
+ * 设备详情（openapi 0.3.2）：
+ * 1. `GET /my/devices/android/{externalId}` 校验归属并直接拿到 enrich 字段；
+ * 2. 仅在 enrich 缺失或设备尚未同步（404）时，用 `/devices/{mac}` 与 catalog 兜底；
+ * 3. 成功结果写入 Room enrich 缓存，断网时由 ViewModel 读取本地缓存降级展示。
  */
 class DeviceInfoRepositoryImpl(
     private val api: ApiService,
     private val syncApi: SyncApi,
     private val tokenStore: TokenStore,
+    private val deviceDao: DeviceDao? = null,
 ) : DeviceInfoRepository {
 
     override suspend fun fetchDeviceInfo(mac: String): DeviceInfo {
         val authorization = "Bearer ${ensureToken()}"
+        val externalId = normalizeExternalId(mac)
 
-        try {
-            // 复合键查询：externalId 必须是规范化大写 MAC。
-            api.getMyDevice(authorization, PLATFORM_ANDROID, normalizeExternalId(mac))
+        val myDevice = try {
+            api.getMyDevice(authorization, PLATFORM_ANDROID, externalId)
         } catch (e: HttpException) {
             when (e.code()) {
                 401 -> throw AuthExpiredException(cause = e)
-                // 设备尚未同步到服务端时继续使用公共元数据，不影响详情展示。
-                404 -> Unit
+                // 设备尚未同步到服务端时没有 enrich，退回到公共元数据。
+                404 -> null
                 else -> throw e
             }
         }
 
-        val public = api.getDeviceInfo(mac)
-        val typeKey = public.deviceType
-        val catalog = if (typeKey.isNullOrBlank()) {
-            null
+        // 已有用户设备时，公共元数据/catalog 只作为字段缺失时的补充，失败不影响详情。
+        val public = if (myDevice != null) {
+            runCatching { api.getDeviceInfo(mac) }.getOrNull()
         } else {
-            runCatching { api.getDeviceCatalog(typeKey) }.getOrNull()
+            api.getDeviceInfo(mac)
+        }
+
+        val typeKey = firstNotBlank(
+            myDevice?.deviceType,
+            public?.deviceType,
+        )
+        val catalog = typeKey?.let {
+            runCatching { api.getDeviceCatalog(it) }.getOrNull()
         }
         val latestFirmware = catalog?.firmwares.orEmpty()
             .maxByOrNull { it.releasedAt.orEmpty() }
 
-        return DeviceInfo(
-            mac = public.mac ?: mac,
-            vendor = catalog?.deviceType?.vendor ?: public.vendor.orEmpty(),
-            deviceType = catalog?.deviceType?.name ?: typeKey.orEmpty(),
-            firmwareVersion = latestFirmware?.version
-                ?: public.firmwareVersion.orEmpty(),
+        val vendor = firstNotBlank(
+            myDevice?.vendor,
+            catalog?.deviceType?.vendor,
+            public?.vendor,
         )
+        val firmwareVersion = firstNotBlank(
+            myDevice?.firmwareVersion,
+            latestFirmware?.version,
+            public?.firmwareVersion,
+        )
+        val compatibilityDto = myDevice?.compatibility
+            ?: catalog?.deviceType?.compatibility
+            ?: public?.compatibility
+        val compatibility = compatibilityDto?.toDomain()
+
+        val latestScan = myDevice?.scanRecords.orEmpty()
+            .maxByOrNull { Rfc3339.parse(it.at) ?: Long.MIN_VALUE }
+        val lastSeen = latestScan?.let { Rfc3339.parse(it.at) }?.takeIf { it > 0 }
+            ?: Rfc3339.parse(myDevice?.updatedAt)
+            ?: 0L
+
+        val info = DeviceInfo(
+            mac = public?.mac ?: myDevice?.mac ?: mac,
+            vendor = vendor,
+            // 有 catalog 时展示人类可读型号名；未注册型号保持 null，由 UI 显示「型号未知」。
+            deviceType = catalog?.deviceType?.name?.takeIf { it.isNotBlank() } ?: typeKey,
+            deviceTypeKey = typeKey,
+            firmwareVersion = firmwareVersion,
+            alias = myDevice?.alias.orEmpty(),
+            group = myDevice?.group.orEmpty(),
+            lastSeenTimestamp = lastSeen,
+            compatibility = compatibility,
+        )
+
+        // 只缓存 enrich 字段，不触碰同步状态与本地修改时间。
+        deviceDao?.updateEnrich(
+            externalId = externalId,
+            deviceType = typeKey,
+            vendor = vendor,
+            firmwareVersion = firmwareVersion,
+            compatibility = compatibility?.displayLabel()?.takeIf { it.isNotBlank() },
+        )
+
+        return info
     }
 
     private suspend fun ensureToken(): String {
@@ -70,6 +117,9 @@ class DeviceInfoRepositoryImpl(
         tokenStore.saveToken(token)
         return token
     }
+
+    private fun firstNotBlank(vararg values: String?): String? =
+        values.firstOrNull { !it.isNullOrBlank() }
 }
 
 /** 产品：设备类型列表 + 每个类型的聚合 catalog（固件与配件一次取回）。 */
@@ -112,7 +162,7 @@ interface MarketDataSource {
     suspend fun loadItems(): List<MarketItem>
 }
 
-/** 市场：聚合各设备类型的 accessories，不再使用独立的历史市场端点。 */
+/** 市场：聚合各设备类型的 accessories，使用真实的厂商与兼容性维度筛选。 */
 class RemoteMarketDataSource(
     private val api: ApiService,
 ) : MarketDataSource {
@@ -125,13 +175,21 @@ class RemoteMarketDataSource(
                     val catalog = api.getDeviceCatalog(type.type!!)
                     val deviceName = catalog.deviceType?.name ?: type.name.orEmpty()
                     catalog.accessories.orEmpty().mapIndexed { index, accessory ->
+                        val compatibility = accessory.compatibility?.toDomain()
+                        // 兼容性标签只取接口真实返回的维度；没有时退回设备类型，不造假分类。
+                        val tags = compatibility?.filterTags().orEmpty()
+                            .ifEmpty { listOfNotNull(type.type?.takeIf { it.isNotBlank() }) }
                         MarketItem(
                             id = accessory.id ?: "${type.type}-$index",
                             title = accessory.name.orEmpty(),
                             category = deviceName,
                             version = accessory.sku.orEmpty(),
-                            compatibility = type.type.orEmpty(),
+                            compatibility = compatibility?.displayLabel()
+                                ?.takeIf { it.isNotBlank() }
+                                ?: tags.joinToString("/"),
                             description = accessory.description.orEmpty(),
+                            vendor = accessory.vendor.orEmpty(),
+                            compatibilityTags = tags,
                         )
                     }
                 }

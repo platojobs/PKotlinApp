@@ -15,7 +15,7 @@ import java.util.UUID
         RuleEventEntity::class,
         ScanLogEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -62,6 +62,19 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v2 -> v3：缓存后端 0.3.2 的设备 enrich 字段，用于断网降级展示。
+         * 全部为可空列，历史数据保持 null（表示未注册型号）。
+         */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE devices ADD COLUMN deviceType TEXT")
+                db.execSQL("ALTER TABLE devices ADD COLUMN vendor TEXT")
+                db.execSQL("ALTER TABLE devices ADD COLUMN firmwareVersion TEXT")
+                db.execSQL("ALTER TABLE devices ADD COLUMN compatibility TEXT")
+            }
+        }
+
         @Volatile
         private var instance: AppDatabase? = null
 
@@ -71,7 +84,7 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     DB_NAME,
-                ).addMigrations(MIGRATION_1_2)
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .build()
                     .also { instance = it }
             }

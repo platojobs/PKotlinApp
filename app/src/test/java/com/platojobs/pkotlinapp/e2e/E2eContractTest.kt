@@ -388,6 +388,50 @@ class E2eContractTest {
             assertEquals("PJ-Sensor-3", body["advertisedName"])
         }
 
+        step("clearing alias sends explicit empty string and keeps advertisedName") {
+            val cleared = androidPush.copy(
+                alias = Reported(""),
+                advertisedName = null,
+                group = null,
+                updatedAt = Rfc3339.format(now + 35_000),
+            )
+            val json = pushRequestAdapter.toJson(
+                SyncPushRequest("e2e-android-client", listOf(cleared)),
+            )
+            // 显式清空别名必须出现在请求体；广播名与未修改的分组保持 absent。
+            assertTrue(json.contains("\"alias\":\"\""))
+            assertFalse(json.contains("\"advertisedName\""))
+            assertFalse(json.contains("\"group\""))
+
+            assertEquals(200, push(json, user.token, "e2e-alias-clear-${UUID.randomUUID()}").code)
+            val body = parseMap(get("/my/devices/android/AA:BB:CC:00:00:01", user.token).body)
+            assertEquals("", body["alias"])
+            assertEquals("PJ-Sensor-3", body["advertisedName"])
+            assertEquals("", body["group"])
+        }
+
+        step("scan after alias clear does not revive the old alias") {
+            val scan = androidPush.copy(
+                alias = null,
+                advertisedName = Reported("PJ-Sensor-4"),
+                group = null,
+                updatedAt = Rfc3339.format(now + 40_000),
+            )
+            val json = pushRequestAdapter.toJson(
+                SyncPushRequest("e2e-android-client", listOf(scan)),
+            )
+            assertFalse(json.contains("\"alias\""))
+
+            assertEquals(
+                200,
+                push(json, user.token, "e2e-alias-no-revive-${UUID.randomUUID()}").code,
+            )
+            val body = parseMap(get("/my/devices/android/AA:BB:CC:00:00:01", user.token).body)
+            assertEquals("", body["alias"])
+            assertEquals("PJ-Sensor-4", body["advertisedName"])
+            assertEquals("", body["group"])
+        }
+
         step("cross-user access -> 404 NOT_FOUND") {
             val other = post("/auth/anonymous").let { result ->
                 assertEquals(201, result.code)

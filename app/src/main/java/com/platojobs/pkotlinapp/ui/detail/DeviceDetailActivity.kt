@@ -61,7 +61,8 @@ class DeviceDetailActivity : AppCompatActivity() {
      * 两者都带 @FlaggedApi，真机上能否收到取决于系统 flag，需真机验证。
      */
     private val securityReceiver = object : BroadcastReceiver() {
-        @SuppressLint("MissingPermission")
+        // API 36 的常量是编译期内联字符串，在旧系统上仅作为 action 名称使用，不会崩溃。
+        @SuppressLint("MissingPermission", "InlinedApi")
         override fun onReceive(context: Context, intent: Intent) {
             val device: BluetoothDevice? =
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -145,6 +146,8 @@ class DeviceDetailActivity : AppCompatActivity() {
         }
     }
 
+    // API 36 的 action 常量会被内联；旧系统只是收不到该广播，注册本身是安全的。
+    @SuppressLint("InlinedApi")
     override fun onStart() {
         super.onStart()
         if (!receiverRegistered) {
@@ -268,7 +271,11 @@ class DeviceDetailActivity : AppCompatActivity() {
             .setNegativeButton(R.string.action_cancel, null)
             .setPositiveButton(R.string.device_edit_save) { _, _ ->
                 val alias = dialogBinding.aliasInput.text?.toString()?.trim().orEmpty()
-                val group = dialogBinding.groupInput.text?.toString()?.trim().orEmpty()
+                val groupInput = dialogBinding.groupInput.text?.toString()?.trim().orEmpty()
+                // 分组保持三态：未改动且本地未知 → null（不向服务端上报）；
+                // 用户清空 → ""（显式清除）；其余 → 实际值。
+                val initialGroup = current?.group
+                val group = if (groupInput == initialGroup.orEmpty()) initialGroup else groupInput
                 viewModel.saveProfile(alias = alias, group = group)
             }
             .show()

@@ -2,6 +2,7 @@ package com.platojobs.pkotlinapp.data.prefs
 
 import android.content.Context
 import androidx.appcompat.app.AppCompatDelegate
+import androidx.core.content.edit
 
 enum class ThemeMode {
     SYSTEM,
@@ -18,7 +19,7 @@ class AppSettings(context: Context) {
             ThemeMode.valueOf(prefs.getString(KEY_THEME, ThemeMode.SYSTEM.name).orEmpty())
         }.getOrDefault(ThemeMode.SYSTEM)
         set(value) {
-            prefs.edit().putString(KEY_THEME, value.name).apply()
+            prefs.edit { putString(KEY_THEME, value.name) }
         }
 
     fun applyTheme() {

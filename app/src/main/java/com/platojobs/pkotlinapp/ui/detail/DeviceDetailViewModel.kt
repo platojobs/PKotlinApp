@@ -118,17 +118,24 @@ class DeviceDetailViewModel(
     }
 
     /** 设备编辑：别名与分组直接落 Room，并排队同步；离线时也能立即可见。 */
-    fun saveProfile(alias: String, group: String) {
+    fun saveProfile(alias: String, group: String?) {
         viewModelScope.launch {
             val now = System.currentTimeMillis()
             val existing = deviceRepository.getDevice(mac)
+            // 只有用户真的改动了别名才置脏；仅改分组时 alias 保持 absent，避免误清空。
+            // 本地别名为空时以详情页拿到的云端别名作为初始值。
+            val previousAlias = existing?.name?.takeIf { it.isNotBlank() }
+                ?: (_info.value as? InfoState.Success)?.info?.alias.orEmpty()
+            val aliasChanged = alias != previousAlias
             val device = existing?.copy(
                 name = alias,
+                aliasDirty = existing.aliasDirty || aliasChanged,
                 group = group,
                 updatedAt = now,
             ) ?: Device(
                 mac = mac,
                 name = alias,
+                aliasDirty = aliasChanged,
                 lastRssi = 0,
                 lastSeenTimestamp = now,
                 group = group,
@@ -136,7 +143,7 @@ class DeviceDetailViewModel(
             deviceRepository.saveDevice(device)
             (_info.value as? InfoState.Success)?.let { state ->
                 _info.value = InfoState.Success(
-                    state.info.copy(alias = alias, group = group),
+                    state.info.copy(alias = alias, group = group.orEmpty()),
                 )
             }
             runCatching { syncScheduler.schedule() }

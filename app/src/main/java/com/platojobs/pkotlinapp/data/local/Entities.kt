@@ -27,6 +27,8 @@ data class DeviceEntity(
     @ColumnInfo(name = "deviceGroup") val group: String? = null,
     // 设备广播名（BLE Local Name）；扫描只写该列，与用户别名 name 独立。
     val advertisedName: String? = null,
+    // 用户是否显式编辑过别名（含清空）。扫描永远不置位；置位后空别名也要上报。
+    @ColumnInfo(defaultValue = "0") val aliasDirty: Boolean = false,
 )
 
 @Entity(tableName = "rules")

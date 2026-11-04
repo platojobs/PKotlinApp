@@ -1,6 +1,7 @@
 package com.platojobs.pkotlinapp.data.sync
 
 import android.content.Context
+import androidx.core.content.edit
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 
@@ -26,11 +27,11 @@ class SecureTokenStore(context: Context) : TokenStore {
     override fun token(): String? = prefs.getString(KEY_TOKEN, null)
 
     override fun saveToken(token: String) {
-        prefs.edit().putString(KEY_TOKEN, token).apply()
+        prefs.edit { putString(KEY_TOKEN, token) }
     }
 
     override fun clear() {
-        prefs.edit().remove(KEY_TOKEN).apply()
+        prefs.edit { remove(KEY_TOKEN) }
     }
 
     private companion object {

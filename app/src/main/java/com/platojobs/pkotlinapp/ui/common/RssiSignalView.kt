@@ -7,6 +7,7 @@ import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.View
 import androidx.core.content.ContextCompat
+import androidx.core.content.withStyledAttributes
 import com.platojobs.pkotlinapp.R
 
 /**
@@ -21,23 +22,29 @@ class RssiSignalView @JvmOverloads constructor(
 
     private val activePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val inactivePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    // 复用绘制矩形，避免 onDraw 每帧分配对象。
+    private val barRect = RectF()
     private val barCount: Int
     private var rssi: Int? = null
     private var activeBars = 0
 
     init {
-        val array = context.obtainStyledAttributes(attrs, R.styleable.RssiSignalView, defStyleAttr, 0)
-        activePaint.color = array.getColor(
-            R.styleable.RssiSignalView_rsv_activeColor,
-            ContextCompat.getColor(context, R.color.signal_active),
-        )
-        inactivePaint.color = array.getColor(
-            R.styleable.RssiSignalView_rsv_inactiveColor,
-            ContextCompat.getColor(context, R.color.signal_inactive),
-        )
-        barCount = array.getInt(R.styleable.RssiSignalView_rsv_barCount, DEFAULT_BAR_COUNT)
-            .coerceAtLeast(2)
-        array.recycle()
+        var configuredBarCount = DEFAULT_BAR_COUNT
+        context.withStyledAttributes(attrs, R.styleable.RssiSignalView, defStyleAttr, 0) {
+            activePaint.color = getColor(
+                R.styleable.RssiSignalView_rsv_activeColor,
+                ContextCompat.getColor(context, R.color.signal_active),
+            )
+            inactivePaint.color = getColor(
+                R.styleable.RssiSignalView_rsv_inactiveColor,
+                ContextCompat.getColor(context, R.color.signal_inactive),
+            )
+            configuredBarCount = getInt(
+                R.styleable.RssiSignalView_rsv_barCount,
+                DEFAULT_BAR_COUNT,
+            )
+        }
+        barCount = configuredBarCount.coerceAtLeast(2)
         updateContentDescription()
     }
 
@@ -79,12 +86,8 @@ class RssiSignalView @JvmOverloads constructor(
             val left = paddingLeft + index * (barWidth + gap)
             val top = paddingTop + availableHeight - barHeight
             val paint = if (index < activeBars) activePaint else inactivePaint
-            canvas.drawRoundRect(
-                RectF(left, top, left + barWidth, top + barHeight),
-                radius,
-                radius,
-                paint,
-            )
+            barRect.set(left, top, left + barWidth, top + barHeight)
+            canvas.drawRoundRect(barRect, radius, radius, paint)
         }
     }
 

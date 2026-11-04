@@ -76,7 +76,7 @@ app/src/main/java/com/platojobs/pkotlinapp/
 │   └── sync/                      # SyncEngine / 同步模型 / 幂等键（纯 Kotlin）
 ├── data/
 │   ├── ble/                       # BleScanner / BleConnectionManager
-│   ├── local/                     # Room 实体、DAO、数据库、v1→v2 迁移
+│   ├── local/                     # Room 实体、DAO、数据库、v1→v6 迁移
 │   ├── repository/                # Room 仓库实现
 │   ├── remote/                    # DTO、ApiService、SyncApi、ApiClient
 │   ├── sync/                      # token 加密存储、远程适配、WorkManager、同步编排
@@ -158,21 +158,22 @@ app/src/main/java/com/platojobs/pkotlinapp/
 
 ## 6. 数据层与多设备同步
 
-### Room 与迁移（当前 v5）
+### Room 与迁移（当前 v6）
 
-数据库 `device_dashboard.db` 当前版本 **5**，共 4 张表：
+数据库 `device_dashboard.db` 当前版本 **6**，共 4 张表：
 
 | 表 | 关键字段 |
 | --- | --- |
-| `devices` | `mac` 主键、`name`（用户别名）、`advertisedName`（广播名）、`lastRssi`、`lastSeenTimestamp`、`id`（客户端 UUID）、`platform`、`externalId`、`updatedAt`、`deletedAt`、`syncState(pending/synced)`、`deviceType/vendor/firmwareVersion/compatibility`（enrich 缓存）、`deviceTypeName`（catalog 展示名）、`deviceGroup`（云端分组，`NULL`=未上报/未知，`""`=已显式清空） |
+| `devices` | `mac` 主键、`name`（用户别名）、`aliasDirty`（用户是否显式编辑过别名，默认 0）、`advertisedName`（广播名）、`lastRssi`、`lastSeenTimestamp`、`id`（客户端 UUID）、`platform`、`externalId`、`updatedAt`、`deletedAt`、`syncState(pending/synced)`、`deviceType/vendor/firmwareVersion/compatibility`（enrich 缓存）、`deviceTypeName`（catalog 展示名）、`deviceGroup`（云端分组，`NULL`=未上报/未知，`""`=已显式清空） |
 | `rules` | 自增 id、`type`、`threshold`、`enabled`、`createdAt`、`lastTriggeredTimestamp` |
 | `rule_events` | 规则触发记录 |
 | `scan_logs` | 扫描日志 |
 
 - `MIGRATION_1_2` 使用 `ALTER TABLE ... ADD COLUMN` 扩展字段，再逐行回填客户端 UUID、`platform=android`、`externalId=规范化大写 MAC`、`updatedAt=lastSeenTimestamp`、`syncState=pending`，**不丢已有设备数据**。
-- `MIGRATION_2_3` 新增 4 个 enrich 可空列；`MIGRATION_3_4` 新增 `deviceTypeName` 与 `deviceGroup` 可空列；`MIGRATION_4_5` 新增 `advertisedName` 可空列，历史行保持 null，由展示层回退到别名/型号名。
-- 迁移后 schema 输出在 `app/schemas/com.platojobs.pkotlinapp.data.local.AppDatabase/5.json`。
+- `MIGRATION_2_3` 新增 4 个 enrich 可空列；`MIGRATION_3_4` 新增 `deviceTypeName` 与 `deviceGroup` 可空列；`MIGRATION_4_5` 新增 `advertisedName` 可空列，历史行保持 null，由展示层回退到别名/型号名；`MIGRATION_5_6` 新增 `aliasDirty INTEGER NOT NULL DEFAULT 0`，历史行默认 0。
+- 迁移后 schema 输出在 `app/schemas/com.platojobs.pkotlinapp.data.local.AppDatabase/6.json`。
 - 别名与广播名隔离：扫描只写 `advertisedName`，详情页编辑只写 `name`（alias），两者互不覆盖；列表/详情展示优先级为「用户别名 → 广播名 → catalog 型号名 → 未知设备」。
+- **别名清空语义**：`aliasDirty` 只在详情页保存且别名相对初始值发生变化时置 1（一旦置位保持），扫描路径永远不置位。置位后即使 `name` 为空，推送也会显式上报 `"alias":""`；未置位时不报空别名。服务端返回空别名时按「已清空」写回本地（`name=""`），展示层回退到广播名，旧别名不会被拉回复活。
 - `DeviceDao` 使用 `@Upsert insertOrUpdate`、`suspend getAllDevices`，并提供待同步查询、待上传计数、按 externalId 标记 synced 等同步专用方法。
 - 删除设备改为**墓碑（tombstone）**：写 `deletedAt + syncState=pending`，UI 通过 `deletedAt IS NULL` 过滤，推送成功后再物理删除。
 
@@ -209,14 +210,15 @@ app/src/main/java/com/platojobs/pkotlinapp/
 - **可缺省字段三态（openapi 0.3.3）**：DTO 用 `Reported<String>?`（`data/remote/SyncApi.kt`）区分 absent / 空串 / 值，Moshi 自定义 adapter 保证 `null` 完全省略、`Reported("")` 序列化为 `"group":""`。
   - `group` 为 `""` 时显式清除；为 `null`（未上报）时完全省略，服务端保持原值；
   - 拉取/冲突响应中被省略的字段解析为 absent，写回 Room 时保留本地值，不会误清空；
-  - 扫描只上报 `advertisedName`，用户编辑只上报 `alias`（本地已有别名时再次上报同值，不会覆盖服务端广播名）。
+  - 扫描只上报 `advertisedName`，用户编辑只上报 `alias`（本地已有别名时再次上报同值，不会覆盖服务端广播名）；
+  - `alias` 与前两者不同：它由本地 `aliasDirty` 区分「未编辑」与「显式清空」。未编辑且为空时省略；显式清空时上报 `"alias":""`；拉回空别名会清空本地旧值并按广播名展示。
 - **幂等推送**：`IdempotencyKeys.forBatch` 只对**实际会上报**的字段（含 alias/广播名/型号/分组、RSSI、时间）生成稳定的 SHA-256 key；未上报字段不参与哈希，避免同内容重试被算成不同请求而 409。同一 key + 同一请求体重放会命中服务端幂等缓存（`Idempotent-Replayed: true`），同一 key + 不同请求体返回 `409 IDEMPOTENCY_CONFLICT`。
 - **冲突处理**：服务端按 LWW 返回 `conflicts`（如 `server_newer`）时以服务端版本覆盖本地，但结果会通过 `SyncOutcome.conflicts` 上报，并显示在「我的」页，**不静默覆盖**。
 - **拉取合并**：若本地记录为 `pending` 且 `updatedAt` 更新，则不被较旧的服务端版本覆盖；服务端 tombstone 直接删除本地记录。
 - **WorkManager**：`SyncWorker` 在 `NetworkType.CONNECTED` 约束下批量 push，成功后置 `synced`；失败按指数退避重试。
 - **冷启动**：`PKotlinApplication` 启动后先拉增量，`MainActivity` 最多等待 3 秒再渲染；超时或失败直接展示本地数据，不白屏。
 - **降级**：连续失败 3 次进入纯本地模式并持久化，主界面顶部横幅与「我的」页同步卡片都会提示；本地 Room 功能不受影响，用户可手动同步恢复。
-- **测试**：`SyncEngineTest` 覆盖幂等重试、未上报字段不参与幂等键、冲突落败上报、tombstone 删除与拉取合并；`Rfc3339Test` 覆盖 Go 纳秒时间与带时区偏移的解析；`SyncDtoMappingTest` 覆盖三态序列化（absent/空串/值）、别名与广播名隔离、absent 解析、push DTO 字段归一化、iOS 无 MAC、tombstone 与非法 id 回退；`SyncErrorKindTest` 覆盖网络/超时/401/403/409/500/未知分类；`RemoteSyncTokenTest` 覆盖「401 不自动重登、保留 token、其它错误原样抛出」；`OfflineDeviceInfoTest` 覆盖展示优先级与离线分组；`DeviceMigrationTest` 用真实 SQLite 验证 v3→v4、v4→v5 不丢数据。
+- **测试**：`SyncEngineTest` 覆盖幂等重试、未上报字段不参与幂等键、冲突落败上报、tombstone 删除与拉取合并；`Rfc3339Test` 覆盖 Go 纳秒时间与带时区偏移的解析；`SyncDtoMappingTest` 覆盖三态序列化（absent/空串/值）、别名与广播名隔离、absent 解析、push DTO 字段归一化、iOS 无 MAC、tombstone 与非法 id 回退；`SyncErrorKindTest` 覆盖网络/超时/401/403/409/500/未知分类；`RemoteSyncTokenTest` 覆盖「401 不自动重登、保留 token、其它错误原样抛出」；`OfflineDeviceInfoTest` 覆盖展示优先级与离线分组；`DeviceAliasPersistenceTest` 覆盖显式清空别名落库、扫描不覆盖别名/不置脏；`DeviceMigrationTest` 用真实 SQLite 验证 v3→v4、v4→v5、v5→v6 不丢数据。
 
 同步往返样例（与 `openapi.yaml` 一致）：
 
@@ -404,11 +406,11 @@ Debug / Release 都可通过 `apiBaseUrl` 切换；发布前请传入正式域�
 
 - 产品 / 市场：请求失败显示错误文案 + `EmptyStateView` 重试，不展示假数据。
 - 设备详情：设备信息失败时读取 Room 缓存并提示「网络不可用，以下为本地缓存数据」；名称按「别名 → 广播名 → 型号名」展示；型号优先显示缓存的 catalog 展示名，缺失时回退型号键并标注「未识别的型号」；分组按 `deviceGroup` 真实值展示，不再一律显示「未分组」。连接状态与 RSSI 仍来自真实 BLE。
-- 设备编辑：详情页「编辑别名与分组」直接写 Room 并排队同步；断网时保存也会立即在详情与设备列表生效，重连后推送。清空分组会存为 `""` 并在下次同步显式上报，扫描不会把它复活。
+- 设备编辑：详情页「编辑别名与分组」直接写 Room 并排队同步；断网时保存也会立即在详情与设备列表生效，重连后推送。清空分组会存为 `""` 并在下次同步显式上报，扫描不会把它复活；清空别名会置 `aliasDirty` 并上报 `"alias":""`，扫描/拉回都不会复活旧别名。
 - 设备列表：每行展示「分组：X / 未分组」，标题旁统计「共 N 台设备 · M 个分组」，数据全部来自 Room，离线一致。
 - 同步：连续失败 3 次进入纯本地模式，主界面横幅 +「我的」同步卡片提示；Room 数据（首页、设备、日志）不依赖网络。
 - 首页 / 设备 / 我的：本地 Room 数据不依赖网络，断网仍可用。
-- 离线验收步骤见 [真机验收清单 §7.2](docs/acceptance.md#72-离线缓存与分组验收v035-新增)；别名/广播名与分组三态验收见 [§7.4](docs/acceptance.md#74-别名--广播名与分组三态验收v036-新增)。
+- 离线验收步骤见 [真机验收清单 §7.2](docs/acceptance.md#72-离线缓存与分组验收v035-新增)；别名/广播名与分组三态验收见 [§7.4](docs/acceptance.md#74-别名--广播名与分组三态验收v036-新增)；清空别名验收见 [§7.5](docs/acceptance.md#75-清空别名验收v037-新增)。
 
 ---
 
@@ -419,7 +421,7 @@ export JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk-21.jdk/Contents/Home
 
 ./gradlew assembleDebug        # Debug APK
 ./gradlew lintDebug            # Lint
-./gradlew testDebugUnitTest    # 单元测试：45 个（含 OfflineDeviceInfo 4 + DeviceMigration 2）
+./gradlew testDebugUnitTest    # 单元测试：51 个（含 DeviceMigration 3 + DeviceAliasPersistence 3）
 ./gradlew assembleRelease      # 签名 Release APK
 ./gradlew bundleRelease        # 签名 Release AAB
 
@@ -427,6 +429,20 @@ export JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk-21.jdk/Contents/Home
 ```
 
 Debug 包路径：`app/build/outputs/apk/debug/app-debug.apk`
+
+### Lint 基线
+
+`lintDebug` 当前为 **0 error / 0 warning**，未使用 `abortOnError=false` 之类的全局屏蔽。历史 62 条 warning 已按类型直接修复：硬编码文案抽到 `strings.xml`、未使用字符串/颜色/图标删除、`contentDescription` 与 KTX 改造、`RectF` 预分配、移除重复根背景、补全备份规则等。
+
+仅 `app/lint.xml` 显式忽略 4 个「版本提示」类检查，原因如下：
+
+| 检查项 | 保留原因 |
+| --- | --- |
+| `GradleDependency` / `NewerVersionAvailable` | 依赖升级需单独回归（Material、Retrofit、OkHttp 等），不在 bugfix 版本里批量升级 |
+| `AndroidGradlePluginVersion` | AGP 升级需同步验证 KSP/Compose 无关插件链，单独排期 |
+| `OldTargetApi` | `targetSdk 36` 是本轮验收基线；37 的行为变更需专项验证后再升 |
+
+其余检查（含 `UnusedResources`、`InlinedApi`、`DataExtractionRules`）均按 lint 建议在代码/资源中处理，不使用配置抑制。
 
 ### 验收与排障文档
 
@@ -506,7 +522,7 @@ release {
 
 `.github/workflows/android.yml`：
 
-- **verify job**（push main / pull_request）：JDK 21（Temurin）、`./gradlew assembleDebug lintDebug testDebugUnitTest`，上传 Lint 与单测报告。
+- **verify job**（push main / pull_request）：JDK 21（Temurin）、`./gradlew assembleDebug lintDebug testDebugUnitTest`，要求 lint 0 error / 0 warning；上传 Lint 与单测报告。
 - **release job**（仅 `v*` tag 或手动 `workflow_dispatch`）：执行 `assembleRelease`，**不注入签名密钥**，产出未签名 APK 作为构建验证；如需正式签名请在 GitHub Secrets 配置后自行补充注入步骤，仓库内不写任何密码。
 
 ---
@@ -523,7 +539,7 @@ release {
 - [ ] 横屏、大屏、折叠屏的 Edge-to-edge 与列表布局表现。
 - [ ] WorkManager 在网络恢复后自动推送、断网连续失败进入纯本地模式。
 - [ ] 冷启动 3 秒内增量拉取与超时回退本地数据的表现。
-- [ ] v1 → v2 → v3 Room 迁移在已有数据的真实设备上执行（本机仅验证 schema 与构建）。
+- [ ] v1 → v6 全链路 Room 迁移在已有数据的真实设备上执行（本机仅验证 schema 与构建）。
 
 其他限制：
 
@@ -536,6 +552,7 @@ release {
 
 ## 11. 版本记录
 
+- `v0.3.7`：修复「清空别名无效」：Room v6 新增 `aliasDirty`（`MIGRATION_5_6`），详情页显式清空别名时上报 `"alias":""`，扫描路径永不置脏，服务端空别名拉回后清空本地并按广播名展示；复核分组 `NULL`/`""` 三态链路不复活；`lintDebug` 从 62 条 warning 清理到 0（硬编码文案抽 strings、未用资源删除、KTX/无障碍/备份规则修复，仅 4 个版本提示类检查在 `lint.xml` 显式抑制并写明理由）；新增 `DeviceAliasPersistenceTest`、v5→v6 迁移测试与 e2e 清空别名断言（e2e 扩到 24 项），单测 51 个。
 - `v0.3.6`：跟随 PJGoIoT openapi 0.3.3：Room v5 新增 `advertisedName`（广播名）并与用户别名 `name` 隔离 + `MIGRATION_4_5`，列表/详情按「别名 → 广播名 → 型号名」展示；扫描只写广播名、编辑只写别名；DTO 引入 `Reported<String>?` 三态（absent / `""` / 值）与 Moshi adapter，删除分组显式上报 `"group":""`、未修改则省略；幂等键只哈希实际上报字段；冲突/拉取缺省字段按 absent 处理并保留本地值；新增三态序列化、别名隔离、清空不复活、幂等键稳定性测试，e2e 扩到 22 项。
 - `v0.3.5`：离线降级修复：Room v4 新增 `deviceTypeName`（catalog 展示名）与 `deviceGroup`（真实分组）可空列 + `MIGRATION_3_4`；离线型号优先展示缓存名，缺失时回退型号键并标注「未识别的型号」；设备编辑（别名/分组）落库并即时离线可见，设备列表展示分组与分组统计；扫描写入不再覆盖已缓存 enrich/分组；市场筛选 Chip 补 contentDescription、选中态 stateDescription 与 200% 字号换行；新增离线展示名/分组与 v3→v4 迁移测试。
 - `v0.3.4`：接入 PJGoIoT openapi 0.3.2 enrich 字段（`UserDevice.deviceType/vendor/firmwareVersion/compatibility`、catalog 配件/固件 `vendor/compatibility`）；设备详情优先云端并支持本地缓存降级，市场新增厂商/兼容性筛选，push 支持可选 `deviceType` 且不上报时不覆盖旧值；Room v2→v3 迁移；扩展 e2e 断言；CI action 升级到 checkout@v7 / setup-java@v6 / setup-go@v7 / setup-gradle@v6 / upload-artifact@v7。

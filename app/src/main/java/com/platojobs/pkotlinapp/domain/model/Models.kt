@@ -40,6 +40,11 @@ data class Device(
      * 扫描只更新该字段；与用户别名 [name] 独立，互不覆盖。
      */
     val advertisedName: String? = null,
+    /**
+     * 用户是否显式编辑过别名（包括清空）。
+     * 扫描路径永远不置位；置位后即使 [name] 为空也会作为显式清空上报。
+     */
+    val aliasDirty: Boolean = false,
 )
 
 /**

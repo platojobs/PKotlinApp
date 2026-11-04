@@ -198,6 +198,81 @@ class DeviceMigrationTest {
         }
     }
 
+    @Test
+    fun `v5 to v6 adds aliasDirty without losing data`() {
+        DriverManager.getConnection("jdbc:sqlite::memory:").use { connection ->
+            connection.createStatement().use { it.execute(v3DevicesCreateSql) }
+            DeviceMigrationSql.V3_TO_V4.forEach { sql ->
+                connection.createStatement().use { it.execute(sql) }
+            }
+            DeviceMigrationSql.V4_TO_V5.forEach { sql ->
+                connection.createStatement().use { it.execute(sql) }
+            }
+            connection.createStatement().use { statement ->
+                statement.executeUpdate(
+                    """
+                    INSERT INTO devices (
+                        mac, name, lastRssi, lastSeenTimestamp, id, platform, externalId,
+                        updatedAt, deletedAt, syncState, deviceType, vendor, firmwareVersion,
+                        compatibility, deviceTypeName, deviceGroup, advertisedName
+                    ) VALUES (
+                        'AA:BB:CC:DD:EE:01', '客厅温湿度计', -55, 1762300000000,
+                        'client-uuid-1', 'android', 'AA:BB:CC:DD:EE:01', 1762300000000,
+                        NULL, 'synced', 'nordic_uart', 'Nordic', '1.2.0', 'android · ble',
+                        'Nordic UART 温湿度计', '客厅', 'PJ-Sensor'
+                    )
+                    """.trimIndent(),
+                )
+            }
+
+            assertEquals(1, countRows(connection))
+
+            DeviceMigrationSql.V5_TO_V6.forEach { sql ->
+                connection.createStatement().use { it.execute(sql) }
+            }
+
+            val columns = tableColumns(connection)
+            assertTrue(columns.contains("aliasDirty"))
+            assertEquals(18, columns.size)
+            assertEquals(1, countRows(connection))
+
+            connection.createStatement().use { statement ->
+                statement.executeQuery(
+                    """
+                    SELECT name, deviceGroup, advertisedName, aliasDirty
+                    FROM devices WHERE mac = 'AA:BB:CC:DD:EE:01'
+                    """.trimIndent(),
+                ).use { cursor ->
+                    assertTrue(cursor.next())
+                    // 历史数据全部保留，新增脏标记默认 0（视为未显式编辑）。
+                    assertEquals("客厅温湿度计", cursor.getString("name"))
+                    assertEquals("客厅", cursor.getString("deviceGroup"))
+                    assertEquals("PJ-Sensor", cursor.getString("advertisedName"))
+                    assertEquals(0, cursor.getInt("aliasDirty"))
+                }
+            }
+
+            // 用户显式清空别名：name 置空、aliasDirty 置 1，广播名不受影响。
+            connection.createStatement().use { statement ->
+                statement.executeUpdate(
+                    "UPDATE devices SET name = '', aliasDirty = 1 " +
+                        "WHERE mac = 'AA:BB:CC:DD:EE:01'",
+                )
+            }
+            connection.createStatement().use { statement ->
+                statement.executeQuery(
+                    "SELECT name, aliasDirty, advertisedName FROM devices " +
+                        "WHERE mac = 'AA:BB:CC:DD:EE:01'",
+                ).use { cursor ->
+                    assertTrue(cursor.next())
+                    assertEquals("", cursor.getString("name"))
+                    assertEquals(1, cursor.getInt("aliasDirty"))
+                    assertEquals("PJ-Sensor", cursor.getString("advertisedName"))
+                }
+            }
+        }
+    }
+
     private fun countRows(connection: java.sql.Connection): Int =
         connection.createStatement().use { statement ->
             statement.executeQuery("SELECT COUNT(*) FROM devices").use { cursor ->

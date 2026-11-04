@@ -19,6 +19,10 @@ internal object DeviceMigrationSql {
         // 广播名与用户别名 name 独立：扫描只写 advertisedName。
         "ALTER TABLE devices ADD COLUMN advertisedName TEXT",
     )
+    val V5_TO_V6 = listOf(
+        // 用户显式编辑别名的标记：扫描不置位，清空别名也能上报。
+        "ALTER TABLE devices ADD COLUMN aliasDirty INTEGER NOT NULL DEFAULT 0",
+    )
 }
 
 @Database(
@@ -28,7 +32,7 @@ internal object DeviceMigrationSql {
         RuleEventEntity::class,
         ScanLogEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -108,6 +112,16 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v5 -> v6：新增「用户显式编辑过别名」标记。
+         * 历史行默认 0（扫描/服务端来源），首次在详情页保存后置 1。
+         */
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                DeviceMigrationSql.V5_TO_V6.forEach(db::execSQL)
+            }
+        }
+
         @Volatile
         private var instance: AppDatabase? = null
 
@@ -117,7 +131,13 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     DB_NAME,
-                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                ).addMigrations(
+                    MIGRATION_1_2,
+                    MIGRATION_2_3,
+                    MIGRATION_3_4,
+                    MIGRATION_4_5,
+                    MIGRATION_5_6,
+                )
                     .build()
                     .also { instance = it }
             }

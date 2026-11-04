@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  仅抑制「版本提示」类检查：这些告警不是代码缺陷，依赖/SDK 升级需要单独验证，
+  避免把一次 bugfix 版本变成大范围依赖变更。其余 warning 均已在代码/资源中修复。
+-->
+<lint>
+    <issue id="GradleDependency" severity="ignore" />
+    <issue id="NewerVersionAvailable" severity="ignore" />
+    <issue id="AndroidGradlePluginVersion" severity="ignore" />
+    <!-- targetSdk 36 是本轮验收基线；升级 37 需专项验证行为变更。 -->
+    <issue id="OldTargetApi" severity="ignore" />
+</lint>

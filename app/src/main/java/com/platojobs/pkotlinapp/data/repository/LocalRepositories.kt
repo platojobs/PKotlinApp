@@ -41,7 +41,13 @@ class DeviceRepositoryImpl(
             device.copy(
                 mac = existing?.mac ?: device.mac,
                 // 扫描只写 advertisedName；用户别名只由详情页编辑写入，两者互不覆盖。
-                name = device.name.takeIf { it.isNotBlank() } ?: existing?.name.orEmpty(),
+                // aliasDirty 置位后允许写入空串（显式清空别名）。
+                name = if (device.aliasDirty) {
+                    device.name
+                } else {
+                    device.name.takeIf { it.isNotBlank() } ?: existing?.name.orEmpty()
+                },
+                aliasDirty = device.aliasDirty || existing?.aliasDirty == true,
                 advertisedName = device.advertisedName ?: existing?.advertisedName,
                 group = device.group ?: existing?.group,
                 deviceType = device.deviceType ?: existing?.deviceType,
@@ -148,6 +154,7 @@ private fun DeviceEntity.toDomain() = Device(
     deviceTypeName = deviceTypeName,
     group = group,
     advertisedName = advertisedName,
+    aliasDirty = aliasDirty,
 )
 
 private fun Device.toEntity() = DeviceEntity(
@@ -168,6 +175,7 @@ private fun Device.toEntity() = DeviceEntity(
     deviceTypeName = deviceTypeName,
     group = group,
     advertisedName = advertisedName,
+    aliasDirty = aliasDirty,
 )
 
 private fun RuleEntity.toDomain() = DeviceRule(

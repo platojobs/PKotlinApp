@@ -139,10 +139,59 @@ class SyncDtoMappingTest {
         assertEquals("PJ-Sensor", dto.advertisedName?.value)
 
         // 用户编辑别名后，两条字段仍各自保留自己的值，不会互相覆盖。
-        val userEdit = scanned.copy(name = "客厅开发板")
+        val userEdit = scanned.copy(name = "客厅开发板", aliasDirty = true)
         val editDto = userEdit.toPushDto()
         assertEquals("客厅开发板", editDto.alias?.value)
         assertEquals("PJ-Sensor", editDto.advertisedName?.value)
+    }
+
+    @Test
+    fun `explicit alias clear is reported as empty string`() {
+        val cleared = SyncRecord(
+            id = UUID.randomUUID().toString(),
+            platform = PLATFORM_ANDROID,
+            externalId = "AA:BB:CC:DD:EE:FF",
+            // 用户清空别名：name 为空但脏标记置位，必须上报 alias="" 而不是 absent。
+            name = "",
+            aliasDirty = true,
+            advertisedName = "PJ-Sensor",
+            lastRssi = -55,
+            lastSeenTimestamp = 1_762_300_000_000,
+            updatedAt = 1_762_300_000_000,
+        )
+
+        val dto = cleared.toPushDto()
+        assertEquals("", dto.alias?.value)
+        assertEquals("PJ-Sensor", dto.advertisedName?.value)
+
+        val json = ApiClient.moshi().adapter(SyncPushRequest::class.java)
+            .toJson(SyncPushRequest("test", listOf(dto)))
+        assertTrue(json.contains("\"alias\":\"\""))
+        assertTrue(json.contains("\"advertisedName\":\"PJ-Sensor\""))
+
+        // 扫描得到的空别名（未置脏）必须保持 absent。
+        assertNull(cleared.copy(aliasDirty = false).toPushDto().alias)
+    }
+
+    @Test
+    fun `pull applies cleared alias and does not revive it on next scan push`() {
+        // 服务端别名必返：空串表示已清空。
+        val pulled = SyncDeviceDto(
+            id = UUID.randomUUID().toString(),
+            platform = PLATFORM_ANDROID,
+            externalId = "AA:BB:CC:DD:EE:FF",
+            alias = "",
+            advertisedName = "PJ-Sensor",
+            group = Reported(""),
+        ).toDomain()
+
+        assertEquals("", pulled?.name)
+        assertEquals("PJ-Sensor", pulled?.advertisedName)
+        assertEquals("", pulled?.group)
+        // 拉回后本地未置脏，后续扫描推送不会再上报别名，旧值不会复活。
+        assertNull(pulled?.copy(advertisedName = "PJ-Sensor-2")?.toPushDto()?.alias)
+        // 已清空的分组仍以显式空串上报，不会被扫描误改。
+        assertEquals("", pulled?.copy(advertisedName = "PJ-Sensor-2")?.toPushDto()?.group?.value)
     }
 
     @Test

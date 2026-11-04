@@ -301,5 +301,17 @@ class SyncEngineTest {
         // 上报别名会改变内容，key 必须不同。
         val aliasEdited = base.copy(name = "客厅开发板")
         assertNotEquals(IdempotencyKeys.forBatch(listOf(base)), IdempotencyKeys.forBatch(listOf(aliasEdited)))
+
+        // 显式清空别名（空串 + 脏标记）与「未上报别名」是不同请求。
+        val aliasCleared = base.copy(name = "", aliasDirty = true)
+        assertNotEquals(
+            IdempotencyKeys.forBatch(listOf(base)),
+            IdempotencyKeys.forBatch(listOf(aliasCleared)),
+        )
+        // 脏标记相同、内容相同则重试 key 稳定。
+        assertEquals(
+            IdempotencyKeys.forBatch(listOf(aliasCleared)),
+            IdempotencyKeys.forBatch(listOf(aliasCleared.copy())),
+        )
     }
 }

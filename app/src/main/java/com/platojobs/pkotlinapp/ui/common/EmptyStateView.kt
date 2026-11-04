@@ -21,6 +21,9 @@ class EmptyStateView(
     @DrawableRes iconRes: Int = R.drawable.ic_empty_ble,
 ) : LinearLayout(context) {
 
+    /** 供布局编辑器/工具识别的单参构造（代码里通常直接用主构造）。 */
+    constructor(context: Context) : this(context, null, null)
+
     private val iconView = ImageView(context)
     private val titleView = TextView(context)
     private val hintView = TextView(context)

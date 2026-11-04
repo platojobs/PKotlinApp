@@ -32,7 +32,7 @@ import java.util.UUID
  *   Header: `Authorization: Bearer <token>`、`Idempotency-Key: <stable batch key>`
  *
  * UserDevice 与本地模型的字段映射：
- * - `alias` <-> `name`
+ * - `alias` <-> `name`（aliasDirty 记录用户是否显式编辑过，用于区分 absent 与显式清空）
  * - `scanRecords[{rssi, at}]` <-> `lastRssi` / `lastSeenTimestamp`
  * - `updatedAt` / `deletedAt` 为 RFC 3339，本地存 epoch millis
  * - Android 的 `mac` 元数据为小写 MAC，`externalId` 为规范化大写 MAC
@@ -114,7 +114,8 @@ internal fun SyncRecord.toPushDto(): PushDeviceDto {
         // 只有本地/云端 enrich 匹配到型号时才上报；null 字段不会序列化，服务端沿用旧值。
         deviceType = deviceType?.takeIf { it.isNotBlank() },
         // 扫描只上报 advertisedName，用户编辑只上报 alias；两者独立。
-        alias = name.takeIf { it.isNotBlank() }?.let(::Reported),
+        // aliasDirty 置位后即使别名为空也要显式上报空串，服务端才会真正清空旧别名。
+        alias = if (aliasDirty || name.isNotBlank()) Reported(name) else null,
         advertisedName = advertisedName?.takeIf { it.isNotBlank() }?.let(::Reported),
         // group 三态：null 不上报；空串显式清除；非空覆盖。
         group = group?.let(::Reported),

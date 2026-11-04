@@ -6,6 +6,22 @@
 
 ---
 
+## v0.3.7
+
+**主题：修复清空别名无效 + lint 清零**
+
+- Room 升级到 v6：`devices` 新增 `aliasDirty INTEGER NOT NULL DEFAULT 0`，`MIGRATION_5_6` 用 `ALTER TABLE` 追加；v5 历史数据逐列保留，默认视为「未显式编辑别名」。
+- 别名清空语义：详情页保存时仅在别名相对初始值变化才置脏（一旦置位保持）；置脏后即使别名为空也上报 `"alias":""`，未置脏的空别名保持 absent；扫描路径永不置脏。
+- 拉取/冲突写回：服务端 `alias` 为空串时覆盖本地 `name=""`，展示层回退广播名，旧别名不会被拉回复活；`aliasDirty` 保留本地值。
+- 分组三态复核：对话框未修改且本地分组未知时传 `null`（不上报），显式清空传 `""`；`NULL=未上报/未知`、`""=已清空` 在「编辑 → 清空 → 同步 → 拉回」全链路不复活。
+- `lintDebug` 从 62 条 warning 清理到 **0 error / 0 warning**：抽取硬编码文案、删除未使用字符串/颜色/图标、补全备份规则、KTX/无障碍与绘制分配改造；仅 `app/lint.xml` 显式忽略 4 个版本提示类检查，README 写明理由，未使用 `abortOnError=false`。
+- 测试：新增 `DeviceAliasPersistenceTest`（3 项：清空别名落库、扫描不覆盖别名、脏标记保持），`DeviceMigrationTest` 新增 v5→v6，`SyncDtoMappingTest` 新增清空别名上报与拉回不复活，`SyncEngineTest` 新增清空别名幂等键区分；`E2eContractTest` 扩到 24 项（清空别名显式空串、扫描不复活），单测共 51 个。
+- README 更新 Room v6 / `aliasDirty` 语义 / lint 基线；验收清单更新 v5→v6 迁移与 §7.5 清空别名验收。
+
+版本：`versionCode = 10`、`versionName = 0.3.7`。
+
+---
+
 ## v0.3.6
 
 **主题：跟随 openapi 0.3.3 —— 别名/广播名拆分 + 分组三态 + 幂等键收敛**

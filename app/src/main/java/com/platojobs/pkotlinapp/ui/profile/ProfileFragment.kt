@@ -9,6 +9,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
@@ -223,7 +224,7 @@ class ProfileFragment : Fragment() {
     private fun openRepository() {
         try {
             startActivity(
-                Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/platojobs/PKotlinApp")),
+                Intent(Intent.ACTION_VIEW, "https://github.com/platojobs/PKotlinApp".toUri()),
             )
         } catch (e: ActivityNotFoundException) {
             Snackbar.make(binding.root, R.string.error_unknown, Snackbar.LENGTH_LONG).show()

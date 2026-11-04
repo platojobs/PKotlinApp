@@ -8,6 +8,11 @@ data class SyncRecord(
     val platform: String,
     val externalId: String,
     val name: String,
+    /**
+     * 用户是否显式编辑过别名（含清空）。扫描记录永远为 false；
+     * 为 true 时即使 [name] 为空也要上报 `alias: ""`。
+     */
+    val aliasDirty: Boolean = false,
     val lastRssi: Int,
     val lastSeenTimestamp: Long,
     val updatedAt: Long,
@@ -102,8 +107,8 @@ object IdempotencyKeys {
                     add(record.lastSeenTimestamp.toString())
                     add(record.updatedAt.toString())
                     add((record.deletedAt ?: 0L).toString())
-                    // alias / 广播名只在非空时上报（扫描与用户编辑各自独立）。
-                    record.name.takeIf { it.isNotBlank() }?.let { add("alias=$it") }
+                    // alias：非空值或用户显式清空都要上报；扫描得到的空别名不参与哈希。
+                    if (record.aliasDirty || record.name.isNotBlank()) add("alias=${record.name}")
                     record.advertisedName?.takeIf { it.isNotBlank() }?.let { add("adv=$it") }
                     record.deviceType?.let { add("type=$it") }
                     // group: null=absent（不参与哈希）；""=显式清除；其余=覆盖值。

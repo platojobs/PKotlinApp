@@ -152,7 +152,8 @@ class RuleAdapter(
             val enabledText = context.getString(
                 if (rule.enabled) R.string.rule_enabled_desc else R.string.rule_disabled_desc,
             )
-            binding.ruleDetail.text = "$thresholdText · $enabledText"
+            binding.ruleDetail.text =
+                context.getString(R.string.list_meta_line, thresholdText, enabledText)
 
             binding.ruleSwitch.setOnCheckedChangeListener(null)
             binding.ruleSwitch.isChecked = rule.enabled
@@ -196,7 +197,11 @@ class RuleEventAdapter : ListAdapter<RuleEvent, RuleEventAdapter.ViewHolder>(DIF
         fun bind(event: RuleEvent) {
             val context = binding.root.context
             binding.eventMessage.text = event.message
-            binding.eventMeta.text = "${event.mac} · ${TimeFormat.relative(context, event.timestamp)}"
+            binding.eventMeta.text = context.getString(
+                R.string.list_meta_line,
+                event.mac,
+                TimeFormat.relative(context, event.timestamp),
+            )
         }
     }
 

@@ -31,8 +31,8 @@ android {
         applicationId = "com.platojobs.pkotlinapp"
         minSdk = 24
         targetSdk = 36
-        versionCode = 5
-        versionName = "0.3.2"
+        versionCode = 6
+        versionName = "0.3.3"
         buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
     }
 
@@ -117,6 +117,9 @@ tasks.register<Test>("e2eContract") {
     }
     reports.junitXml.outputLocation.set(layout.buildDirectory.dir("test-results/e2eContract"))
     reports.html.outputLocation.set(layout.buildDirectory.dir("reports/tests/e2eContract"))
+
+    // 契约联调必须每次真实执行，不能因为 UP-TO-DATE 让 CI 假装通过。
+    outputs.upToDateWhen { false }
 }
 
 dependencies {

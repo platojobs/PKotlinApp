@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 # 端到端契约联调：启动本机 PJGoIoT（STORE=fixture），再用 JVM 测试直连验证同步契约。
-# 依赖：Go 1.22+、JDK 21、curl、lsof。默认不进入 CI。
+# 依赖：Go 1.22+、JDK 21、curl、lsof。
+# 本地：./scripts/e2e-contract.sh
+# CI：PJGOIOT_DIR 指向 checkout 目录，E2E_LOG_DIR 用于把服务日志留给 artifact。
 
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GO_DIR="${PJGOIOT_DIR:-$ROOT/../PJGoIoT}"
+LOG_DIR="${E2E_LOG_DIR:-}"
 LOG="$(mktemp "${TMPDIR:-/tmp}/pjgoiot-e2e-log.XXXXXX")"
 BIN=""
 SERVICE_PID=""
@@ -14,6 +17,11 @@ cleanup() {
     if [[ -n "$SERVICE_PID" ]] && kill -0 "$SERVICE_PID" 2>/dev/null; then
         kill "$SERVICE_PID" 2>/dev/null || true
         wait "$SERVICE_PID" 2>/dev/null || true
+    fi
+    # CI 失败时保留 Go 服务日志，供 artifact 上传排查。
+    if [[ -n "$LOG_DIR" && -f "$LOG" ]]; then
+        mkdir -p "$LOG_DIR"
+        cp "$LOG" "$LOG_DIR/go-service.log"
     fi
     [[ -n "$BIN" ]] && rm -f "$BIN"
     [[ -n "$LOG" ]] && rm -f "$LOG"
@@ -69,7 +77,7 @@ echo "[E2E] 启动 fixture 服务：${BASE_URL}（STORE=fixture）"
     STORE=fixture \
         ADDR="127.0.0.1:$PORT" \
         FIXTURES_DIR="$GO_DIR/fixtures" \
-        LOG_LEVEL=warn \
+        LOG_LEVEL="${E2E_LOG_LEVEL:-warn}" \
         "$BIN"
 ) >"$LOG" 2>&1 &
 SERVICE_PID=$!

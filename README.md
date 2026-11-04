@@ -272,7 +272,7 @@ app/src/main/java/com/platojobs/pkotlinapp/
 
 ### 契约端到端联调（e2eContract）
 
-默认**不进入 CI**，因为它依赖本机 Go 服务。前置条件：
+本地手动执行方式如下；GitHub Actions 也会在 push / PR 时自动跑同一脚本（见「CI 里的契约联调」）。前置条件：
 
 - Go 1.22+（本机实测 Go 1.27.3）；
 - JDK 21；
@@ -305,6 +305,38 @@ JVM 测试用 OkHttp 直连本地服务，不依赖模拟器，覆盖：
 
 本机实跑结果（2026-11-05）：上述用例全部通过；另验证了 8080 被占用时自动回退 18080。
 
+### CI 里的契约联调
+
+GitHub Actions 的 `e2e-contract` job 与 `verify` job **并行**执行，不会阻塞 debug / lint / 单测；仅在 `push` 与 `pull_request` 触发。
+
+job 做了这些事：
+
+1. checkout 本仓库，并用 `actions/checkout` 的 `path` 把 `platojobs/PJGoIoT` 放到 `PJGoIoT/`；
+2. `actions/setup-go` 按 `PJGoIoT/go.mod` 安装 Go 1.22+，`actions/setup-java` 安装 JDK 21；
+3. 以 `PJGOIOT_DIR=${{ github.workspace }}/PJGoIoT` 执行 `./scripts/e2e-contract.sh`（脚本自带 8080 → 18080 端口回退与 health 轮询）；
+4. 无论成败上传 `app/build/reports/tests/e2eContract` 与 `app/build/test-results/e2eContract`；
+5. 失败时额外上传 `e2e-logs/go-service.log`（CI 使用 `E2E_LOG_LEVEL=info`，本地默认 `warn`）。
+
+这个 job 专门防「契约漂移当场变红」，覆盖：
+
+- **字段漂移**：push 请求体 / `applied` / `conflicts` / changes 元素字段与 openapi 不一致时，生产 Retrofit DTO 解析会失败；
+- **幂等契约**：同 key + 同体重放不产生新 change，同 key + 异体必须 409；
+- **游标类型**：`nextCursor` 按整数游标解析与回传，字符串游标会直接失败；
+- **时间格式**：`serverTs` 必须是 RFC 3339，Go 纳秒精度也要能解析；
+- **复合键**：`platform + externalId`（Android 大写 MAC）查询与 changes 回放；
+- **鉴权**：缺 token 返回 401、跨用户访问返回 404。
+
+本地复现失败：
+
+```bash
+./scripts/e2e-contract.sh
+```
+
+若想主动验证「漂移会红」，可在 `../PJGoIoT` 临时修改某个响应字段（例如把 `nextCursor` 改成字符串），再执行上面的命令；测试失败后脚本会打印 Go 服务日志最后 60 行并以非零码退出。恢复后端改动后重跑即可。
+`e2eContract` task 设置了 `outputs.upToDateWhen { false }`，因此不会因为 UP-TO-DATE 而假通过。
+
+CI run 链接：_待首次运行后补充_。
+
 ### 网络配置（BASE_URL）
 
 不硬编码公网地址，`BuildConfig.API_BASE_URL` 按以下优先级生成：
@@ -335,7 +367,7 @@ export JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk-21.jdk/Contents/Home
 ./gradlew assembleRelease      # 签名 Release APK
 ./gradlew bundleRelease        # 签名 Release AAB
 
-./scripts/e2e-contract.sh      # 契约联调（需先具备本地 PJGoIoT，默认不进 CI）
+./scripts/e2e-contract.sh      # 契约联调（需本地 PJGoIoT；CI 的 e2e-contract job 自动执行）
 ```
 
 Debug 包路径：`app/build/outputs/apk/debug/app-debug.apk`
@@ -448,6 +480,7 @@ release {
 
 ## 11. 版本记录
 
+- `v0.3.3`：把 `e2e-contract` 纳入 GitHub Actions（与 verify 并行，push/PR 触发），失败上传测试报告与 Go 服务日志；`e2eContract` 强制每次真实执行；README 新增「CI 里的契约联调」。
 - `v0.3.2`：产品 / 市场 / 设备详情改用 `GET /device-types/{type}/catalog`（一次返回 firmware + accessories），设备详情复合键查询改用 `GET /my/devices/android/{externalId}`；新增 `CatalogMappingTest`。同时新增验收 / 排障 / 发布说明文档，401 改为「停止同步 + 用户确认重新登录」（与 iOS 对齐），同步错误分类展示，权限被拒后提供「打开应用设置」，Debug 构建允许明文 HTTP。
 - `v0.3.1`：按 `PJGoIoT/api/openapi.yaml` 修正同步 DTO（`{clientId,devices}` / `{applied,conflicts,nextCursor}` / `changes[].payload`），时间统一 RFC 3339，新增 `scripts/e2e-contract.sh` 与本机 Go 后端端到端契约联调（含幂等重放、LWW 冲突、401、跨用户 404）。
 - `v0.3.0`：接入多设备同步客户端（匿名登录、加密 token、增量拉取、幂等批量推送、冲突上报、tombstone），Room v1→v2 迁移，WorkManager 后台同步与纯本地降级，「我的」同步状态卡片，同步单测。

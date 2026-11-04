@@ -3,6 +3,7 @@ package com.platojobs.pkotlinapp.data.sync
 import com.platojobs.pkotlinapp.data.remote.AppliedChangeDto
 import com.platojobs.pkotlinapp.data.remote.ConflictDto
 import com.platojobs.pkotlinapp.data.remote.PushDeviceDto
+import com.platojobs.pkotlinapp.data.remote.Reported
 import com.platojobs.pkotlinapp.data.remote.SyncApi
 import com.platojobs.pkotlinapp.data.remote.SyncChangeDto
 import com.platojobs.pkotlinapp.data.remote.SyncDeviceDto
@@ -112,9 +113,11 @@ internal fun SyncRecord.toPushDto(): PushDeviceDto {
         mac = if (platform == PLATFORM_ANDROID) normalizedExternalId.lowercase() else null,
         // 只有本地/云端 enrich 匹配到型号时才上报；null 字段不会序列化，服务端沿用旧值。
         deviceType = deviceType?.takeIf { it.isNotBlank() },
-        alias = name,
-        // 只有本地已有分组时才上报；null 不序列化，服务端保留旧值。
-        group = group?.takeIf { it.isNotBlank() },
+        // 扫描只上报 advertisedName，用户编辑只上报 alias；两者独立。
+        alias = name.takeIf { it.isNotBlank() }?.let(::Reported),
+        advertisedName = advertisedName?.takeIf { it.isNotBlank() }?.let(::Reported),
+        // group 三态：null 不上报；空串显式清除；非空覆盖。
+        group = group?.let(::Reported),
         rules = emptyMap(),
         scanRecords = scanRecords,
         updatedAt = Rfc3339.format(updatedAt.takeIf { it > 0 } ?: System.currentTimeMillis()),
@@ -157,6 +160,7 @@ internal fun SyncDeviceDto.toDomain(): SyncRecord? {
         platform = safePlatform,
         externalId = normalized,
         name = alias.orEmpty(),
+        advertisedName = advertisedName,
         lastRssi = latestScan?.rssi ?: 0,
         lastSeenTimestamp = seenAt,
         updatedAt = updatedAt,
@@ -166,7 +170,8 @@ internal fun SyncDeviceDto.toDomain(): SyncRecord? {
         vendor = vendor?.takeIf { it.isNotBlank() },
         firmwareVersion = firmwareVersion?.takeIf { it.isNotBlank() },
         compatibility = compatibility?.displayLabel()?.takeIf { it.isNotBlank() },
-        group = group?.takeIf { it.isNotBlank() },
+        // group 保留空串：与服务端「已显式清除」的语义一致；absent(null) 才表示未上报。
+        group = group?.value,
     )
 }
 

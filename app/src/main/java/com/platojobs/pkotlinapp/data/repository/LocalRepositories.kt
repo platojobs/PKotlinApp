@@ -40,8 +40,9 @@ class DeviceRepositoryImpl(
         dao.insertOrUpdate(
             device.copy(
                 mac = existing?.mac ?: device.mac,
-                // 扫描写入通常不带别名/分组/enrich；为 null 时保留既有缓存，避免把离线数据清空。
+                // 扫描只写 advertisedName；用户别名只由详情页编辑写入，两者互不覆盖。
                 name = device.name.takeIf { it.isNotBlank() } ?: existing?.name.orEmpty(),
+                advertisedName = device.advertisedName ?: existing?.advertisedName,
                 group = device.group ?: existing?.group,
                 deviceType = device.deviceType ?: existing?.deviceType,
                 deviceTypeName = device.deviceTypeName ?: existing?.deviceTypeName,
@@ -146,6 +147,7 @@ private fun DeviceEntity.toDomain() = Device(
     compatibility = compatibility,
     deviceTypeName = deviceTypeName,
     group = group,
+    advertisedName = advertisedName,
 )
 
 private fun Device.toEntity() = DeviceEntity(
@@ -165,6 +167,7 @@ private fun Device.toEntity() = DeviceEntity(
     compatibility = compatibility,
     deviceTypeName = deviceTypeName,
     group = group,
+    advertisedName = advertisedName,
 )
 
 private fun RuleEntity.toDomain() = DeviceRule(

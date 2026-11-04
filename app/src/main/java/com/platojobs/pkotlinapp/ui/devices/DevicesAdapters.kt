@@ -13,6 +13,7 @@ import com.platojobs.pkotlinapp.databinding.ItemRuleEventBinding
 import com.platojobs.pkotlinapp.databinding.ItemSavedDeviceBinding
 import com.platojobs.pkotlinapp.domain.model.Device
 import com.platojobs.pkotlinapp.domain.model.DeviceRule
+import com.platojobs.pkotlinapp.domain.model.displayName
 import com.platojobs.pkotlinapp.domain.model.RuleEvent
 import com.platojobs.pkotlinapp.domain.model.RuleType
 import com.platojobs.pkotlinapp.ui.common.TimeFormat
@@ -55,7 +56,9 @@ class SavedDeviceAdapter(
 
         fun bind(device: Device, connectionState: BleConnectionState, trend: Int?) {
             val context = binding.root.context
-            binding.name.text = device.name.ifBlank { context.getString(R.string.device_unknown) }
+            // 展示优先级：用户别名 > 广播名 > catalog 型号名。
+            binding.name.text =
+                device.displayName() ?: context.getString(R.string.device_unknown)
             binding.mac.text = device.mac
             binding.rssi.text = context.getString(R.string.device_rssi_value, device.lastRssi)
             binding.signal.setRssi(device.lastRssi)

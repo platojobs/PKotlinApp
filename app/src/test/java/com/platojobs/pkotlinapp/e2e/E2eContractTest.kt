@@ -1,6 +1,8 @@
 package com.platojobs.pkotlinapp.e2e
 
+import com.platojobs.pkotlinapp.data.remote.ApiClient
 import com.platojobs.pkotlinapp.data.remote.PushDeviceDto
+import com.platojobs.pkotlinapp.data.remote.Reported
 import com.platojobs.pkotlinapp.data.remote.SyncChangesResponse
 import com.platojobs.pkotlinapp.data.remote.SyncPushRequest
 import com.platojobs.pkotlinapp.data.remote.SyncPushResponse
@@ -10,9 +12,7 @@ import com.platojobs.pkotlinapp.data.sync.toDomain
 import com.platojobs.pkotlinapp.data.sync.toPushDto
 import com.platojobs.pkotlinapp.domain.sync.Rfc3339
 import com.platojobs.pkotlinapp.domain.sync.SyncRecord
-import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
-import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import kotlinx.coroutines.runBlocking
 import okhttp3.Headers
 import okhttp3.MediaType.Companion.toMediaType
@@ -50,9 +50,8 @@ class E2eContractTest {
         .readTimeout(15, TimeUnit.SECONDS)
         .build()
 
-    private val moshi = Moshi.Builder()
-        .add(KotlinJsonAdapterFactory())
-        .build()
+    // 复用生产 Moshi（含 Reported 三态 adapter），避免测试与真实序列化行为漂移。
+    private val moshi = ApiClient.moshi()
 
     private val syncApi: SyncApi = Retrofit.Builder()
         .baseUrl("$baseUrl/")
@@ -111,8 +110,9 @@ class E2eContractTest {
             mac = "aa:bb:cc:00:00:01",
             // 本地/catalog 能匹配到型号时才上报。
             deviceType = "nordic_uart",
-            alias = "共享型号-Android",
-            group = "联调",
+            alias = Reported("共享型号-Android"),
+            advertisedName = Reported("PJ-Sensor"),
+            group = Reported("联调"),
             scanRecords = listOf(
                 SyncScanRecordDto(rssi = -55, at = Rfc3339.format(createdAt)),
             ),
@@ -122,8 +122,8 @@ class E2eContractTest {
             id = UUID.randomUUID().toString(),
             platform = "ios",
             externalId = "E621E1F8-C36C-495A-93FC-0C247A3E6E5F",
-            alias = "共享型号-iOS",
-            group = "联调",
+            alias = Reported("共享型号-iOS"),
+            group = Reported("联调"),
             scanRecords = emptyList(),
             updatedAt = Rfc3339.format(baseUpdatedAt),
         )
@@ -135,6 +135,10 @@ class E2eContractTest {
         // 可选 deviceType：匹配到时序列化，未匹配时不写字段（依赖服务端沿用旧值）。
         assertTrue(pushJson.contains("\"deviceType\":\"nordic_uart\""))
         assertFalse(pushJson.contains("\"deviceType\":null"))
+        // 0.3.3：别名与广播名独立上报，两者都带上时互不覆盖。
+        assertTrue(pushJson.contains("\"alias\":\"共享型号-Android\""))
+        assertTrue(pushJson.contains("\"advertisedName\":\"PJ-Sensor\""))
+        assertTrue(pushJson.contains("\"group\":\"联调\""))
         assertFalse(
             pushRequestAdapter.toJson(
                 SyncPushRequest(clientId = "e2e-android-client", devices = listOf(iosPush)),
@@ -170,6 +174,7 @@ class E2eContractTest {
             assertEquals("android", body["platform"])
             assertEquals("AA:BB:CC:00:00:01", body["externalId"])
             assertEquals("共享型号-Android", body["alias"])
+            assertEquals("PJ-Sensor", body["advertisedName"])
             // 0.3.2 enrich：型号、厂商、固件、兼容性均由云端返回。
             assertEquals("nordic_uart", body["deviceType"])
             assertEquals("Nordic Semiconductor", body["vendor"])
@@ -205,6 +210,8 @@ class E2eContractTest {
             val android = androidPayload.toDomain()!!
             assertEquals("AA:BB:CC:00:00:01", android.externalId)
             assertEquals("共享型号-Android", android.name)
+            assertEquals("PJ-Sensor", android.advertisedName)
+            assertEquals("联调", android.group)
             assertEquals(-55, android.lastRssi)
             assertEquals(1, androidPayload.scanRecords.orEmpty().size)
             assertEquals(baseUpdatedAt, android.updatedAt)
@@ -239,8 +246,11 @@ class E2eContractTest {
         }
 
         step("LWW conflict loses to server and is reported, not overwritten") {
+            // 可缺省字段故意省略（advertisedName/group 不传），验证冲突响应按 absent 解析。
             val oldAndroid = androidPush.copy(
-                alias = "旧名称-冲突",
+                alias = Reported("旧名称-冲突"),
+                advertisedName = null,
+                group = null,
                 updatedAt = Rfc3339.format(now - 120_000),
             )
             val conflictJson = pushRequestAdapter.toJson(
@@ -256,7 +266,12 @@ class E2eContractTest {
             assertEquals("AA:BB:CC:00:00:01", conflict.externalId)
             assertEquals("server_newer", conflict.reason)
             assertEquals("共享型号-Android", conflict.server?.alias)
-            assertEquals("旧名称-冲突", conflict.client?.alias)
+            assertEquals("PJ-Sensor", conflict.server?.advertisedName)
+            assertEquals("联调", conflict.server?.group?.value)
+            assertEquals("旧名称-冲突", conflict.client?.alias?.value)
+            // 请求里未上报的可缺省字段，解析回来必须仍是 absent，而不是空串。
+            assertNull(conflict.client?.advertisedName)
+            assertNull(conflict.client?.group)
 
             // 冲突未落库：服务端仍是新名称，且没有产生新的 change。
             val myDevice = parseMap(
@@ -280,6 +295,97 @@ class E2eContractTest {
             assertEquals(409, result.code)
             val error = parseMap(result.body)["error"] as Map<*, *>
             assertEquals("IDEMPOTENCY_CONFLICT", error["code"])
+        }
+
+        step("scan-only push updates advertisedName without touching alias or group") {
+            val scanned = androidPush.copy(
+                alias = null,
+                advertisedName = Reported("PJ-Sensor-2"),
+                group = null,
+                updatedAt = Rfc3339.format(now + 15_000),
+            )
+            val json = pushRequestAdapter.toJson(
+                SyncPushRequest("e2e-android-client", listOf(scanned)),
+            )
+            assertFalse(json.contains("\"alias\""))
+            assertFalse(json.contains("\"group\""))
+            assertTrue(json.contains("\"advertisedName\":\"PJ-Sensor-2\""))
+
+            assertEquals(
+                200,
+                push(json, user.token, "e2e-scan-${UUID.randomUUID()}").code,
+            )
+            val body = parseMap(get("/my/devices/android/AA:BB:CC:00:00:01", user.token).body)
+            assertEquals("共享型号-Android", body["alias"])
+            assertEquals("PJ-Sensor-2", body["advertisedName"])
+            assertEquals("联调", body["group"])
+        }
+
+        step("alias edit only updates alias without touching advertisedName or group") {
+            val aliasEdited = androidPush.copy(
+                alias = Reported("改名后-Android"),
+                advertisedName = null,
+                group = null,
+                updatedAt = Rfc3339.format(now + 20_000),
+            )
+            val json = pushRequestAdapter.toJson(
+                SyncPushRequest("e2e-android-client", listOf(aliasEdited)),
+            )
+            assertFalse(json.contains("\"advertisedName\""))
+            assertFalse(json.contains("\"group\""))
+
+            assertEquals(
+                200,
+                push(json, user.token, "e2e-alias-${UUID.randomUUID()}").code,
+            )
+            val body = parseMap(get("/my/devices/android/AA:BB:CC:00:00:01", user.token).body)
+            assertEquals("改名后-Android", body["alias"])
+            assertEquals("PJ-Sensor-2", body["advertisedName"])
+            assertEquals("联调", body["group"])
+        }
+
+        step("clearing group sends explicit empty string, not absent") {
+            val cleared = androidPush.copy(
+                alias = null,
+                advertisedName = null,
+                group = Reported(""),
+                updatedAt = Rfc3339.format(now + 25_000),
+            )
+            val json = pushRequestAdapter.toJson(
+                SyncPushRequest("e2e-android-client", listOf(cleared)),
+            )
+            // 三态：显式空串必须出现在请求体里；未上报字段则必须完全省略。
+            assertTrue(json.contains("\"group\":\"\""))
+            assertFalse(json.contains("\"alias\""))
+
+            assertEquals(200, push(json, user.token, "e2e-clear-${UUID.randomUUID()}").code)
+            val body = parseMap(get("/my/devices/android/AA:BB:CC:00:00:01", user.token).body)
+            assertEquals("", body["group"])
+            // 上一次编辑的别名/广播名保持，不被本次清除动作影响。
+            assertEquals("改名后-Android", body["alias"])
+            assertEquals("PJ-Sensor-2", body["advertisedName"])
+        }
+
+        step("subsequent sync without group does not revive the cleared group") {
+            val nextScan = androidPush.copy(
+                alias = null,
+                advertisedName = Reported("PJ-Sensor-3"),
+                group = null,
+                updatedAt = Rfc3339.format(now + 30_000),
+            )
+            assertEquals(
+                200,
+                push(
+                    pushRequestAdapter.toJson(
+                        SyncPushRequest("e2e-android-client", listOf(nextScan)),
+                    ),
+                    user.token,
+                    "e2e-no-revive-${UUID.randomUUID()}",
+                ).code,
+            )
+            val body = parseMap(get("/my/devices/android/AA:BB:CC:00:00:01", user.token).body)
+            assertEquals("", body["group"])
+            assertEquals("PJ-Sensor-3", body["advertisedName"])
         }
 
         step("cross-user access -> 404 NOT_FOUND") {
@@ -311,8 +417,8 @@ class E2eContractTest {
             externalId = unregisteredExternalId,
             mac = unregisteredExternalId.lowercase(),
             // 未注册型号：不猜 deviceType，保持 null。
-            alias = "未注册型号-Android",
-            group = "未知型号",
+            alias = Reported("未注册型号-Android"),
+            group = Reported("未知型号"),
             scanRecords = listOf(
                 SyncScanRecordDto(rssi = -70, at = Rfc3339.format(now)),
             ),
@@ -343,7 +449,7 @@ class E2eContractTest {
         step("optional deviceType accepted when matched, firmware stays null instead of fake") {
             val marked = unregistered.copy(
                 deviceType = "environmental_sensor",
-                alias = "已标记型号",
+                alias = Reported("已标记型号"),
                 updatedAt = Rfc3339.format(now + 5_000),
             )
             val result = push(
@@ -368,7 +474,8 @@ class E2eContractTest {
         step("push without deviceType keeps server value, does not clear it") {
             val aliasOnly = unregistered.copy(
                 deviceType = null,
-                alias = "仅改别名",
+                alias = Reported("仅改别名"),
+                group = null,
                 updatedAt = Rfc3339.format(now + 10_000),
             )
             val result = push(
@@ -384,6 +491,8 @@ class E2eContractTest {
                 get("/my/devices/android/$unregisteredExternalId", user.token).body,
             )
             assertEquals("仅改别名", body["alias"])
+            // 本次未上报 group：服务端必须保留旧值，不能被空值覆盖。
+            assertEquals("未知型号", body["group"])
             assertEquals("environmental_sensor", body["deviceType"])
             assertEquals("Bluetooth SIG", body["vendor"])
         }

@@ -1,10 +1,44 @@
 package com.platojobs.pkotlinapp.data.remote
 
+import com.squareup.moshi.JsonAdapter
+import com.squareup.moshi.JsonReader
+import com.squareup.moshi.JsonWriter
+import java.lang.reflect.Type
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.POST
 import retrofit2.http.Query
+
+/**
+ * 可缺省字段的「已上报」载体（openapi 0.3.3 三态语义）：
+ * - 属性为 null：JSON 中字段缺失（absent），服务端保持原值；
+ * - `Reported("")`：显式上报空串（例如清除分组）；
+ * - `Reported("值")`：显式覆盖。
+ *
+ * Moshi 默认把 null 属性省略，因此用它替代 `String?` 才能区分「未上报」与「上报了空串」。
+ */
+data class Reported<out T>(val value: T)
+
+internal val ReportedStringType: Type = com.squareup.moshi.Types.newParameterizedType(
+    Reported::class.java,
+    String::class.java,
+)
+
+/** 自定义 adapter：确保 `Reported<String>` 按原始 JSON 字符串读写。 */
+internal object ReportedStringAdapter : JsonAdapter<Reported<String>>() {
+    override fun fromJson(reader: JsonReader): Reported<String>? {
+        if (reader.peek() == JsonReader.Token.NULL) {
+            reader.nextNull<Any>()
+            return null
+        }
+        return Reported(reader.nextString())
+    }
+
+    override fun toJson(writer: JsonWriter, value: Reported<String>?) {
+        if (value == null) writer.nullValue() else writer.value(value.value)
+    }
+}
 
 /**
  * 同步 DTO，字段与 `PJGoIoT/api/openapi.yaml` 对齐：
@@ -26,7 +60,9 @@ data class SyncDeviceDto(
     val externalId: String? = null,
     val mac: String? = null,
     val alias: String? = null,
-    val group: String? = null,
+    val advertisedName: String? = null,
+    // absent(null) / 空串 / 值三态；冲突响应中缺省字段按 absent 处理。
+    val group: Reported<String>? = null,
     val rules: Map<String, Any?>? = null,
     val scanRecords: List<SyncScanRecordDto>? = null,
     val updatedAt: String? = null,
@@ -65,8 +101,18 @@ data class PushDeviceDto(
      * 为 null 时 Moshi 不序列化该字段，服务端沿用旧值而不是覆盖为空。
      */
     val deviceType: String? = null,
-    val alias: String? = null,
-    val group: String? = null,
+    /**
+     * 用户别名。null = 未上报（扫描不会上报别名），服务端保留原值。
+     */
+    val alias: Reported<String>? = null,
+    /**
+     * 设备广播名。null = 未上报（用户编辑别名时不上报广播名）。
+     */
+    val advertisedName: Reported<String>? = null,
+    /**
+     * 分组三态：null = 未上报；Reported("") = 显式清除；Reported("值") = 覆盖。
+     */
+    val group: Reported<String>? = null,
     val rules: Map<String, Any?> = emptyMap(),
     val scanRecords: List<SyncScanRecordDto> = emptyList(),
     val updatedAt: String,

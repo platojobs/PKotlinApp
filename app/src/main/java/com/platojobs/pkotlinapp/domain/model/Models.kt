@@ -14,7 +14,11 @@ enum class SyncState {
 /** Room 中保存的设备历史记录。 */
 data class Device(
     val mac: String,
-    val name: String,
+    /**
+     * 用户设置的别名（openapi `alias`）。扫描不会写入该字段，
+     * 只有用户在详情页编辑别名时才会更新。
+     */
+    val name: String = "",
     val lastRssi: Int,
     val lastSeenTimestamp: Long,
     val id: String = "",
@@ -31,7 +35,21 @@ data class Device(
     // catalog 展示名与云端分组：离线时优先用展示名，分组按真实值展示。
     val deviceTypeName: String? = null,
     val group: String? = null,
+    /**
+     * 设备广播名（openapi `advertisedName`，BLE Local Name）。
+     * 扫描只更新该字段；与用户别名 [name] 独立，互不覆盖。
+     */
+    val advertisedName: String? = null,
 )
+
+/**
+ * 列表/详情展示优先级：用户别名 > 广播名 > catalog 型号展示名。
+ * 全部缺失时由 UI 回退「未知设备」。
+ */
+fun Device.displayName(): String? =
+    name.takeIf { it.isNotBlank() }
+        ?: advertisedName?.takeIf { it.isNotBlank() }
+        ?: deviceTypeName?.takeIf { it.isNotBlank() }
 
 const val PLATFORM_ANDROID = "android"
 
@@ -82,11 +100,18 @@ data class DeviceInfo(
     val firmwareVersion: String?,
     val deviceTypeKey: String? = null,
     val alias: String = "",
+    val advertisedName: String = "",
     val group: String = "",
     val lastSeenTimestamp: Long = 0L,
     val compatibility: Compatibility? = null,
     val fromLocalCache: Boolean = false,
 )
+
+/** 详情展示优先级：用户别名 > 广播名 > catalog 型号名。 */
+fun DeviceInfo.displayName(): String? =
+    alias.takeIf { it.isNotBlank() }
+        ?: advertisedName.takeIf { it.isNotBlank() }
+        ?: displayDeviceTypeName()
 
 /**
  * 型号展示优先级：缓存/catalog 展示名 > 型号键（标注未识别）> 型号未知。
@@ -106,6 +131,7 @@ fun Device.toOfflineDeviceInfo(): DeviceInfo = DeviceInfo(
     deviceTypeKey = deviceType,
     firmwareVersion = firmwareVersion,
     alias = name,
+    advertisedName = advertisedName.orEmpty(),
     group = group.orEmpty(),
     lastSeenTimestamp = lastSeenTimestamp,
     compatibility = compatibility?.takeIf { it.isNotBlank() }?.let {

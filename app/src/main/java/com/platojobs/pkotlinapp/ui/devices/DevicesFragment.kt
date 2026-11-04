@@ -24,6 +24,7 @@ import com.platojobs.pkotlinapp.databinding.DialogRuleAddBinding
 import com.platojobs.pkotlinapp.databinding.FragmentDevicesBinding
 import com.platojobs.pkotlinapp.domain.model.Device
 import com.platojobs.pkotlinapp.domain.model.RuleType
+import com.platojobs.pkotlinapp.domain.model.displayName
 import com.platojobs.pkotlinapp.ui.common.BlePermissions
 import com.platojobs.pkotlinapp.ui.common.EmptyStateView
 import com.platojobs.pkotlinapp.ui.detail.DeviceDetailActivity
@@ -151,7 +152,7 @@ class DevicesFragment : Fragment() {
                 DeviceDetailActivity.createIntent(
                     context,
                     device.mac,
-                    device.name,
+                    device.displayName().orEmpty(),
                     device.lastRssi,
                 ),
             )
@@ -175,7 +176,7 @@ class DevicesFragment : Fragment() {
             .setMessage(
                 getString(
                     R.string.devices_delete_message,
-                    device.name.ifBlank { getString(R.string.device_unknown) },
+                    device.displayName() ?: getString(R.string.device_unknown),
                 ),
             )
             .setNegativeButton(R.string.action_cancel, null)

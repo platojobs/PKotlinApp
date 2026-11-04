@@ -23,8 +23,10 @@ data class DeviceEntity(
     val compatibility: String? = null,
     // catalog 返回的人类可读型号名，用于离线优先展示；null 表示只有型号键。
     val deviceTypeName: String? = null,
-    // 云端分组（列名避开 SQL 关键字 group）；null 表示尚未从云端拿到。
+    // 云端分组（列名避开 SQL 关键字 group）；null 表示尚未拿到，"" 表示已显式清空。
     @ColumnInfo(name = "deviceGroup") val group: String? = null,
+    // 设备广播名（BLE Local Name）；扫描只写该列，与用户别名 name 独立。
+    val advertisedName: String? = null,
 )
 
 @Entity(tableName = "rules")

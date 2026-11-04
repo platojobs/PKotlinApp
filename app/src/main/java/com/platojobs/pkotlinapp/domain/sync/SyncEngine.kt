@@ -20,7 +20,14 @@ data class SyncRecord(
     val compatibility: String? = null,
     /** catalog 展示名：只用于本地离线降级，不上报服务端。 */
     val deviceTypeName: String? = null,
-    /** 云端/用户编辑的分组；null 表示不覆盖服务端旧值。 */
+    /** 设备广播名；null 表示本次不上报，不覆盖服务端旧值。 */
+    val advertisedName: String? = null,
+    /**
+     * 云端/用户编辑的分组。三态：
+     * - null：未上报（absent），服务端保持原值；
+     * - ""：显式清除；
+     * - 非空：覆盖。
+     */
     val group: String? = null,
 )
 
@@ -78,26 +85,30 @@ interface SyncCursorStore {
  * 推送批次幂等键：同一批未变化记录总是得到同一个 key，
  * 网络失败重试时服务端可据此去重。
  *
- * key 覆盖实际推送的业务内容（含 alias/RSSI/时间），确保「同 key + 同请求体」重放，
- * 内容变化时不会命中旧的幂等缓存而以 409 失败。
+ * 只纳入**实际会上报**的字段（openapi 0.3.3 三态语义）：
+ * 未上报的可缺省字段不参与哈希，避免空值把「同内容重试」算成不同请求而 409。
+ * group 的 absent 与显式空串是不同语义，因此空串会以 `group=` 的形式进入哈希。
  */
 object IdempotencyKeys {
     fun forBatch(records: List<SyncRecord>): String {
         val canonical = records
             .sortedWith(compareBy({ it.platform }, { it.externalId }, { it.updatedAt }))
-            .joinToString("\u001F") {
-                listOf(
-                    it.platform,
-                    it.externalId,
-                    it.id,
-                    it.name,
-                    it.lastRssi,
-                    it.lastSeenTimestamp,
-                    it.updatedAt,
-                    it.deletedAt ?: 0L,
-                    it.deviceType.orEmpty(),
-                    it.group.orEmpty(),
-                ).joinToString("\u001E")
+            .joinToString("\u001F") { record ->
+                buildList {
+                    add(record.platform)
+                    add(record.externalId)
+                    add(record.id)
+                    add(record.lastRssi.toString())
+                    add(record.lastSeenTimestamp.toString())
+                    add(record.updatedAt.toString())
+                    add((record.deletedAt ?: 0L).toString())
+                    // alias / 广播名只在非空时上报（扫描与用户编辑各自独立）。
+                    record.name.takeIf { it.isNotBlank() }?.let { add("alias=$it") }
+                    record.advertisedName?.takeIf { it.isNotBlank() }?.let { add("adv=$it") }
+                    record.deviceType?.let { add("type=$it") }
+                    // group: null=absent（不参与哈希）；""=显式清除；其余=覆盖值。
+                    record.group?.let { add("group=$it") }
+                }.joinToString("\u001E")
             }
         val digest = java.security.MessageDigest.getInstance("SHA-256")
             .digest(canonical.toByteArray(Charsets.UTF_8))

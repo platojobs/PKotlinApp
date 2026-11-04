@@ -1,9 +1,9 @@
-# 真机验收清单（v0.3.5）
+# 真机验收清单（v0.3.6）
 
 本清单用于「执行人不在开发现场」时也能照着做完验收。每项都写明**操作步骤、预期现象、失败判定**。
 所有结果请记录到文末的「验收记录表」；未实际执行的项不要填 PASS。
 
-- 适用版本：`versionName = 0.3.5`（`versionCode = 8`）
+- 适用版本：`versionName = 0.3.6`（`versionCode = 9`）
 - 应用包名：`com.platojobs.pkotlinapp`
 - 主界面：`com.platojobs.pkotlinapp.ui.MainActivity`
 - 设备详情：`com.platojobs.pkotlinapp.ui.detail.DeviceDetailActivity`
@@ -55,7 +55,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versionCode"
 ```
 
-预期：`versionName=0.3.5`、`versionCode=8`。
+预期：`versionName=0.3.6`、`versionCode=9`。
 
 ---
 
@@ -111,9 +111,9 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
   - 权限自检三项（扫描 / 连接 / 定位）与系统授权状态一致；
   - 扫描日志有真实记录，可清空；
   - 主题切换立即生效并持久化（杀进程重开仍生效）；
-  - 版本信息显示「版本 0.3.5」「构建类型：debug」；
+  - 版本信息显示「版本 0.3.6」「构建类型：debug」；
   - 项目仓库链接可打开 GitHub。
-- 失败判定：同步卡片空白、权限状态与实际不一致、版本号不是 0.3.5、主题重启后丢失。
+- 失败判定：同步卡片空白、权限状态与实际不一致、版本号不是 0.3.6、主题重启后丢失。
 
 ---
 
@@ -312,7 +312,7 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
 
 ---
 
-## 7. Room v1 → v2 → v3 → v4 迁移
+## 7. Room v1 → v2 → v3 → v4 → v5 迁移
 
 > 需要 v0.3.1 的 Debug APK 作为「旧版本」。若手头没有，可从 tag 构建：
 >
@@ -327,7 +327,7 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
 - 预期：设备 / 规则 / 日志均能在界面上看到。
 - 失败判定：旧版本本身无法产生数据（先排除环境问题）。
 
-### M2 覆盖安装 v0.3.5
+### M2 覆盖安装 v0.3.6
 
 - 步骤：
   ```bash
@@ -348,23 +348,23 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
   adb exec-out run-as com.platojobs.pkotlinapp cat databases/device_dashboard.db > /tmp/device_dashboard.db
   sqlite3 /tmp/device_dashboard.db "PRAGMA user_version;"
   sqlite3 /tmp/device_dashboard.db \
-    "SELECT mac, platform, externalId, syncState, substr(id,1,8), deviceType, deviceTypeName, deviceGroup FROM devices;"
+    "SELECT mac, platform, externalId, syncState, substr(id,1,8), deviceType, deviceTypeName, deviceGroup, advertisedName FROM devices;"
   ```
-- 预期：`user_version = 4`；每条设备 `platform = android`、`externalId` 为规范化大写 MAC、`id` 非空 UUID、`syncState` 为 `pending`/`synced`；旧数据的 `deviceTypeName` 与 `deviceGroup` 为 NULL（列存在且历史行不丢）。
-- 失败判定：版本不是 4、旧字段为空、`externalId` 为小写或带空格、行数比升级前少。
+- 预期：`user_version = 5`；每条设备 `platform = android`、`externalId` 为规范化大写 MAC、`id` 非空 UUID、`syncState` 为 `pending`/`synced`；旧数据的 `deviceTypeName`、`deviceGroup`、`advertisedName` 为 NULL（列存在且历史行不丢）。
+- 失败判定：版本不是 5、旧字段为空、`externalId` 为小写或带空格、行数比升级前少。
 
-### M4 v3 → v4 迁移不丢数据（可选复验）
+### M4 v4 → v5 迁移不丢数据（可选复验）
 
 - 步骤：
-  1. 安装 v0.3.4 Debug 包（Room v3），联网打开一次设备详情，让 enrich 字段落库；
-  2. 覆盖安装 v0.3.5，再导出数据库并查询：
+  1. 安装 v0.3.5 Debug 包（Room v4），扫描一台设备并编辑别名/分组，让 `name/deviceGroup` 落库；
+  2. 覆盖安装 v0.3.6，再导出数据库并查询：
      ```bash
      sqlite3 /tmp/device_dashboard.db "PRAGMA user_version;"
      sqlite3 /tmp/device_dashboard.db \
-       "SELECT mac, deviceType, vendor, firmwareVersion, compatibility FROM devices;"
+       "SELECT mac, name, deviceType, vendor, firmwareVersion, compatibility, deviceTypeName, deviceGroup, advertisedName FROM devices;"
      ```
-- 预期：`user_version = 4`；设备行数与 v0.3.4 一致，原有 `deviceType/vendor/firmwareVersion/compatibility` 值逐列保留，`deviceTypeName/deviceGroup` 为 NULL。
-- 失败判定：行数减少、旧 enrich 值变 NULL、启动时 `Room cannot verify the data integrity`。
+- 预期：`user_version = 5`；设备行数与 v0.3.5 一致，原有 `name/deviceType/vendor/firmwareVersion/compatibility/deviceTypeName/deviceGroup` 值逐列保留，新增 `advertisedName` 为 NULL。
+- 失败判定：行数减少、旧字段变 NULL、启动时 `Room cannot verify the data integrity`。
 
 ### 7.2 离线缓存与分组验收（v0.3.5 新增）
 
@@ -397,6 +397,20 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
 - 失败判定：TalkBack 不播报选中态、Chip 文本被省略号截断、200% 字号下文字裁切、扫描器报告对比度不足、点击区域明显小于 48dp。
 - 记录：本次仅完成代码侧改造与静态核对；真机 TalkBack / 200% 字号 / Accessibility Scanner 需按上述步骤执行后填 PASS。
 
+### 7.4 别名 / 广播名与分组三态验收（v0.3.6 新增）
+
+前置：后端为 PJGoIoT v0.3.3（fixture 或真实存储）；准备一台可广播名称的 BLE 设备。
+
+- 步骤与预期：
+  1. **扫描只写广播名**：全新安装后扫描设备并保存；列表/详情应显示广播名（如 `PJ-Sensor`），Room 中 `name`（用户别名）为空、`advertisedName` 有值。
+  2. **别名不覆盖广播名**：详情页「编辑别名与分组」把别名改为「客厅开发板」；列表/详情优先显示「客厅开发板」；Room 中 `advertisedName` 仍保留原广播名。
+  3. **再次扫描不覆盖别名**：返回首页重新扫描同一设备；别名仍为「客厅开发板」，广播名只在设备真实改名时变化。
+  4. **未修改分组不上报**：仅编辑别名并保存（分组不动），用抓包或后端日志确认 push JSON **没有** `"group"` 字段；服务端分组保持原值。
+  5. **删除分组显式清除**：把分组清空并保存，确认 push JSON 含 `"group":""`；后端 `GET /api/v1/my/devices/android/{externalId}` 的 `group` 为 `""`。
+  6. **清空后不复活**：连续同步或再次扫描后，后端 `group` 仍为 `""`，不会变回旧分组。
+  7. **冲突缺省字段**：用旧 `updatedAt` 触发 LWW 冲突，冲突响应中未上报的 `group/advertisedName` 解析为 absent，本地不会被清空。
+- 失败判定：扫描把用户别名改回广播名、编辑别名后广播名丢失、删除分组后服务端仍保留旧分组、未修改分组却发送空串、同内容重试出现 409。
+
 ---
 
 ## 8. Release 包安装与 R8 生效验证
@@ -423,7 +437,7 @@ adb install -r app/build/outputs/apk/release/app-release.apk
 adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versionCode"
 ```
 
-预期：安装成功；版本 `0.3.5 / 8`；能启动；五模块可进入；BLE 扫描/连接可用。
+预期：安装成功；版本 `0.3.6 / 9`；能启动；五模块可进入；BLE 扫描/连接可用。
 失败判定：`INSTALL_FAILED_NO_MATCHING_ABIS`、安装后闪退（多为 R8 裁剪过度或签名问题）。
 
 ### L3 签名验证
@@ -506,6 +520,6 @@ apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk
 - 真实 BLE 扫描、RSSI 变化、GATT 连接与断开时序；
 - Android 16 两个受保护广播是否实际投递；
 - 各厂商 ROM 的权限弹窗行为与设置页跳转；
-- Room v1→v2→v3 在真实旧数据上的迁移（本仓库已导出 schema，但未跑真机迁移）；
+- Room v1→v2→v3→v4→v5 在真实旧数据上的迁移（本仓库已导出 schema，但未跑真机迁移）；
 - WorkManager 在真实网络切换下的调度与退避；
 - 生产后端域名、真实账号体系与跨设备同步。

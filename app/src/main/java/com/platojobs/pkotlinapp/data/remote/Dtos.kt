@@ -92,6 +92,8 @@ data class UserDeviceDto(
     val externalId: String? = null,
     val mac: String? = null,
     val alias: String? = null,
+    // openapi 0.3.3：设备广播名，与用户别名独立。
+    val advertisedName: String? = null,
     val group: String? = null,
     val scanRecords: List<SyncScanRecordDto>? = null,
     val updatedAt: String? = null,

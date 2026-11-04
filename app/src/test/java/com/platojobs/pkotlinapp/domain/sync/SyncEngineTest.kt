@@ -4,6 +4,7 @@ import com.platojobs.pkotlinapp.domain.model.SyncState
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -268,5 +269,37 @@ class SyncEngineTest {
         assertEquals("本地较新", local.records.getValue("AA:BB:CC:DD:EE:11").name)
         assertFalse(local.records.containsKey("AA:BB:CC:DD:EE:22"))
         assertEquals("cursor-2", cursorStore.cursor)
+    }
+
+    @Test
+    fun `idempotency key is stable and only hashes reported fields`() {
+        val base = SyncRecord(
+            id = "client-1",
+            platform = "android",
+            externalId = "AA:BB:CC:DD:EE:11",
+            name = "",
+            advertisedName = "PJ-Sensor",
+            lastRssi = -55,
+            lastSeenTimestamp = 100,
+            updatedAt = 100,
+            // 未上报的可缺省字段：不应参与哈希。
+            deviceType = null,
+            group = null,
+        )
+
+        // 同内容重试必须得到同一个 key。
+        assertEquals(IdempotencyKeys.forBatch(listOf(base)), IdempotencyKeys.forBatch(listOf(base.copy())))
+
+        // 未上报字段的空值不能因为「碰巧为空」而改变 key。
+        val sameWithBlankOptional = base.copy(advertisedName = "PJ-Sensor")
+        assertEquals(IdempotencyKeys.forBatch(listOf(base)), IdempotencyKeys.forBatch(listOf(sameWithBlankOptional)))
+
+        // group 的 absent 与显式空串语义不同，key 必须不同。
+        val cleared = base.copy(group = "")
+        assertNotEquals(IdempotencyKeys.forBatch(listOf(base)), IdempotencyKeys.forBatch(listOf(cleared)))
+
+        // 上报别名会改变内容，key 必须不同。
+        val aliasEdited = base.copy(name = "客厅开发板")
+        assertNotEquals(IdempotencyKeys.forBatch(listOf(base)), IdempotencyKeys.forBatch(listOf(aliasEdited)))
     }
 }

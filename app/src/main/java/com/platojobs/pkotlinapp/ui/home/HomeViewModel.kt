@@ -109,7 +109,8 @@ class HomeViewModel(
                 deviceRepository.saveDevice(
                     Device(
                         mac = device.mac,
-                        name = displayName,
+                        // 扫描只写广播名；用户别名由详情页编辑，绝不被扫描覆盖。
+                        advertisedName = device.name,
                         lastRssi = device.rssi,
                         lastSeenTimestamp = now,
                     ),

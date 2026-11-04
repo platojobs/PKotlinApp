@@ -36,8 +36,13 @@ class RoomSyncLocalStore(
         val localMac = existing?.mac ?: normalized
         dao.insertOrUpdate(
             // 服务端不返回 catalog 展示名；用本地缓存补齐，避免断网降级丢失。
-            record.copy(deviceTypeName = record.deviceTypeName ?: existing?.deviceTypeName)
-                .toEntity(macOverride = localMac),
+            // 可缺省字段（absent）解析为 null 时保留本地值；显式空串（如 group=""）会覆盖。
+            record.copy(
+                deviceTypeName = record.deviceTypeName ?: existing?.deviceTypeName,
+                name = record.name.takeIf { it.isNotBlank() } ?: existing?.name.orEmpty(),
+                advertisedName = record.advertisedName ?: existing?.advertisedName,
+                group = record.group ?: existing?.group,
+            ).toEntity(macOverride = localMac),
         )
     }
 
@@ -62,6 +67,7 @@ private fun DeviceEntity.toSyncRecord() = SyncRecord(
     compatibility = compatibility,
     deviceTypeName = deviceTypeName,
     group = group,
+    advertisedName = advertisedName,
 )
 
 private fun SyncRecord.toEntity(macOverride: String? = null): DeviceEntity {
@@ -87,5 +93,6 @@ private fun SyncRecord.toEntity(macOverride: String? = null): DeviceEntity {
         compatibility = compatibility,
         deviceTypeName = deviceTypeName,
         group = group,
+        advertisedName = advertisedName,
     )
 }

@@ -59,7 +59,8 @@ interface DeviceDao {
     @Query(
         "UPDATE devices SET deviceType = :deviceType, vendor = :vendor, " +
             "firmwareVersion = :firmwareVersion, compatibility = :compatibility, " +
-            "deviceTypeName = COALESCE(:deviceTypeName, deviceTypeName) " +
+            "deviceTypeName = COALESCE(:deviceTypeName, deviceTypeName), " +
+            "advertisedName = COALESCE(:advertisedName, advertisedName) " +
             "WHERE externalId = :externalId",
     )
     suspend fun updateEnrich(
@@ -69,6 +70,7 @@ interface DeviceDao {
         firmwareVersion: String?,
         compatibility: String?,
         deviceTypeName: String?,
+        advertisedName: String?,
     )
 
     /** 云端分组只在成功拿到 UserDevice 时更新，避免未同步设备把本地分组清空。 */

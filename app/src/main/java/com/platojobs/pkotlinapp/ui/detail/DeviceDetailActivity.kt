@@ -25,6 +25,7 @@ import com.platojobs.pkotlinapp.data.ble.BleConnectionState
 import com.platojobs.pkotlinapp.databinding.ActivityDeviceDetailBinding
 import com.platojobs.pkotlinapp.databinding.DialogDeviceEditBinding
 import com.platojobs.pkotlinapp.domain.model.displayDeviceTypeName
+import com.platojobs.pkotlinapp.domain.model.displayName
 import com.platojobs.pkotlinapp.domain.model.unrecognizedDeviceTypeKey
 import com.platojobs.pkotlinapp.ui.common.applyBottomInset
 import com.platojobs.pkotlinapp.ui.common.applyHorizontalInsets
@@ -233,8 +234,9 @@ class DeviceDetailActivity : AppCompatActivity() {
                 }
                 binding.firmwareValue.text =
                     info.firmwareVersion?.takeIf { it.isNotBlank() } ?: unknown
+                // 展示优先级：用户别名 > 广播名 > catalog 型号名 > 扫描时传入的名称。
                 binding.aliasValue.text =
-                    info.alias.ifBlank { deviceName.ifBlank { unknown } }
+                    info.displayName() ?: deviceName.ifBlank { unknown }
                 binding.groupValue.text =
                     info.group.ifBlank { getString(R.string.detail_group_empty) }
                 binding.lastSeenValue.text =

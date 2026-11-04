@@ -92,6 +92,7 @@ class DeviceInfoRepositoryImpl(
             deviceTypeKey = typeKey,
             firmwareVersion = firmwareVersion,
             alias = myDevice?.alias.orEmpty(),
+            advertisedName = myDevice?.advertisedName.orEmpty(),
             group = myDevice?.group.orEmpty(),
             lastSeenTimestamp = lastSeen,
             compatibility = compatibility,
@@ -105,6 +106,7 @@ class DeviceInfoRepositoryImpl(
             firmwareVersion = firmwareVersion,
             compatibility = compatibility?.displayLabel()?.takeIf { it.isNotBlank() },
             deviceTypeName = catalog?.deviceType?.name?.takeIf { it.isNotBlank() },
+            advertisedName = myDevice?.advertisedName?.takeIf { it.isNotBlank() },
         )
         // 未同步设备（myDevice = null）没有云端分组，保留本地编辑的值。
         myDevice?.group?.takeIf { it.isNotBlank() }?.let { group ->

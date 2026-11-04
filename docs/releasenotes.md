@@ -6,6 +6,22 @@
 
 ---
 
+## v0.3.6
+
+**主题：跟随 openapi 0.3.3 —— 别名/广播名拆分 + 分组三态 + 幂等键收敛**
+
+- Room 升级到 v5：`devices` 新增 `advertisedName`（广播名）可空列，`MIGRATION_4_5` 用 `ALTER TABLE` 追加，历史行不丢。
+- 本地将「用户别名 `name`」与「广播名 `advertisedName`」隔离：扫描只写广播名，详情页编辑只写别名；列表/详情展示优先级为「用户别名 → 广播名 → catalog 型号名 → 未知设备」。
+- DTO 引入 `Reported<String>?` 三态（absent / `""` / 值）与 Moshi 自定义 adapter：删除分组显式上报 `"group":""`，未修改时字段完全省略；`alias`/`advertisedName` 同样按是否上报序列化。
+- 幂等键只哈希实际上报字段：未上报字段的空值不再参与 SHA-256，同内容重试保持同一 key，避免 409；`group` 的 absent 与显式空串保持可区分。
+- 拉取与冲突响应中被省略的可缺省字段按 absent 解析；写回 Room 时保留本地别名/广播名/分组，不会被误清空。
+- 测试：`SyncDtoMappingTest` 新增三态序列化、别名/广播名隔离、absent 解析；`SyncEngineTest` 新增幂等键稳定性；`OfflineDeviceInfoTest` 覆盖展示优先级；`DeviceMigrationTest` 新增 v4→v5；`E2eContractTest` 扩到 22 项（扫描只改广播名、编辑只改别名、清空分组、不复活）。
+- README 与验收清单补充三态语义、v4→v5 迁移复验与 §7.4 验收步骤。
+
+版本：`versionCode = 9`、`versionName = 0.3.6`。
+
+---
+
 ## v0.3.5
 
 **主题：修复离线降级展示 + 分组落库 + 筛选无障碍**

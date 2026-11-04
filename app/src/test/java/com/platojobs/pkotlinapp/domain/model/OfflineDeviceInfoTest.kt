@@ -55,6 +55,32 @@ class OfflineDeviceInfoTest {
     }
 
     @Test
+    fun `display name prefers alias then advertised name then model name`() {
+        val device = Device(
+            mac = "AA:BB:CC:DD:EE:FF",
+            name = "",
+            advertisedName = "PJ-Sensor",
+            lastRssi = -55,
+            lastSeenTimestamp = 1_762_300_000_000,
+            deviceType = "nordic_uart",
+            deviceTypeName = "Nordic UART 温湿度计",
+        )
+
+        // 没有用户别名时展示广播名，而不是型号名。
+        assertEquals("PJ-Sensor", device.displayName())
+        assertEquals("PJ-Sensor", device.toOfflineDeviceInfo().displayName())
+        assertEquals("PJ-Sensor", device.toOfflineDeviceInfo().advertisedName)
+
+        // 用户别名优先级最高。
+        assertEquals("客厅开发板", device.copy(name = "客厅开发板").displayName())
+        // 广播名缺失时回退 catalog 型号名。
+        assertEquals("Nordic UART 温湿度计", device.copy(advertisedName = null).displayName())
+        assertNull(
+            device.copy(name = "", advertisedName = null, deviceTypeName = null).displayName(),
+        )
+    }
+
+    @Test
     fun `offline info without any model renders unknown`() {
         val device = Device(
             mac = "AA:BB:CC:DD:EE:FF",

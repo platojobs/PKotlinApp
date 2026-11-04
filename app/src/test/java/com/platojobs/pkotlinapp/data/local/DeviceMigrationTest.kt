@@ -127,6 +127,77 @@ class DeviceMigrationTest {
         }
     }
 
+    @Test
+    fun `v4 to v5 adds advertisedName without losing data`() {
+        DriverManager.getConnection("jdbc:sqlite::memory:").use { connection ->
+            connection.createStatement().use { it.execute(v3DevicesCreateSql) }
+            DeviceMigrationSql.V3_TO_V4.forEach { sql ->
+                connection.createStatement().use { it.execute(sql) }
+            }
+            connection.createStatement().use { statement ->
+                statement.executeUpdate(
+                    """
+                    INSERT INTO devices (
+                        mac, name, lastRssi, lastSeenTimestamp, id, platform, externalId,
+                        updatedAt, deletedAt, syncState, deviceType, vendor, firmwareVersion,
+                        compatibility, deviceTypeName, deviceGroup
+                    ) VALUES (
+                        'AA:BB:CC:DD:EE:01', '客厅温湿度计', -55, 1762300000000,
+                        'client-uuid-1', 'android', 'AA:BB:CC:DD:EE:01', 1762300000000,
+                        NULL, 'synced', 'nordic_uart', 'Nordic', '1.2.0', 'android · ble',
+                        'Nordic UART 温湿度计', '客厅'
+                    )
+                    """.trimIndent(),
+                )
+            }
+
+            assertEquals(1, countRows(connection))
+
+            DeviceMigrationSql.V4_TO_V5.forEach { sql ->
+                connection.createStatement().use { it.execute(sql) }
+            }
+
+            val columns = tableColumns(connection)
+            assertTrue(columns.contains("advertisedName"))
+            assertEquals(17, columns.size)
+            assertEquals(1, countRows(connection))
+
+            connection.createStatement().use { statement ->
+                statement.executeQuery(
+                    """
+                    SELECT name, deviceGroup, deviceTypeName, advertisedName
+                    FROM devices WHERE mac = 'AA:BB:CC:DD:EE:01'
+                    """.trimIndent(),
+                ).use { cursor ->
+                    assertTrue(cursor.next())
+                    // 用户别名与分组保持不变；新增广播名对历史行为 null。
+                    assertEquals("客厅温湿度计", cursor.getString("name"))
+                    assertEquals("客厅", cursor.getString("deviceGroup"))
+                    assertEquals("Nordic UART 温湿度计", cursor.getString("deviceTypeName"))
+                    assertNull(cursor.getString("advertisedName"))
+                }
+            }
+
+            connection.createStatement().use { statement ->
+                statement.executeUpdate(
+                    "UPDATE devices SET advertisedName = 'PJ-Sensor' " +
+                        "WHERE mac = 'AA:BB:CC:DD:EE:01'",
+                )
+            }
+            connection.createStatement().use { statement ->
+                statement.executeQuery(
+                    "SELECT name, advertisedName FROM devices " +
+                        "WHERE mac = 'AA:BB:CC:DD:EE:01'",
+                ).use { cursor ->
+                    assertTrue(cursor.next())
+                    // 广播名写入不会覆盖用户别名。
+                    assertEquals("客厅温湿度计", cursor.getString("name"))
+                    assertEquals("PJ-Sensor", cursor.getString("advertisedName"))
+                }
+            }
+        }
+    }
+
     private fun countRows(connection: java.sql.Connection): Int =
         connection.createStatement().use { statement ->
             statement.executeQuery("SELECT COUNT(*) FROM devices").use { cursor ->

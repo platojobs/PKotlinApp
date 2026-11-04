@@ -21,6 +21,7 @@ import com.platojobs.pkotlinapp.PKotlinApplication
 import com.platojobs.pkotlinapp.R
 import com.platojobs.pkotlinapp.data.ble.BleError
 import com.platojobs.pkotlinapp.databinding.FragmentHomeBinding
+import com.platojobs.pkotlinapp.domain.model.displayName
 import com.platojobs.pkotlinapp.ui.common.BlePermissions
 import com.platojobs.pkotlinapp.ui.common.EmptyStateView
 import com.platojobs.pkotlinapp.ui.detail.DeviceDetailActivity
@@ -90,7 +91,7 @@ class HomeFragment : Fragment() {
             openDevice(
                 PendingDevice(
                     mac = device.mac,
-                    name = device.name.ifBlank { getString(R.string.device_unknown) },
+                    name = device.displayName() ?: getString(R.string.device_unknown),
                     rssi = device.lastRssi,
                 ),
             )

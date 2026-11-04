@@ -10,6 +10,7 @@ import com.platojobs.pkotlinapp.databinding.ItemLiveDeviceBinding
 import com.platojobs.pkotlinapp.databinding.ItemRecentDeviceBinding
 import com.platojobs.pkotlinapp.domain.model.Device
 import com.platojobs.pkotlinapp.domain.model.ScannedDevice
+import com.platojobs.pkotlinapp.domain.model.displayName
 import com.platojobs.pkotlinapp.ui.common.TimeFormat
 
 class LiveDeviceAdapter(
@@ -79,7 +80,9 @@ class RecentDeviceAdapter(
 
         fun bind(device: Device) {
             val context = binding.root.context
-            binding.name.text = device.name.ifBlank { context.getString(R.string.device_unknown) }
+            // 展示优先级：用户别名 > 广播名 > catalog 型号名。
+            binding.name.text =
+                device.displayName() ?: context.getString(R.string.device_unknown)
             binding.mac.text = device.mac
             binding.rssi.text = context.getString(R.string.device_rssi_value, device.lastRssi)
             binding.signal.setRssi(device.lastRssi)

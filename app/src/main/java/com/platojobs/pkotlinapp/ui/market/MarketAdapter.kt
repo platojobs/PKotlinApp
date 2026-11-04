@@ -1,6 +1,7 @@
 package com.platojobs.pkotlinapp.ui.market
 
 import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
@@ -29,6 +30,8 @@ class MarketAdapter : ListAdapter<MarketItem, MarketAdapter.ViewHolder>(DIFF) {
             binding.category.text = item.category
             binding.title.text = item.title
             binding.version.text = context.getString(R.string.market_version, item.version)
+            // fixture 中部分配件没有 SKU，不展示空的「SKU：」行。
+            binding.version.visibility = if (item.version.isBlank()) View.GONE else View.VISIBLE
             binding.compatibility.text =
                 context.getString(R.string.market_compatibility, item.compatibility)
             binding.description.text = item.description

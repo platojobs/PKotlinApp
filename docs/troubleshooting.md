@@ -325,9 +325,10 @@ unzip -p app/build/outputs/apk/debug/app-debug.apk classes.dex | strings | grep 
 | `POST /api/v1/auth/anonymous` | 匿名登录 |
 | `GET /api/v1/sync/changes?cursor=` | 增量拉取 |
 | `POST /api/v1/sync/push` | 批量推送 |
-| `GET /api/products` | 型号库 |
-| `GET /api/market` | 市场数据 |
-| `GET /api/device/{mac}` | 设备详情 |
+| `GET /api/v1/device-types` | 设备类型列表（产品 / 市场入口） |
+| `GET /api/v1/device-types/{type}/catalog` | 型号元数据 + 固件 + 配件（产品 / 市场 / 详情） |
+| `GET /api/v1/devices/{mac}` | 公共设备元数据（详情页取 deviceType） |
+| `GET /api/v1/my/devices/android/{externalId}` | 用户设备归属校验（大写 MAC，需 Bearer） |
 
 ### 注意
 

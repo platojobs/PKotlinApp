@@ -44,12 +44,12 @@
 - 点击设备可发起连接并进入详情页。
 
 ### 产品 Products（`ui/products`）
-- 型号库：厂商、型号、固件版本、GATT 服务与特征表。
-- 数据来自 Retrofit（`GET api/products`），失败时显示错误空状态并提供重试。
-- GATT 服务/特征行由 Kotlin 代码动态组装（非 XML）。
+- 型号库：厂商、型号、固件版本、GATT 服务表。
+- 数据来自 `GET /api/v1/device-types`（类型列表）+ `GET /api/v1/device-types/{type}/catalog`（一次返回型号元数据、固件与配件）；不再拼接历史端点。失败时显示错误空状态并提供重试。
+- GATT 服务行由 Kotlin 代码动态组装（非 XML）；catalog 不返回特征列表时不渲染空行。
 
 ### 市场 Market（`ui/market`）
-- 配件与固件版本信息列表 + 兼容性说明。
+- 配件列表：名称、SKU、适用设备类型与描述（数据来自各设备类型的 `catalog.accessories`）。
 - 数据经 `MarketDataSource` 接口抽象，`RemoteMarketDataSource` 走 Retrofit（Base URL 可配置）；未来接真实商品后端只需新增实现并替换注入，不改 UI/ViewModel。
 - **不包含购物车、订单、支付等任何假交易能力**，页面有明确免责声明。
 
@@ -331,7 +331,7 @@ export JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk-21.jdk/Contents/Home
 
 ./gradlew assembleDebug        # Debug APK
 ./gradlew lintDebug            # Lint
-./gradlew testDebugUnitTest    # 单元测试：RssiLevel 4 + SyncEngine 5 + Rfc3339 3 + SyncDtoMapping 4 + SyncErrorKind 7 + RemoteSyncToken 4
+./gradlew testDebugUnitTest    # 单元测试：RssiLevel 4 + SyncEngine 5 + Rfc3339 3 + SyncDtoMapping 4 + SyncErrorKind 7 + RemoteSyncToken 4 + CatalogMapping 7
 ./gradlew assembleRelease      # 签名 Release APK
 ./gradlew bundleRelease        # 签名 Release AAB
 
@@ -448,7 +448,7 @@ release {
 
 ## 11. 版本记录
 
-- `v0.4.0`：新增 `docs/acceptance.md` / `docs/troubleshooting.md` / `docs/releasenotes.md`；401 改为「停止同步 + 用户确认重新登录」（与 iOS 对齐），同步错误分类展示，同步卡片显示最近错误；权限被拒后 Snackbar 增加「打开应用设置」；Debug 构建允许明文 HTTP；新增同步 401 与错误分类单测。
+- `v0.3.2`：产品 / 市场 / 设备详情改用 `GET /device-types/{type}/catalog`（一次返回 firmware + accessories），设备详情复合键查询改用 `GET /my/devices/android/{externalId}`；新增 `CatalogMappingTest`。同时新增验收 / 排障 / 发布说明文档，401 改为「停止同步 + 用户确认重新登录」（与 iOS 对齐），同步错误分类展示，权限被拒后提供「打开应用设置」，Debug 构建允许明文 HTTP。
 - `v0.3.1`：按 `PJGoIoT/api/openapi.yaml` 修正同步 DTO（`{clientId,devices}` / `{applied,conflicts,nextCursor}` / `changes[].payload`），时间统一 RFC 3339，新增 `scripts/e2e-contract.sh` 与本机 Go 后端端到端契约联调（含幂等重放、LWW 冲突、401、跨用户 404）。
 - `v0.3.0`：接入多设备同步客户端（匿名登录、加密 token、增量拉取、幂等批量推送、冲突上报、tombstone），Room v1→v2 迁移，WorkManager 后台同步与纯本地降级，「我的」同步状态卡片，同步单测。
 - `v0.2.0`：项目定位改为 BLE 设备数据面板；五模块底部导航、BLE 扫描/连接、Room、Retrofit、规则引擎、Android 16 适配、签名 Release、GitHub Actions CI。

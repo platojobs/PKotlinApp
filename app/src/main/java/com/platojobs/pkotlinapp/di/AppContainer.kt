@@ -65,7 +65,11 @@ class AppContainer(context: Context) {
     }
 
     val deviceInfoRepository: DeviceInfoRepository by lazy {
-        DeviceInfoRepositoryImpl(apiService)
+        DeviceInfoRepositoryImpl(
+            api = apiService,
+            syncApi = syncApi,
+            tokenStore = secureTokenStore,
+        )
     }
 
     val productRepository: ProductRepository by lazy {

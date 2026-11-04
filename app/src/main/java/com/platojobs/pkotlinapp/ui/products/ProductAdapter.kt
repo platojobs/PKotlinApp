@@ -3,6 +3,7 @@ package com.platojobs.pkotlinapp.ui.products
 import android.graphics.Typeface
 import android.util.TypedValue
 import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -34,6 +35,8 @@ class ProductAdapter : ListAdapter<ProductModel, ProductAdapter.ViewHolder>(DIFF
             binding.model.text = product.model.ifBlank { product.id }
             binding.vendor.text = product.vendor
             binding.firmware.text = context.getString(R.string.product_firmware, product.firmwareVersion)
+            binding.firmware.visibility =
+                if (product.firmwareVersion.isBlank()) View.GONE else View.VISIBLE
             binding.note.text = product.note
 
             // GATT 服务/特征表由代码逐行构建，属于“代码建 View”的同一约定。
@@ -60,20 +63,23 @@ class ProductAdapter : ListAdapter<ProductModel, ProductAdapter.ViewHolder>(DIFF
                         setTypeface(typeface, Typeface.BOLD)
                     },
                 )
-                binding.serviceContainer.addView(
-                    TextView(context).apply {
-                        text = context.getString(
-                            R.string.product_characteristics_item,
-                            service.characteristics.joinToString(" · "),
-                        )
-                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-                        setTextColor(ContextCompat.getColor(context, R.color.text_secondary))
-                        layoutParams = LinearLayout.LayoutParams(
-                            LinearLayout.LayoutParams.MATCH_PARENT,
-                            LinearLayout.LayoutParams.WRAP_CONTENT,
-                        ).apply { bottomMargin = 6.dp(context) }
-                    },
-                )
+                // 新版 catalog 不返回特征列表，没有数据时不渲染空行。
+                if (service.characteristics.isNotEmpty()) {
+                    binding.serviceContainer.addView(
+                        TextView(context).apply {
+                            text = context.getString(
+                                R.string.product_characteristics_item,
+                                service.characteristics.joinToString(" · "),
+                            )
+                            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                            setTextColor(ContextCompat.getColor(context, R.color.text_secondary))
+                            layoutParams = LinearLayout.LayoutParams(
+                                LinearLayout.LayoutParams.MATCH_PARENT,
+                                LinearLayout.LayoutParams.WRAP_CONTENT,
+                            ).apply { bottomMargin = 6.dp(context) }
+                        },
+                    )
+                }
             }
         }
 

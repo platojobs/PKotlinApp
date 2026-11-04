@@ -116,7 +116,7 @@
     <string name="market_empty_title">暂无市场数据</string>
     <string name="market_empty_hint">检查网络连接后重试加载</string>
     <string name="market_error">加载失败：%1$s</string>
-    <string name="market_version">版本 %1$s</string>
+    <string name="market_version">SKU：%1$s</string>
     <string name="market_compatibility">兼容性：%1$s</string>
 
     <string name="profile_title">我的</string>

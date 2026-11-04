@@ -1,9 +1,9 @@
-# 真机验收清单（v0.4.0）
+# 真机验收清单（v0.3.2）
 
 本清单用于「执行人不在开发现场」时也能照着做完验收。每项都写明**操作步骤、预期现象、失败判定**。
 所有结果请记录到文末的「验收记录表」；未实际执行的项不要填 PASS。
 
-- 适用版本：`versionName = 0.4.0`（`versionCode = 5`）
+- 适用版本：`versionName = 0.3.2`（`versionCode = 5`）
 - 应用包名：`com.platojobs.pkotlinapp`
 - 主界面：`com.platojobs.pkotlinapp.ui.MainActivity`
 - 设备详情：`com.platojobs.pkotlinapp.ui.detail.DeviceDetailActivity`
@@ -55,7 +55,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versionCode"
 ```
 
-预期：`versionName=0.4.0`、`versionCode=5`。
+预期：`versionName=0.3.2`、`versionCode=5`。
 
 ---
 
@@ -88,8 +88,8 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
 
 - 步骤：切到「产品」；先确保后端可用。
 - 预期：
-  - 展示型号库：厂商、型号、固件版本、GATT 服务与特征；
-  - GATT 服务/特征行由代码动态组装（不是静态占位）；
+  - 展示型号库（来自 `GET /device-types` + `GET /device-types/{type}/catalog`）：厂商、型号、最新固件版本、GATT 服务；
+  - GATT 服务行由代码动态组装（不是静态占位）；catalog 无特征时不出现空的「特征：」行；
   - 后端不可用时显示「加载失败：…」+「重试加载型号库」。
 - 失败判定：展示固定假数据、错误时白屏、重试按钮无效。
 
@@ -97,7 +97,7 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
 
 - 步骤：切到「市场」。
 - 预期：
-  - 展示配件/固件信息（版本、兼容性）；
+  - 展示各设备类型的配件（名称、SKU、适用型号、描述）；
   - 页面有「仅展示配件与固件信息，不含交易能力」说明；
   - 无购物车、订单、支付入口；
   - 后端不可用时显示错误空状态 +「重试加载市场数据」。
@@ -111,9 +111,9 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
   - 权限自检三项（扫描 / 连接 / 定位）与系统授权状态一致；
   - 扫描日志有真实记录，可清空；
   - 主题切换立即生效并持久化（杀进程重开仍生效）；
-  - 版本信息显示「版本 0.4.0」「构建类型：debug」；
+  - 版本信息显示「版本 0.3.2」「构建类型：debug」；
   - 项目仓库链接可打开 GitHub。
-- 失败判定：同步卡片空白、权限状态与实际不一致、版本号不是 0.4.0、主题重启后丢失。
+- 失败判定：同步卡片空白、权限状态与实际不一致、版本号不是 0.3.2、主题重启后丢失。
 
 ---
 
@@ -327,7 +327,7 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
 - 预期：设备 / 规则 / 日志均能在界面上看到。
 - 失败判定：旧版本本身无法产生数据（先排除环境问题）。
 
-### M2 覆盖安装 v0.4.0
+### M2 覆盖安装 v0.3.2
 
 - 步骤：
   ```bash
@@ -379,7 +379,7 @@ adb install -r app/build/outputs/apk/release/app-release.apk
 adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versionCode"
 ```
 
-预期：安装成功；版本 `0.4.0 / 5`；能启动；五模块可进入；BLE 扫描/连接可用。
+预期：安装成功；版本 `0.3.2 / 5`；能启动；五模块可进入；BLE 扫描/连接可用。
 失败判定：`INSTALL_FAILED_NO_MATCHING_ABIS`、安装后闪退（多为 R8 裁剪过度或签名问题）。
 
 ### L3 签名验证

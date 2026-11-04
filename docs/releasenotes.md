@@ -6,9 +6,16 @@
 
 ---
 
-## v0.4.0
+## v0.3.2
 
-**主题：可交付验收 + 登录失效处理对齐 iOS**
+**主题：openapi 0.3.1 新端点接入 + 可交付验收 + 登录失效处理对齐 iOS**
+
+接口变更（以 `PJGoIoT/api/openapi.yaml` 0.3.1 为准）：
+
+- 产品、市场、设备详情改用 `GET /api/v1/device-types/{type}/catalog`，一次拿到 `deviceType + firmwares + accessories`；删除 `GET /api/products`、`GET /api/market`、`GET /api/device/{mac}` 三个历史端点的调用。
+- 设备详情先按复合键 `GET /api/v1/my/devices/android/{externalId}` 校验归属，`externalId` 为规范化大写 MAC；404 视为尚未同步并继续使用公共元数据，401 按登录失效处理；旧 `/my/devices/{mac}` 不再依赖。
+- 产品页固件版本取 catalog 中 `releasedAt` 最新的记录；市场页展示 catalog 中的配件（SKU、适用型号、描述）。
+- 新增 `CatalogMappingTest`（7 项）：catalog → 产品/市场映射、最新固件选择、复合键大写 MAC 与 `android` platform、404 回退、401 不重登、无 token 匿名登录、无 deviceType 跳过 catalog。
 
 新增文档：
 
@@ -24,7 +31,7 @@
 - **权限被拒后可恢复**：首页权限回调、设备页点击设备缺连接权限时的 Snackbar 增加「打开应用设置」动作，可直接跳到系统应用详情页恢复授权。
 - **Debug 允许明文 HTTP**：新增 `app/src/debug/AndroidManifest.xml`，便于真机连接局域网 Go 服务；Release 仍禁止明文，必须 HTTPS。
 
-版本：`versionCode = 5`、`versionName = 0.4.0`。
+版本：`versionCode = 5`、`versionName = 0.3.2`。
 
 ---
 

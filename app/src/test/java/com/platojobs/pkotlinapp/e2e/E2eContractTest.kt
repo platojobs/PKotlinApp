@@ -152,6 +152,15 @@ class E2eContractTest {
         }
         val cursorAfterPush = firstPush.nextCursor!!.toString()
 
+        step("my device lookup uses compound platform + externalId") {
+            val result = get("/my/devices/android/AA:BB:CC:00:00:01", user.token)
+            assertEquals(200, result.code)
+            val body = parseMap(result.body)
+            assertEquals("android", body["platform"])
+            assertEquals("AA:BB:CC:00:00:01", body["externalId"])
+            assertEquals("共享型号-Android", body["alias"])
+        }
+
         val changes = captureStep("changes returns contract-shaped payload + platform/externalId") {
             val result = get("/sync/changes?cursor=0", user.token)
             assertEquals(200, result.code)
@@ -231,7 +240,9 @@ class E2eContractTest {
             assertEquals("旧名称-冲突", conflict.client?.alias)
 
             // 冲突未落库：服务端仍是新名称，且没有产生新的 change。
-            val myDevice = parseMap(get("/my/devices/AA:BB:CC:00:00:01", user.token).body)
+            val myDevice = parseMap(
+                get("/my/devices/android/AA:BB:CC:00:00:01", user.token).body,
+            )
             assertEquals("共享型号-Android", myDevice["alias"])
             val after = changesResponseAdapter.fromJson(
                 get("/sync/changes?cursor=$cursorAfterPush", user.token).body,
@@ -261,7 +272,7 @@ class E2eContractTest {
                     body["token"] as String,
                 )
             }
-            val result = get("/my/devices/AA:BB:CC:00:00:01", other.token)
+            val result = get("/my/devices/android/AA:BB:CC:00:00:01", other.token)
             assertEquals(404, result.code)
             val error = parseMap(result.body)["error"] as Map<*, *>
             assertEquals("NOT_FOUND", error["code"])
@@ -305,6 +316,21 @@ class E2eContractTest {
             }
             assertEquals(1, response.applied.orEmpty().size)
             assertEquals("AA:BB:CC:00:00:02", response.applied.orEmpty().single().externalId)
+        }
+
+        step("device-types catalog returns deviceType + firmwares + accessories") {
+            val types = parseMap(get("/device-types").body)
+            val items = types["items"] as? List<*> ?: error("missing items")
+            assertTrue(items.isNotEmpty())
+
+            val type = (items.first() as? Map<*, *>)?.get("type") as? String
+                ?: error("missing type")
+            val catalog = parseMap(get("/device-types/$type/catalog").body)
+
+            val deviceType = catalog["deviceType"] as? Map<*, *> ?: error("missing deviceType")
+            assertEquals(type, deviceType["type"])
+            assertTrue(catalog["firmwares"] is List<*>)
+            assertTrue(catalog["accessories"] is List<*>)
         }
 
         println("[E2E] SUMMARY: all contract cases passed")

@@ -18,6 +18,10 @@ data class SyncRecord(
     val vendor: String? = null,
     val firmwareVersion: String? = null,
     val compatibility: String? = null,
+    /** catalog 展示名：只用于本地离线降级，不上报服务端。 */
+    val deviceTypeName: String? = null,
+    /** 云端/用户编辑的分组；null 表示不覆盖服务端旧值。 */
+    val group: String? = null,
 )
 
 data class SyncPullPage(
@@ -92,6 +96,7 @@ object IdempotencyKeys {
                     it.updatedAt,
                     it.deletedAt ?: 0L,
                     it.deviceType.orEmpty(),
+                    it.group.orEmpty(),
                 ).joinToString("\u001E")
             }
         val digest = java.security.MessageDigest.getInstance("SHA-256")

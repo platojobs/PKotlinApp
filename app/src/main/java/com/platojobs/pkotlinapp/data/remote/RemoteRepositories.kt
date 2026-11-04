@@ -87,8 +87,8 @@ class DeviceInfoRepositoryImpl(
         val info = DeviceInfo(
             mac = public?.mac ?: myDevice?.mac ?: mac,
             vendor = vendor,
-            // 有 catalog 时展示人类可读型号名；未注册型号保持 null，由 UI 显示「型号未知」。
-            deviceType = catalog?.deviceType?.name?.takeIf { it.isNotBlank() } ?: typeKey,
+            // 只保存人类可读型号名；没有展示名时 UI 回退型号键并标注「未识别的型号」。
+            deviceType = catalog?.deviceType?.name?.takeIf { it.isNotBlank() },
             deviceTypeKey = typeKey,
             firmwareVersion = firmwareVersion,
             alias = myDevice?.alias.orEmpty(),
@@ -104,7 +104,12 @@ class DeviceInfoRepositoryImpl(
             vendor = vendor,
             firmwareVersion = firmwareVersion,
             compatibility = compatibility?.displayLabel()?.takeIf { it.isNotBlank() },
+            deviceTypeName = catalog?.deviceType?.name?.takeIf { it.isNotBlank() },
         )
+        // 未同步设备（myDevice = null）没有云端分组，保留本地编辑的值。
+        myDevice?.group?.takeIf { it.isNotBlank() }?.let { group ->
+            deviceDao?.updateGroup(externalId = externalId, group = group)
+        }
 
         return info
     }

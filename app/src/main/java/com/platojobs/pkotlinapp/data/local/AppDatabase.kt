@@ -8,6 +8,15 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import java.util.UUID
 
+/** 迁移 SQL 单独暴露，便于 JVM 用真实 SQLite 验证 v3→v4 不丢数据。 */
+internal object DeviceMigrationSql {
+    val V3_TO_V4 = listOf(
+        "ALTER TABLE devices ADD COLUMN deviceTypeName TEXT",
+        // group 是 SQL 关键字，列名使用 deviceGroup。
+        "ALTER TABLE devices ADD COLUMN deviceGroup TEXT",
+    )
+}
+
 @Database(
     entities = [
         DeviceEntity::class,
@@ -15,7 +24,7 @@ import java.util.UUID
         RuleEventEntity::class,
         ScanLogEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -75,6 +84,16 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v3 -> v4：缓存 catalog 展示名与云端分组，供离线降级展示。
+         * 全部为可空列，历史数据保持 null（表示只有型号键 / 尚未拿到分组）。
+         */
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                DeviceMigrationSql.V3_TO_V4.forEach(db::execSQL)
+            }
+        }
+
         @Volatile
         private var instance: AppDatabase? = null
 
@@ -84,7 +103,7 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     DB_NAME,
-                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                     .build()
                     .also { instance = it }
             }

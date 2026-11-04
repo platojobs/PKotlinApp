@@ -89,8 +89,13 @@ class DevicesFragment : Fragment() {
                 launch {
                     viewModel.devices.collect { devices ->
                         savedAdapter.submitList(devices)
-                        binding.devicesCount.text =
-                            getString(R.string.devices_count, devices.size)
+                        binding.devicesCount.text = getString(
+                            R.string.devices_count_with_groups,
+                            devices.size,
+                            devices.mapNotNull { it.group?.takeIf { group -> group.isNotBlank() } }
+                                .distinct()
+                                .size,
+                        )
                         binding.savedEmptyContainer.visibility =
                             if (devices.isEmpty()) View.VISIBLE else View.GONE
                         binding.savedList.visibility =

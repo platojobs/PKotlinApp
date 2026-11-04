@@ -32,8 +32,13 @@ class RoomSyncLocalStore(
             record.externalId
         }
         // 复用本地已有主键，避免 externalId 相同但 mac 大小写不同导致重复行。
-        val localMac = dao.findByExternalId(normalized)?.mac ?: normalized
-        dao.insertOrUpdate(record.toEntity(macOverride = localMac))
+        val existing = dao.findByExternalId(normalized)
+        val localMac = existing?.mac ?: normalized
+        dao.insertOrUpdate(
+            // 服务端不返回 catalog 展示名；用本地缓存补齐，避免断网降级丢失。
+            record.copy(deviceTypeName = record.deviceTypeName ?: existing?.deviceTypeName)
+                .toEntity(macOverride = localMac),
+        )
     }
 
     override suspend fun deleteByExternalId(externalId: String) {
@@ -55,6 +60,8 @@ private fun DeviceEntity.toSyncRecord() = SyncRecord(
     vendor = vendor,
     firmwareVersion = firmwareVersion,
     compatibility = compatibility,
+    deviceTypeName = deviceTypeName,
+    group = group,
 )
 
 private fun SyncRecord.toEntity(macOverride: String? = null): DeviceEntity {
@@ -78,5 +85,7 @@ private fun SyncRecord.toEntity(macOverride: String? = null): DeviceEntity {
         vendor = vendor,
         firmwareVersion = firmwareVersion,
         compatibility = compatibility,
+        deviceTypeName = deviceTypeName,
+        group = group,
     )
 }

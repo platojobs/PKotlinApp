@@ -7,8 +7,10 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.platojobs.pkotlinapp.PKotlinApplication
 import com.platojobs.pkotlinapp.data.ble.BleConnectionManager
 import com.platojobs.pkotlinapp.data.ble.BleConnectionState
-import com.platojobs.pkotlinapp.domain.model.Compatibility
+import com.platojobs.pkotlinapp.data.sync.SyncScheduler
+import com.platojobs.pkotlinapp.domain.model.Device
 import com.platojobs.pkotlinapp.domain.model.DeviceInfo
+import com.platojobs.pkotlinapp.domain.model.toOfflineDeviceInfo
 import com.platojobs.pkotlinapp.domain.repository.DeviceInfoRepository
 import com.platojobs.pkotlinapp.domain.repository.DeviceRepository
 import com.platojobs.pkotlinapp.domain.rule.RuleEngine
@@ -32,6 +34,7 @@ class DeviceDetailViewModel(
     private val deviceInfoRepository: DeviceInfoRepository,
     private val deviceRepository: DeviceRepository,
     private val ruleEngine: RuleEngine,
+    private val syncScheduler: SyncScheduler,
 ) : ViewModel() {
 
     val connectionState: StateFlow<BleConnectionState> = bleConnectionManager.state
@@ -95,21 +98,7 @@ class DeviceDetailViewModel(
                     if (local == null) {
                         InfoState.Error(error.message)
                     } else {
-                        InfoState.Success(
-                            DeviceInfo(
-                                mac = local.mac,
-                                vendor = local.vendor,
-                                deviceType = local.deviceType,
-                                deviceTypeKey = local.deviceType,
-                                firmwareVersion = local.firmwareVersion,
-                                alias = local.name,
-                                lastSeenTimestamp = local.lastSeenTimestamp,
-                                compatibility = local.compatibility?.let {
-                                    Compatibility(protocol = it)
-                                },
-                                fromLocalCache = true,
-                            ),
-                        )
+                        InfoState.Success(local.toOfflineDeviceInfo())
                     }
                 },
             )
@@ -126,6 +115,32 @@ class DeviceDetailViewModel(
 
     fun onEncryptionChanged(enabled: Boolean) {
         _encryption.value = EncryptionInfo(enabled, System.currentTimeMillis())
+    }
+
+    /** 设备编辑：别名与分组直接落 Room，并排队同步；离线时也能立即可见。 */
+    fun saveProfile(alias: String, group: String) {
+        viewModelScope.launch {
+            val now = System.currentTimeMillis()
+            val existing = deviceRepository.getDevice(mac)
+            val device = existing?.copy(
+                name = alias,
+                group = group,
+                updatedAt = now,
+            ) ?: Device(
+                mac = mac,
+                name = alias,
+                lastRssi = 0,
+                lastSeenTimestamp = now,
+                group = group,
+            )
+            deviceRepository.saveDevice(device)
+            (_info.value as? InfoState.Success)?.let { state ->
+                _info.value = InfoState.Success(
+                    state.info.copy(alias = alias, group = group),
+                )
+            }
+            runCatching { syncScheduler.schedule() }
+        }
     }
 
     sealed interface InfoState {
@@ -155,6 +170,7 @@ class DeviceDetailViewModel(
                     deviceInfoRepository = container.deviceInfoRepository,
                     deviceRepository = container.deviceRepository,
                     ruleEngine = container.ruleEngine,
+                    syncScheduler = container.syncScheduler,
                 )
             }
         }

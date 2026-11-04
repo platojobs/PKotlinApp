@@ -1,9 +1,9 @@
-# 真机验收清单（v0.3.2）
+# 真机验收清单（v0.3.5）
 
 本清单用于「执行人不在开发现场」时也能照着做完验收。每项都写明**操作步骤、预期现象、失败判定**。
 所有结果请记录到文末的「验收记录表」；未实际执行的项不要填 PASS。
 
-- 适用版本：`versionName = 0.3.4`（`versionCode = 7`）
+- 适用版本：`versionName = 0.3.5`（`versionCode = 8`）
 - 应用包名：`com.platojobs.pkotlinapp`
 - 主界面：`com.platojobs.pkotlinapp.ui.MainActivity`
 - 设备详情：`com.platojobs.pkotlinapp.ui.detail.DeviceDetailActivity`
@@ -55,7 +55,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versionCode"
 ```
 
-预期：`versionName=0.3.4`、`versionCode=7`。
+预期：`versionName=0.3.5`、`versionCode=8`。
 
 ---
 
@@ -111,9 +111,9 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
   - 权限自检三项（扫描 / 连接 / 定位）与系统授权状态一致；
   - 扫描日志有真实记录，可清空；
   - 主题切换立即生效并持久化（杀进程重开仍生效）；
-  - 版本信息显示「版本 0.3.2」「构建类型：debug」；
+  - 版本信息显示「版本 0.3.5」「构建类型：debug」；
   - 项目仓库链接可打开 GitHub。
-- 失败判定：同步卡片空白、权限状态与实际不一致、版本号不是 0.3.2、主题重启后丢失。
+- 失败判定：同步卡片空白、权限状态与实际不一致、版本号不是 0.3.5、主题重启后丢失。
 
 ---
 
@@ -312,7 +312,7 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
 
 ---
 
-## 7. Room v1 → v2 → v3 迁移
+## 7. Room v1 → v2 → v3 → v4 迁移
 
 > 需要 v0.3.1 的 Debug APK 作为「旧版本」。若手头没有，可从 tag 构建：
 >
@@ -327,7 +327,7 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
 - 预期：设备 / 规则 / 日志均能在界面上看到。
 - 失败判定：旧版本本身无法产生数据（先排除环境问题）。
 
-### M2 覆盖安装 v0.3.2
+### M2 覆盖安装 v0.3.5
 
 - 步骤：
   ```bash
@@ -348,10 +348,54 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
   adb exec-out run-as com.platojobs.pkotlinapp cat databases/device_dashboard.db > /tmp/device_dashboard.db
   sqlite3 /tmp/device_dashboard.db "PRAGMA user_version;"
   sqlite3 /tmp/device_dashboard.db \
-    "SELECT mac, platform, externalId, syncState, substr(id,1,8) FROM devices;"
+    "SELECT mac, platform, externalId, syncState, substr(id,1,8), deviceType, deviceTypeName, deviceGroup FROM devices;"
   ```
-- 预期：`user_version = 2`；每条设备 `platform = android`、`externalId` 为规范化大写 MAC、`id` 非空 UUID、`syncState` 为 `pending`（首次同步成功后变为 `synced`）。
-- 失败判定：版本仍为 1、字段为空、`externalId` 为小写或带空格。
+- 预期：`user_version = 4`；每条设备 `platform = android`、`externalId` 为规范化大写 MAC、`id` 非空 UUID、`syncState` 为 `pending`/`synced`；旧数据的 `deviceTypeName` 与 `deviceGroup` 为 NULL（列存在且历史行不丢）。
+- 失败判定：版本不是 4、旧字段为空、`externalId` 为小写或带空格、行数比升级前少。
+
+### M4 v3 → v4 迁移不丢数据（可选复验）
+
+- 步骤：
+  1. 安装 v0.3.4 Debug 包（Room v3），联网打开一次设备详情，让 enrich 字段落库；
+  2. 覆盖安装 v0.3.5，再导出数据库并查询：
+     ```bash
+     sqlite3 /tmp/device_dashboard.db "PRAGMA user_version;"
+     sqlite3 /tmp/device_dashboard.db \
+       "SELECT mac, deviceType, vendor, firmwareVersion, compatibility FROM devices;"
+     ```
+- 预期：`user_version = 4`；设备行数与 v0.3.4 一致，原有 `deviceType/vendor/firmwareVersion/compatibility` 值逐列保留，`deviceTypeName/deviceGroup` 为 NULL。
+- 失败判定：行数减少、旧 enrich 值变 NULL、启动时 `Room cannot verify the data integrity`。
+
+### 7.2 离线缓存与分组验收（v0.3.5 新增）
+
+前置：后端可用、目标 BLE 设备已在「设备」列表；准备一台**已注册型号**和一台**未注册型号**（后者可人为把 `deviceType` 写成不存在的键）。
+
+- 步骤：
+  1. 联网打开已注册型号的设备详情，确认厂商/型号/固件/兼容性正常；退出详情；
+  2. 关闭手机网络（或停止 Go 服务），从设备列表再次进入同一设备；
+  3. 观察详情页型号、厂商、分组、最后出现时间与顶部提示；
+  4. 点「编辑别名与分组」，把分组改为「客厅」，保存；返回设备列表查看该行分组与顶部统计；
+  5. 恢复网络并执行一次同步，检查后端 `GET /api/v1/my/devices/android/{externalId}` 的 `group`。
+- 预期：
+  - 离线详情显示「网络不可用，以下为本地缓存数据」；
+  - 型号显示 catalog 缓存中文名（如「Nordic UART 温湿度计」），而不是 `nordic_uart`；
+  - 未注册型号离线显示 `unknown_type（未识别的型号）`；若连型号键都没有则显示「型号未知」；
+  - 分组显示真实值（如「客厅」），不再是「未分组」；列表行显示「分组：客厅」，标题统计「共 N 台设备 · M 个分组」；
+  - 断网保存后立即在详情与列表生效，重开 App 仍在；
+  - 同步成功后服务端 `group = 客厅`。
+- 失败判定：离线仍显示型号键且无「未识别的型号」标注、分组一律「未分组」、保存后杀进程丢失、扫描一次后缓存展示名/分组被清空。
+
+### 7.3 市场筛选 Chip 无障碍与大字号验收
+
+- 前置：进入「市场」，等待厂商/兼容性筛选 Chip 渲染完成。
+- 步骤与预期：
+  1. **读屏语义**：开启 TalkBack，逐个聚焦 Chip；应听到「<筛选值>，已选中/未选中」，聚焦 ChipGroup 时先听到「厂商筛选」或「兼容性筛选」；不得只读「全部」而丢失筛选维度。
+  2. **选中态可读**：点击任一 Chip，读屏应立即播报新的选中态，视觉上有明确的选中底色/描边，不能只靠颜色深浅区分。
+  3. **200% 字号**：系统设置 → 显示 → 字体大小调到最大（或开发者选项 font_scale=2.0），回到市场；所有 Chip 文本应最多两行完整显示，无 `…` 截断、无上下裁切；超出屏宽时可横向滚动，不遮挡相邻 Chip。
+  4. **颜色对比度**：用 Accessibility Scanner 扫描市场页，或在浅色/深色主题下目测 Chip 文字与背景；正文对比度需 ≥ 4.5:1，选中态不得仅用低对比色差表达。
+  5. **触摸目标**：Chip 可点区域不小于 48dp（Material Chip 默认 `ensureMinTouchTargetSize`）。
+- 失败判定：TalkBack 不播报选中态、Chip 文本被省略号截断、200% 字号下文字裁切、扫描器报告对比度不足、点击区域明显小于 48dp。
+- 记录：本次仅完成代码侧改造与静态核对；真机 TalkBack / 200% 字号 / Accessibility Scanner 需按上述步骤执行后填 PASS。
 
 ---
 
@@ -379,7 +423,7 @@ adb install -r app/build/outputs/apk/release/app-release.apk
 adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versionCode"
 ```
 
-预期：安装成功；版本 `0.3.2 / 5`；能启动；五模块可进入；BLE 扫描/连接可用。
+预期：安装成功；版本 `0.3.5 / 8`；能启动；五模块可进入；BLE 扫描/连接可用。
 失败判定：`INSTALL_FAILED_NO_MATCHING_ABIS`、安装后闪退（多为 R8 裁剪过度或签名问题）。
 
 ### L3 签名验证

@@ -113,7 +113,8 @@ internal fun SyncRecord.toPushDto(): PushDeviceDto {
         // 只有本地/云端 enrich 匹配到型号时才上报；null 字段不会序列化，服务端沿用旧值。
         deviceType = deviceType?.takeIf { it.isNotBlank() },
         alias = name,
-        group = "",
+        // 只有本地已有分组时才上报；null 不序列化，服务端保留旧值。
+        group = group?.takeIf { it.isNotBlank() },
         rules = emptyMap(),
         scanRecords = scanRecords,
         updatedAt = Rfc3339.format(updatedAt.takeIf { it > 0 } ?: System.currentTimeMillis()),
@@ -165,6 +166,7 @@ internal fun SyncDeviceDto.toDomain(): SyncRecord? {
         vendor = vendor?.takeIf { it.isNotBlank() },
         firmwareVersion = firmwareVersion?.takeIf { it.isNotBlank() },
         compatibility = compatibility?.displayLabel()?.takeIf { it.isNotBlank() },
+        group = group?.takeIf { it.isNotBlank() },
     )
 }
 

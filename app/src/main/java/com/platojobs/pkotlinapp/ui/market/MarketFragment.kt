@@ -11,6 +11,7 @@ import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.core.view.ViewCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
@@ -49,6 +50,11 @@ class MarketFragment : Fragment() {
 
         binding.marketList.layoutManager = LinearLayoutManager(requireContext())
         binding.marketList.adapter = adapter
+        // 两组筛选对读屏用户有明确语义，避免只读出「全部」而不知道筛的是什么。
+        binding.vendorFilters.contentDescription =
+            getString(R.string.market_filter_vendor_group)
+        binding.compatibilityFilters.contentDescription =
+            getString(R.string.market_filter_compatibility_group)
 
         emptyState = EmptyStateView(requireContext()).apply {
             setIcon(R.drawable.ic_empty_ble)
@@ -160,13 +166,28 @@ class MarketFragment : Fragment() {
         checked: Boolean,
         onClick: () -> Unit,
     ) {
-        group.addView(
-            Chip(requireContext()).apply {
-                text = label
-                isCheckable = true
-                isChecked = checked
-                setOnClickListener { onClick() }
-            },
-        )
+        val chip = Chip(requireContext()).apply {
+            text = label
+            isCheckable = true
+            isChecked = checked
+            // 200% 字号下允许换行，禁用单行省略，避免筛选词被截断。
+            isSingleLine = false
+            maxLines = 2
+            ellipsize = null
+            // 读屏先读筛选值，再读选中状态；点击后由 ViewModel 重绘 Chip 自动更新。
+            contentDescription = label
+            ViewCompat.setStateDescription(
+                this,
+                getString(
+                    if (checked) {
+                        R.string.market_filter_selected
+                    } else {
+                        R.string.market_filter_not_selected
+                    },
+                ),
+            )
+            setOnClickListener { onClick() }
+        }
+        group.addView(chip)
     }
 }

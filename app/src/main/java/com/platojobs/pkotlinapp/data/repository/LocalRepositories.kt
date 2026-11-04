@@ -40,6 +40,14 @@ class DeviceRepositoryImpl(
         dao.insertOrUpdate(
             device.copy(
                 mac = existing?.mac ?: device.mac,
+                // 扫描写入通常不带别名/分组/enrich；为 null 时保留既有缓存，避免把离线数据清空。
+                name = device.name.takeIf { it.isNotBlank() } ?: existing?.name.orEmpty(),
+                group = device.group ?: existing?.group,
+                deviceType = device.deviceType ?: existing?.deviceType,
+                deviceTypeName = device.deviceTypeName ?: existing?.deviceTypeName,
+                vendor = device.vendor ?: existing?.vendor,
+                firmwareVersion = device.firmwareVersion ?: existing?.firmwareVersion,
+                compatibility = device.compatibility ?: existing?.compatibility,
                 id = clientId,
                 platform = PLATFORM_ANDROID,
                 externalId = normalizedExternalId,
@@ -136,6 +144,8 @@ private fun DeviceEntity.toDomain() = Device(
     vendor = vendor,
     firmwareVersion = firmwareVersion,
     compatibility = compatibility,
+    deviceTypeName = deviceTypeName,
+    group = group,
 )
 
 private fun Device.toEntity() = DeviceEntity(
@@ -153,6 +163,8 @@ private fun Device.toEntity() = DeviceEntity(
     vendor = vendor,
     firmwareVersion = firmwareVersion,
     compatibility = compatibility,
+    deviceTypeName = deviceTypeName,
+    group = group,
 )
 
 private fun RuleEntity.toDomain() = DeviceRule(

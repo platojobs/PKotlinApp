@@ -17,11 +17,15 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.snackbar.Snackbar
 import com.platojobs.pkotlinapp.PKotlinApplication
 import com.platojobs.pkotlinapp.R
 import com.platojobs.pkotlinapp.data.ble.BleConnectionState
 import com.platojobs.pkotlinapp.databinding.ActivityDeviceDetailBinding
+import com.platojobs.pkotlinapp.databinding.DialogDeviceEditBinding
+import com.platojobs.pkotlinapp.domain.model.displayDeviceTypeName
+import com.platojobs.pkotlinapp.domain.model.unrecognizedDeviceTypeKey
 import com.platojobs.pkotlinapp.ui.common.applyBottomInset
 import com.platojobs.pkotlinapp.ui.common.applyHorizontalInsets
 import com.platojobs.pkotlinapp.ui.common.TimeFormat
@@ -112,6 +116,7 @@ class DeviceDetailActivity : AppCompatActivity() {
             }
         }
         binding.infoRetryButton.setOnClickListener { viewModel.loadInfo() }
+        binding.editProfileButton.setOnClickListener { showEditDeviceDialog() }
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -203,6 +208,8 @@ class DeviceDetailActivity : AppCompatActivity() {
             if (state is DeviceDetailViewModel.InfoState.Error) View.VISIBLE else View.GONE
         binding.infoRetryButton.visibility =
             if (state is DeviceDetailViewModel.InfoState.Error) View.VISIBLE else View.GONE
+        binding.editProfileButton.visibility =
+            if (state is DeviceDetailViewModel.InfoState.Success) View.VISIBLE else View.GONE
         binding.infoOfflineHint.visibility = View.GONE
 
         when (state) {
@@ -213,10 +220,17 @@ class DeviceDetailActivity : AppCompatActivity() {
                     if (info.fromLocalCache) View.VISIBLE else View.GONE
 
                 binding.vendorValue.text = info.vendor?.takeIf { it.isNotBlank() } ?: unknown
-                // 未注册型号明确显示「型号未知」，不退回厂商/固件字段。
-                binding.deviceTypeValue.text =
-                    info.deviceType?.takeIf { it.isNotBlank() }
-                        ?: getString(R.string.detail_device_type_unknown)
+                // 展示名优先；只有型号键时标注「未识别的型号」；两者都缺失才显示「型号未知」。
+                val displayName = info.displayDeviceTypeName()
+                val unrecognizedKey = info.unrecognizedDeviceTypeKey()
+                binding.deviceTypeValue.text = when {
+                    displayName != null -> displayName
+                    unrecognizedKey != null -> getString(
+                        R.string.detail_device_type_unrecognized,
+                        unrecognizedKey,
+                    )
+                    else -> getString(R.string.detail_device_type_unknown)
+                }
                 binding.firmwareValue.text =
                     info.firmwareVersion?.takeIf { it.isNotBlank() } ?: unknown
                 binding.aliasValue.text =
@@ -238,6 +252,24 @@ class DeviceDetailActivity : AppCompatActivity() {
 
             else -> Unit
         }
+    }
+
+    private fun showEditDeviceDialog() {
+        val current = (viewModel.info.value as? DeviceDetailViewModel.InfoState.Success)?.info
+        val dialogBinding = DialogDeviceEditBinding.inflate(layoutInflater)
+        dialogBinding.aliasInput.setText(current?.alias.orEmpty())
+        dialogBinding.groupInput.setText(current?.group.orEmpty())
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.device_edit_title)
+            .setView(dialogBinding.root)
+            .setNegativeButton(R.string.action_cancel, null)
+            .setPositiveButton(R.string.device_edit_save) { _, _ ->
+                val alias = dialogBinding.aliasInput.text?.toString()?.trim().orEmpty()
+                val group = dialogBinding.groupInput.text?.toString()?.trim().orEmpty()
+                viewModel.saveProfile(alias = alias, group = group)
+            }
+            .show()
     }
 
     private fun renderEncryption(info: EncryptionInfo?) {

@@ -28,6 +28,9 @@ data class Device(
     val vendor: String? = null,
     val firmwareVersion: String? = null,
     val compatibility: String? = null,
+    // catalog 展示名与云端分组：离线时优先用展示名，分组按真实值展示。
+    val deviceTypeName: String? = null,
+    val group: String? = null,
 )
 
 const val PLATFORM_ANDROID = "android"
@@ -83,6 +86,32 @@ data class DeviceInfo(
     val lastSeenTimestamp: Long = 0L,
     val compatibility: Compatibility? = null,
     val fromLocalCache: Boolean = false,
+)
+
+/**
+ * 型号展示优先级：缓存/catalog 展示名 > 型号键（标注未识别）> 型号未知。
+ * [deviceType] 只保存人类可读名称；[deviceTypeKey] 保存接口返回的型号键。
+ */
+fun DeviceInfo.displayDeviceTypeName(): String? =
+    deviceType?.takeIf { it.isNotBlank() }
+
+fun DeviceInfo.unrecognizedDeviceTypeKey(): String? =
+    deviceTypeKey?.takeIf { it.isNotBlank() && deviceType.isNullOrBlank() }
+
+/** 离线降级：只用 Room 已缓存字段构造详情，缺失字段保持 null，由 UI 统一兜底。 */
+fun Device.toOfflineDeviceInfo(): DeviceInfo = DeviceInfo(
+    mac = mac,
+    vendor = vendor,
+    deviceType = deviceTypeName,
+    deviceTypeKey = deviceType,
+    firmwareVersion = firmwareVersion,
+    alias = name,
+    group = group.orEmpty(),
+    lastSeenTimestamp = lastSeenTimestamp,
+    compatibility = compatibility?.takeIf { it.isNotBlank() }?.let {
+        Compatibility(protocol = it)
+    },
+    fromLocalCache = true,
 )
 
 data class GattServiceSpec(

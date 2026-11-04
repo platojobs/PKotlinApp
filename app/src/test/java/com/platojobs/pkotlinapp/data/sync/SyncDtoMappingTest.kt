@@ -1,5 +1,6 @@
 package com.platojobs.pkotlinapp.data.sync
 
+import com.platojobs.pkotlinapp.data.remote.SyncDeviceDto
 import com.platojobs.pkotlinapp.domain.model.PLATFORM_ANDROID
 import com.platojobs.pkotlinapp.domain.sync.Rfc3339
 import com.platojobs.pkotlinapp.domain.sync.SyncRecord
@@ -93,5 +94,37 @@ class SyncDtoMappingTest {
 
         assertEquals(first, second)
         assertEquals(first, UUID.fromString(first).toString())
+    }
+
+    @Test
+    fun `group is pushed only when locally known`() {
+        val record = SyncRecord(
+            id = UUID.randomUUID().toString(),
+            platform = PLATFORM_ANDROID,
+            externalId = "AA:BB:CC:DD:EE:FF",
+            name = "BLE Tracker",
+            lastRssi = -55,
+            lastSeenTimestamp = 1_762_300_000_000,
+            updatedAt = 1_762_300_000_000,
+            group = "客厅",
+        )
+
+        assertEquals("客厅", record.toPushDto().group)
+
+        val ungrouped = record.copy(group = "  ")
+        // 空分组不上报，避免把服务端已有分组覆盖成空。
+        assertNull(ungrouped.toPushDto().group)
+    }
+
+    @Test
+    fun `pulled device keeps group for offline display`() {
+        val record = SyncDeviceDto(
+            id = UUID.randomUUID().toString(),
+            platform = PLATFORM_ANDROID,
+            externalId = "AA:BB:CC:DD:EE:FF",
+            group = "书房",
+        ).toDomain()
+
+        assertEquals("书房", record?.group)
     }
 }

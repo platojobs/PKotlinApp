@@ -6,6 +6,23 @@
 
 ---
 
+## v0.3.5
+
+**主题：修复离线降级展示 + 分组落库 + 筛选无障碍**
+
+- Room 升级到 v4：`devices` 新增 `deviceTypeName`（catalog 展示名）与 `deviceGroup`（真实分组）可空列，`MIGRATION_3_4` 用 `ALTER TABLE` 追加，历史行不丢。
+- 离线型号优先展示缓存展示名；只有型号键时回退为「型号键（未识别的型号）」，两者都没有才显示「型号未知」。
+- `UserDevice.group` 写入 `deviceGroup`；设备详情新增「编辑别名与分组」，保存即落库、离线即时可见，并排队同步。
+- 扫描写入不再用 null 覆盖已缓存的 enrich 字段与分组。
+- 设备列表每行展示真实分组，标题统计「共 N 台设备 · M 个分组」。
+- 市场筛选 Chip 增加 `contentDescription`、选中态 `stateDescription`，允许 200% 字号下两行换行且不省略。
+- 新增 `OfflineDeviceInfoTest`（3 个）与 `DeviceMigrationTest`（真实 SQLite 验证 v3→v4 不丢数据）。
+- README 与验收清单补充离线缓存/分组验收步骤与 v3→v4 迁移复验；新增市场筛选 Chip 的 TalkBack / 200% 字号 / 对比度手工验收清单。
+
+版本：`versionCode = 8`、`versionName = 0.3.5`。
+
+---
+
 ## v0.3.4
 
 **主题：接入 openapi 0.3.2 enrich 字段 + CI action 升级**

@@ -1,11 +1,13 @@
 package com.platojobs.pkotlinapp.data.remote
 
 import com.platojobs.pkotlinapp.data.sync.TokenStore
+import com.platojobs.pkotlinapp.domain.model.unrecognizedDeviceTypeKey
 import com.platojobs.pkotlinapp.domain.sync.AuthExpiredException
 import kotlinx.coroutines.runBlocking
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Test
 import retrofit2.HttpException
@@ -193,7 +195,10 @@ class CatalogMappingTest {
 
         assertEquals(1, api.myDeviceCalls)
         assertEquals("公共厂商", info.vendor)
-        assertEquals("unknown_type", info.deviceType)
+        // 没有 catalog 展示名时保留型号键，由 UI 标注「未识别的型号」。
+        assertNull(info.deviceType)
+        assertEquals("unknown_type", info.deviceTypeKey)
+        assertEquals("unknown_type", info.unrecognizedDeviceTypeKey())
         assertEquals("0.9.0", info.firmwareVersion)
     }
 

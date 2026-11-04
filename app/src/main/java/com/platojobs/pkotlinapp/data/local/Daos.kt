@@ -52,10 +52,14 @@ interface DeviceDao {
     @Query("UPDATE devices SET syncState = 'synced' WHERE externalId IN (:externalIds)")
     suspend fun markSyncedByExternalIds(externalIds: List<String>)
 
-    /** 只更新 enrich 缓存，不改变同步状态与本地修改时间。 */
+    /**
+     * 只更新 enrich 缓存，不改变同步状态与本地修改时间。
+     * 展示名使用 COALESCE：catalog 本次失败（null）时保留上一次缓存，避免离线降级丢失。
+     */
     @Query(
         "UPDATE devices SET deviceType = :deviceType, vendor = :vendor, " +
-            "firmwareVersion = :firmwareVersion, compatibility = :compatibility " +
+            "firmwareVersion = :firmwareVersion, compatibility = :compatibility, " +
+            "deviceTypeName = COALESCE(:deviceTypeName, deviceTypeName) " +
             "WHERE externalId = :externalId",
     )
     suspend fun updateEnrich(
@@ -64,7 +68,12 @@ interface DeviceDao {
         vendor: String?,
         firmwareVersion: String?,
         compatibility: String?,
+        deviceTypeName: String?,
     )
+
+    /** 云端分组只在成功拿到 UserDevice 时更新，避免未同步设备把本地分组清空。 */
+    @Query("UPDATE devices SET deviceGroup = :group WHERE externalId = :externalId")
+    suspend fun updateGroup(externalId: String, group: String?)
 
     /** 重新登录到新匿名账号后，把本机全部记录重新排队，推送到新账号。 */
     @Query("UPDATE devices SET syncState = 'pending'")

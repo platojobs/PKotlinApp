@@ -63,6 +63,12 @@ class SavedDeviceAdapter(
                 R.string.device_last_seen,
                 TimeFormat.relative(context, device.lastSeenTimestamp),
             )
+            // 分组直接来自 Room；离线时同样展示云端/用户编辑后的真实分组。
+            binding.groupLabel.text = context.getString(
+                R.string.device_group_value,
+                device.group?.takeIf { it.isNotBlank() }
+                    ?: context.getString(R.string.detail_group_empty),
+            )
 
             val connected = (connectionState as? BleConnectionState.Connected)?.mac == device.mac
             val connecting = (connectionState as? BleConnectionState.Connecting)?.mac == device.mac

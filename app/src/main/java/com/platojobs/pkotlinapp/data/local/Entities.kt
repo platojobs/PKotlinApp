@@ -21,6 +21,10 @@ data class DeviceEntity(
     val vendor: String? = null,
     val firmwareVersion: String? = null,
     val compatibility: String? = null,
+    // catalog 返回的人类可读型号名，用于离线优先展示；null 表示只有型号键。
+    val deviceTypeName: String? = null,
+    // 云端分组（列名避开 SQL 关键字 group）；null 表示尚未从云端拿到。
+    @ColumnInfo(name = "deviceGroup") val group: String? = null,
 )
 
 @Entity(tableName = "rules")

@@ -158,19 +158,20 @@ app/src/main/java/com/platojobs/pkotlinapp/
 
 ## 6. 数据层与多设备同步
 
-### Room 与 v1 → v2 迁移
+### Room 与迁移（当前 v4）
 
-数据库 `device_dashboard.db` 当前版本 **2**，共 4 张表：
+数据库 `device_dashboard.db` 当前版本 **4**，共 4 张表：
 
 | 表 | 关键字段 |
 | --- | --- |
-| `devices` | `mac` 主键、`name`、`lastRssi`、`lastSeenTimestamp`、`id`（客户端 UUID）、`platform`、`externalId`、`updatedAt`、`deletedAt`、`syncState(pending/synced)` |
+| `devices` | `mac` 主键、`name`、`lastRssi`、`lastSeenTimestamp`、`id`（客户端 UUID）、`platform`、`externalId`、`updatedAt`、`deletedAt`、`syncState(pending/synced)`、`deviceType/vendor/firmwareVersion/compatibility`（enrich 缓存）、`deviceTypeName`（catalog 展示名）、`deviceGroup`（云端分组） |
 | `rules` | 自增 id、`type`、`threshold`、`enabled`、`createdAt`、`lastTriggeredTimestamp` |
 | `rule_events` | 规则触发记录 |
 | `scan_logs` | 扫描日志 |
 
 - `MIGRATION_1_2` 使用 `ALTER TABLE ... ADD COLUMN` 扩展字段，再逐行回填客户端 UUID、`platform=android`、`externalId=规范化大写 MAC`、`updatedAt=lastSeenTimestamp`、`syncState=pending`，**不丢已有设备数据**。
-- 迁移后 schema 输出在 `app/schemas/com.platojobs.pkotlinapp.data.local.AppDatabase/2.json`。
+- `MIGRATION_2_3` 新增 4 个 enrich 可空列；`MIGRATION_3_4` 新增 `deviceTypeName` 与 `deviceGroup` 可空列，历史行保持 null，由离线 UI 兜底显示。
+- 迁移后 schema 输出在 `app/schemas/com.platojobs.pkotlinapp.data.local.AppDatabase/4.json`。
 - `DeviceDao` 使用 `@Upsert insertOrUpdate`、`suspend getAllDevices`，并提供待同步查询、待上传计数、按 externalId 标记 synced 等同步专用方法。
 - 删除设备改为**墓碑（tombstone）**：写 `deletedAt + syncState=pending`，UI 通过 `deletedAt IS NULL` 过滤，推送成功后再物理删除。
 
@@ -292,9 +293,11 @@ app/src/main/java/com/platojobs/pkotlinapp/
 
 客户端约定：
 
-- 设备详情**优先使用云端 enrich**；字段为 null 时展示「型号未知」/「未知」，不显示 `null` 或空串。未注册型号仍展示 alias、分组与最后出现时间。
-- 成功结果写入 Room（v3 迁移新增 `deviceType/vendor/firmwareVersion/compatibility` 可空列）；断网或网络失败时读取本地缓存降级，并标注「网络不可用，以下为本地缓存数据」。
-- push 的 `PushDevice` 新增**可选** `deviceType`：只有本地缓存或 catalog 能匹配到型号时才填写；未匹配时字段不序列化（Moshi 默认省略 null），服务端沿用旧值，不会把型号清空。
+- 设备详情**优先使用云端 enrich**；字段为 null 时展示「未知」，不显示 `null` 或空串。型号展示顺序：catalog 中文名 → 型号键 +「（未识别的型号）」→ 「型号未知」；未注册型号仍展示 alias、分组与最后出现时间。
+- 成功结果写入 Room（v3 迁移缓存 `deviceType/vendor/firmwareVersion/compatibility`，v4 迁移追加 `deviceTypeName/deviceGroup`）；断网或网络失败时读取本地缓存降级，并标注「网络不可用，以下为本地缓存数据」。
+- 离线时型号优先显示缓存的 catalog 展示名；只有型号键时回退为「`nordic_uart`（未识别的型号）」，两者都没有才显示「型号未知」。
+- 分组随 `UserDevice.group` 落库到 `deviceGroup`；设备详情「编辑别名与分组」在本地即时生效，离线展示与设备列表分组统计都读取该值。扫描写入不会覆盖已缓存的分组/enrich 字段。
+- push 的 `PushDevice` 新增**可选** `deviceType`：只有本地缓存或 catalog 能匹配到型号时才填写；未匹配时字段不序列化（Moshi 默认省略 null），服务端沿用旧值，不会把型号清空。`group` 同理，空值不上报。
 - `catalog.firmwares` / `catalog.accessories` 的 `vendor` / `compatibility` 用于产品展示与市场真实维度筛选。
 
 ### 契约端到端联调（e2eContract）
@@ -389,9 +392,12 @@ Debug / Release 都可通过 `apiBaseUrl` 切换；发布前请传入正式域�
 ### 断网降级
 
 - 产品 / 市场：请求失败显示错误文案 + `EmptyStateView` 重试，不展示假数据。
-- 设备详情：设备信息失败显示错误提示与「重试读取设备信息」，连接状态与 RSSI 仍来自真实 BLE。
+- 设备详情：设备信息失败时读取 Room 缓存并提示「网络不可用，以下为本地缓存数据」；型号优先显示缓存的 catalog 展示名，缺失时回退型号键并标注「未识别的型号」；分组按 `deviceGroup` 真实值展示，不再一律显示「未分组」。连接状态与 RSSI 仍来自真实 BLE。
+- 设备编辑：详情页「编辑别名与分组」直接写 Room 并排队同步；断网时保存也会立即在详情与设备列表生效，重连后推送。
+- 设备列表：每行展示「分组：X / 未分组」，标题旁统计「共 N 台设备 · M 个分组」，数据全部来自 Room，离线一致。
 - 同步：连续失败 3 次进入纯本地模式，主界面横幅 +「我的」同步卡片提示；Room 数据（首页、设备、日志）不依赖网络。
 - 首页 / 设备 / 我的：本地 Room 数据不依赖网络，断网仍可用。
+- 离线验收步骤见 [真机验收清单 §7.2](docs/acceptance.md#72-离线缓存与分组验收v035-新增)。
 
 ---
 
@@ -402,7 +408,7 @@ export JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk-21.jdk/Contents/Home
 
 ./gradlew assembleDebug        # Debug APK
 ./gradlew lintDebug            # Lint
-./gradlew testDebugUnitTest    # 单元测试：RssiLevel 4 + SyncEngine 5 + Rfc3339 3 + SyncDtoMapping 4 + SyncErrorKind 7 + RemoteSyncToken 4 + CatalogMapping 7
+./gradlew testDebugUnitTest    # 单元测试：40 个（含 OfflineDeviceInfo 3 + DeviceMigration 1）
 ./gradlew assembleRelease      # 签名 Release APK
 ./gradlew bundleRelease        # 签名 Release AAB
 
@@ -519,6 +525,7 @@ release {
 
 ## 11. 版本记录
 
+- `v0.3.5`：离线降级修复：Room v4 新增 `deviceTypeName`（catalog 展示名）与 `deviceGroup`（真实分组）可空列 + `MIGRATION_3_4`；离线型号优先展示缓存名，缺失时回退型号键并标注「未识别的型号」；设备编辑（别名/分组）落库并即时离线可见，设备列表展示分组与分组统计；扫描写入不再覆盖已缓存 enrich/分组；市场筛选 Chip 补 contentDescription、选中态 stateDescription 与 200% 字号换行；新增离线展示名/分组与 v3→v4 迁移测试。
 - `v0.3.4`：接入 PJGoIoT openapi 0.3.2 enrich 字段（`UserDevice.deviceType/vendor/firmwareVersion/compatibility`、catalog 配件/固件 `vendor/compatibility`）；设备详情优先云端并支持本地缓存降级，市场新增厂商/兼容性筛选，push 支持可选 `deviceType` 且不上报时不覆盖旧值；Room v2→v3 迁移；扩展 e2e 断言；CI action 升级到 checkout@v7 / setup-java@v6 / setup-go@v7 / setup-gradle@v6 / upload-artifact@v7。
 - `v0.3.3`：把 `e2e-contract` 纳入 GitHub Actions（与 verify 并行，push/PR 触发），失败上传测试报告与 Go 服务日志；`e2eContract` 强制每次真实执行；README 新增「CI 里的契约联调」。
 - `v0.3.2`：产品 / 市场 / 设备详情改用 `GET /device-types/{type}/catalog`（一次返回 firmware + accessories），设备详情复合键查询改用 `GET /my/devices/android/{externalId}`；新增 `CatalogMappingTest`。同时新增验收 / 排障 / 发布说明文档，401 改为「停止同步 + 用户确认重新登录」（与 iOS 对齐），同步错误分类展示，权限被拒后提供「打开应用设置」，Debug 构建允许明文 HTTP。

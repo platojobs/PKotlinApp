@@ -1,0 +1,7 @@
+<resources>
+    <declare-styleable name="TodoProgressView">
+        <attr name="tpv_trackColor" format="color|reference" />
+        <attr name="tpv_progressColor" format="color|reference" />
+        <attr name="tpv_labelColor" format="color|reference" />
+    </declare-styleable>
+</resources>

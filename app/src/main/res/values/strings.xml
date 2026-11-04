@@ -1,0 +1,27 @@
+<resources>
+    <string name="app_name">PKotlinApp</string>
+    <string name="toolbar_title">我的待办</string>
+
+    <string name="add_todo">新增待办</string>
+    <string name="todo_add_title">新增待办</string>
+    <string name="todo_edit_title">编辑待办</string>
+    <string name="todo_title_label">标题</string>
+    <string name="todo_note_label">备注（可选）</string>
+    <string name="todo_delete_desc">删除待办</string>
+
+    <string name="action_save">保存</string>
+    <string name="action_cancel">取消</string>
+    <string name="action_delete">删除</string>
+
+    <string name="error_title_required">标题不能为空</string>
+
+    <string name="todo_delete_title">删除待办</string>
+    <string name="todo_delete_message">确定删除「%1$s」吗？删除后无法恢复。</string>
+
+    <string name="todo_empty_title">还没有待办</string>
+    <string name="todo_empty_hint">把今天要做的事记下来，完成后会自动保存到本地</string>
+    <string name="todo_empty_action">添加第一条待办</string>
+
+    <string name="todo_progress_label">已完成 %1$d / %2$d</string>
+    <string name="todo_progress_percent">%1$d%%</string>
+</resources>

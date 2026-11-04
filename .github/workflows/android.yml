@@ -3,7 +3,9 @@ name: Android CI
 on:
   push:
     branches: [ main ]
+    tags: [ 'v*' ]
   pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: android-ci-${{ github.ref }}

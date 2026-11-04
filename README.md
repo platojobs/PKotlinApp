@@ -370,10 +370,11 @@ CI action 已升级到当前推荐 major：`checkout@v7`、`setup-java@v6`、`se
 若想主动验证「漂移会红」，可在 `../PJGoIoT` 临时修改某个响应字段（例如把 `nextCursor` 改成字符串），再执行上面的命令；测试失败后脚本会打印 Go 服务日志最后 60 行并以非零码退出。恢复后端改动后重跑即可。
 `e2eContract` task 设置了 `outputs.upToDateWhen { false }`，因此不会因为 UP-TO-DATE 而假通过。
 
-CI run 链接（`main` @ `1bcb423`，2026-11-05）：
+CI run 链接（`main` @ `cb8d046`，2026-11-05，action 升级后）：
 
-- 整轮运行：<https://github.com/platojobs/PKotlinApp/actions/runs/41897980712>（`verify` 与 `e2e-contract` 均 success）
-- `e2e-contract` job：<https://github.com/platojobs/PKotlinApp/actions/runs/41897980712/job/126812506484>
+- 整轮运行：<https://github.com/platojobs/PKotlinApp/actions/runs/41902523671>（`verify` 与 `e2e-contract` 均 success）
+- `e2e-contract` job：<https://github.com/platojobs/PKotlinApp/actions/runs/41902523671/job/126828424666>
+- `verify` job：<https://github.com/platojobs/PKotlinApp/actions/runs/41902523671/job/126828424829>
 
 ### 网络配置（BASE_URL）
 

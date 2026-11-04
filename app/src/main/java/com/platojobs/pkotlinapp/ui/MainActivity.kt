@@ -1,11 +1,16 @@
 package com.platojobs.pkotlinapp.ui
 
 import android.os.Bundle
+import android.view.View
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.commit
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import com.platojobs.pkotlinapp.PKotlinApplication
 import com.platojobs.pkotlinapp.R
 import com.platojobs.pkotlinapp.databinding.ActivityMainBinding
 import com.platojobs.pkotlinapp.ui.common.applyBottomInset
@@ -16,6 +21,8 @@ import com.platojobs.pkotlinapp.ui.home.HomeFragment
 import com.platojobs.pkotlinapp.ui.market.MarketFragment
 import com.platojobs.pkotlinapp.ui.products.ProductsFragment
 import com.platojobs.pkotlinapp.ui.profile.ProfileFragment
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collect
 
 class MainActivity : AppCompatActivity() {
 
@@ -48,12 +55,31 @@ class MainActivity : AppCompatActivity() {
         binding.bottomNav.applyBottomInset()
 
         val restoredTab = savedInstanceState?.getInt(STATE_TAB, R.id.nav_home) ?: R.id.nav_home
-        binding.bottomNav.selectedItemId = restoredTab
-        showTab(restoredTab)
 
         binding.bottomNav.setOnItemSelectedListener { item ->
             showTab(item.itemId)
             true
+        }
+
+        // 冷启动先等待增量拉取（最多 3 秒），失败/超时也继续展示本地数据，避免白屏。
+        val app = application as PKotlinApplication
+        lifecycleScope.launch {
+            app.awaitInitialSync()
+            binding.syncLoading.visibility = View.GONE
+            val previous = binding.bottomNav.selectedItemId
+            binding.bottomNav.selectedItemId = restoredTab
+            if (binding.bottomNav.selectedItemId == previous) {
+                showTab(restoredTab)
+            }
+        }
+
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                app.container.syncManager.status.collect { status ->
+                    binding.syncBanner.visibility =
+                        if (status.localOnly) View.VISIBLE else View.GONE
+                }
+            }
         }
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {

@@ -21,6 +21,7 @@
 | UI | XML + ViewBinding + Material 3，禁止 Compose |
 | 本地存储 | Room 2.8.5（KSP） |
 | 网络 | Retrofit 2.11.0 + OkHttp 4.12.0 + Moshi 1.15.2 |
+| 同步 | WorkManager 2.10.5 + EncryptedSharedPreferences（Keystore 保护 token） |
 | 架构 | MVVM + Repository + 手动 DI（`AppContainer`）+ StateFlow/SharedFlow |
 
 ---
@@ -49,10 +50,11 @@
 
 ### 市场 Market（`ui/market`）
 - 配件与固件版本信息列表 + 兼容性说明。
-- 数据经 `MarketDataSource` 接口抽象，`RemoteMarketDataSource` 走 Retrofit mock；未来接真实商品后端只需新增实现并替换注入，不改 UI/ViewModel。
+- 数据经 `MarketDataSource` 接口抽象，`RemoteMarketDataSource` 走 Retrofit（Base URL 可配置）；未来接真实商品后端只需新增实现并替换注入，不改 UI/ViewModel。
 - **不包含购物车、订单、支付等任何假交易能力**，页面有明确免责声明。
 
 ### 我的 Profile（`ui/profile`）
+- 同步状态：上次同步时间、待上传条数、最近冲突数、纯本地模式提示、手动「立即同步」，数据来自真实同步状态与 Room 统计。
 - 权限自检：读取真实的蓝牙扫描/连接/定位授权状态，并跳转系统应用设置。
 - 扫描日志：Room 本地记录（扫描会话中每个设备首次出现写一条），可清空。
 - 版本与关于：读取 `BuildConfig` 的真实版本号与构建类型。
@@ -67,14 +69,16 @@ app/src/main/java/com/platojobs/pkotlinapp/
 ├── PKotlinApplication.kt          # 创建 AppContainer、应用主题
 ├── di/AppContainer.kt             # 手动 DI：DB、仓库、网络、BLE、规则引擎
 ├── domain/
-│   ├── model/Models.kt            # 领域模型
+│   ├── model/Models.kt            # 领域模型（含同步字段）
 │   ├── repository/Repositories.kt # 仓库接口
-│   └── rule/                      # RuleEngine + 文案接口
+│   ├── rule/                      # RuleEngine + 文案接口
+│   └── sync/                      # SyncEngine / 同步模型 / 幂等键（纯 Kotlin）
 ├── data/
 │   ├── ble/                       # BleScanner / BleConnectionManager
-│   ├── local/                     # Room 实体、DAO、数据库
+│   ├── local/                     # Room 实体、DAO、数据库、v1→v2 迁移
 │   ├── repository/                # Room 仓库实现
-│   ├── remote/                    # DTO、ApiService、ApiClient、Retrofit 仓库
+│   ├── remote/                    # DTO、ApiService、SyncApi、ApiClient
+│   ├── sync/                      # token 加密存储、远程适配、WorkManager、同步编排
 │   ├── prefs/AppSettings.kt       # 主题等设置
 │   └── rule/AndroidRuleTextProvider.kt
 └── ui/
@@ -95,6 +99,7 @@ app/src/main/java/com/platojobs/pkotlinapp/
 3. 数据访问先定义 `domain/repository` 接口，再在 `data/` 写实现，并注入 `AppContainer`。
 4. 空状态一律使用代码构建的 `EmptyStateView`，列表使用 ViewBinding + RecyclerView。
 5. 若需要新表：在 `data/local/Entities.kt` 加实体、`Daos.kt` 加 DAO、`AppDatabase` 注册并升级版本；schema 输出到 `app/schemas/`。
+6. 若新数据需要跨端同步：实现 `SyncLocalStore` 适配与对应 DTO，并扩展 `SyncEngine`；同步字段统一使用 `id / platform / externalId / updatedAt / deletedAt / syncState`。
 
 ---
 
@@ -150,77 +155,108 @@ app/src/main/java/com/platojobs/pkotlinapp/
 
 ---
 
-## 6. 数据层
+## 6. 数据层与多设备同步
 
-### Room
+### Room 与 v1 → v2 迁移
 
-数据库 `device_dashboard.db`，4 张表：
+数据库 `device_dashboard.db` 当前版本 **2**，共 4 张表：
 
 | 表 | 关键字段 |
 | --- | --- |
-| `devices` | `mac` 主键、`name`、`lastRssi`、`lastSeenTimestamp` |
+| `devices` | `mac` 主键、`name`、`lastRssi`、`lastSeenTimestamp`、`id`（客户端 UUID）、`platform`、`externalId`、`updatedAt`、`deletedAt`、`syncState(pending/synced)` |
 | `rules` | 自增 id、`type`、`threshold`、`enabled`、`createdAt`、`lastTriggeredTimestamp` |
 | `rule_events` | 规则触发记录 |
 | `scan_logs` | 扫描日志 |
 
-`DeviceDao` 使用 `@Upsert insertOrUpdate`、`suspend getAllDevices`，同时提供 `Flow` 观察。扫描时在协程内节流写入，App 启动即读取历史列表。
+- `MIGRATION_1_2` 使用 `ALTER TABLE ... ADD COLUMN` 扩展字段，再逐行回填客户端 UUID、`platform=android`、`externalId=规范化大写 MAC`、`updatedAt=lastSeenTimestamp`、`syncState=pending`，**不丢已有设备数据**。
+- 迁移后 schema 输出在 `app/schemas/com.platojobs.pkotlinapp.data.local.AppDatabase/2.json`。
+- `DeviceDao` 使用 `@Upsert insertOrUpdate`、`suspend getAllDevices`，并提供待同步查询、待上传计数、按 externalId 标记 synced 等同步专用方法。
+- 删除设备改为**墓碑（tombstone）**：写 `deletedAt + syncState=pending`，UI 通过 `deletedAt IS NULL` 过滤，推送成功后再物理删除。
 
-### Retrofit / Mock 数据源
+### 多设备同步
 
-网络层位于 `data/remote/`，Moshi 使用 `KotlinJsonAdapterFactory`，仅在 debug 构建开启 BASIC 日志。
+后端设备唯一键为 `(user_id, platform, external_id)`。Android 端固定：
 
-当前 BASE_URL（真实可访问，已用 `curl` 验证返回 200 JSON）：
+- `platform = "android"`
+- `externalId = 规范化大写 MAC`（`AA:BB:CC:DD:EE:FF`）
+- iOS 端使用 `CBPeripheral.identifier` 作为 `externalId`，两端通过该唯一键对齐。
 
-```
-https://quickmock.dev/m/ecHT7ex3yQPA/
-```
+同步 API（`SyncApi`，Base URL 见下节）：
 
-- 该 mock 服务由 Quickmock.dev 提供，任意路径后缀均返回同一份组合 JSON，因此同时支撑 `GET api/device/{mac}`、`GET api/products`、`GET api/market`。
-- 有效期约 30 天（创建于 2026-11-04，**预计 2026-12-04 到期**）。到期后需重新生成 mock 并修改 `app/build.gradle.kts` 中的 `API_BASE_URL`。
-- 为什么不用 Mocky：实测 Mocky 域名证书校验失败、`api.mocky.io` 返回 404，无法稳定提供可直接访问的 JSON。
-- 地址写在 `buildConfigField("String", "API_BASE_URL", ...)`，运行时通过 `BuildConfig.API_BASE_URL` 读取。
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `POST` | `api/v1/auth/anonymous` | 匿名登录，返回 `{ token }` |
+| `GET` | `api/v1/sync/changes?cursor=` | 增量拉取，返回 `{ changes, nextCursor }` |
+| `POST` | `api/v1/sync/push` | 批量推送，Header 带 `Authorization` 与 `Idempotency-Key` |
 
-样例返回（节选）：
+实现要点：
+
+- **Token 安全**：匿名 token 仅写入 `EncryptedSharedPreferences`（MasterKey 由 Android Keystore 保护），不落明文数据库、不打印日志；401 时清除并重新匿名登录一次。
+- **幂等推送**：`IdempotencyKeys.forBatch` 对同一批未变化记录生成稳定的 SHA-256 key；网络失败重试时服务端可据此去重。
+- **冲突处理**：服务端返回 `conflicts` 时以服务端版本覆盖本地，但结果会通过 `SyncOutcome.conflicts` 上报，并显示在「我的」页，**不静默覆盖**。
+- **拉取合并**：若本地记录为 `pending` 且 `updatedAt` 更新，则不被较旧的服务端版本覆盖；服务端 tombstone 直接删除本地记录。
+- **WorkManager**：`SyncWorker` 在 `NetworkType.CONNECTED` 约束下批量 push，成功后置 `synced`；失败按指数退避重试。
+- **冷启动**：`PKotlinApplication` 启动后先拉增量，`MainActivity` 最多等待 3 秒再渲染；超时或失败直接展示本地数据，不白屏。
+- **降级**：连续失败 3 次进入纯本地模式并持久化，主界面顶部横幅与「我的」页同步卡片都会提示；本地 Room 功能不受影响，用户可手动同步恢复。
+- **测试**：`SyncEngineTest` 覆盖幂等重试、冲突落败上报、tombstone 删除与拉取合并。
+
+同步往返样例（服务端契约为约定，需以真实后端为准）：
 
 ```json
+// POST /api/v1/auth/anonymous
+{ "installId": "uuid", "platform": "android" }
+{ "token": "<anonymous-token>" }
+
+// GET /api/v1/sync/changes?cursor=cursor-1
 {
-  "mac": "AA:BB:CC:DD:EE:FF",
-  "vendor": "Nordic Semiconductor",
-  "deviceType": "BLE Tracker",
-  "firmwareVersion": "1.2.3",
-  "products": [
+  "changes": [
     {
-      "id": "nrf52840",
-      "vendor": "Nordic Semiconductor",
-      "model": "nRF52840 Dongle",
-      "firmwareVersion": "2.4.1",
-      "note": "支持 BLE 5.0、Thread 与 USB DFU",
-      "services": [
-        {
-          "uuid": "0000180F-0000-1000-8000-00805F9B34FB",
-          "name": "Battery Service",
-          "characteristics": ["2A19 Battery Level (Read/Notify)"]
-        }
-      ]
+      "id": "client-uuid",
+      "platform": "android",
+      "externalId": "AA:BB:CC:DD:EE:FF",
+      "name": "BLE Tracker",
+      "lastRssi": -55,
+      "lastSeenTimestamp": 1762300000000,
+      "updatedAt": 1762300000000,
+      "deletedAt": null
     }
   ],
-  "marketItems": [
+  "nextCursor": "cursor-2"
+}
+
+// POST /api/v1/sync/push
+{
+  "records": [
     {
-      "id": "fw-gateway",
-      "title": "网关固件",
-      "category": "固件",
-      "version": "1.4.0",
-      "compatibility": "nRF52840 / ESP32-C3",
-      "description": "支持多设备转发与 OTA 升级"
+      "id": "client-uuid",
+      "platform": "android",
+      "externalId": "AA:BB:CC:DD:EE:FF",
+      "name": "BLE Tracker",
+      "lastRssi": -55,
+      "lastSeenTimestamp": 1762300000000,
+      "updatedAt": 1762300000000,
+      "deletedAt": null
     }
   ]
 }
+{ "accepted": ["AA:BB:CC:DD:EE:FF"], "conflicts": [] }
 ```
+
+### 网络配置（BASE_URL）
+
+不硬编码公网地址，`BuildConfig.API_BASE_URL` 按以下优先级生成：
+
+1. Gradle 属性：`./gradlew assembleDebug -PapiBaseUrl=http://192.168.1.10:8080/`
+2. `local.properties`：`apiBaseUrl=http://10.0.2.2:8080/`
+3. 默认值：`http://10.0.2.2:8080/`（Android 模拟器访问宿主机的本地 Go 服务）
+
+Debug / Release 都可通过 `apiBaseUrl` 切换；发布前请传入正式域名并确认 HTTPS。产品、市场、设备详情与同步接口均使用该 Base URL，本地没有后端时这些网络页面会显示错误空状态并提供重试，不会崩溃或展示假数据。
 
 ### 断网降级
 
 - 产品 / 市场：请求失败显示错误文案 + `EmptyStateView` 重试，不展示假数据。
 - 设备详情：设备信息失败显示错误提示与「重试读取设备信息」，连接状态与 RSSI 仍来自真实 BLE。
+- 同步：连续失败 3 次进入纯本地模式，主界面横幅 +「我的」同步卡片提示；Room 数据（首页、设备、日志）不依赖网络。
 - 首页 / 设备 / 我的：本地 Room 数据不依赖网络，断网仍可用。
 
 ---
@@ -232,7 +268,7 @@ export JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk-21.jdk/Contents/Home
 
 ./gradlew assembleDebug        # Debug APK
 ./gradlew lintDebug            # Lint
-./gradlew testDebugUnitTest    # 单元测试（RssiLevel 纯函数）
+./gradlew testDebugUnitTest    # 单元测试：RssiLevel 4 项 + SyncEngine 5 项
 ./gradlew assembleRelease      # 签名 Release APK
 ./gradlew bundleRelease        # 签名 Release AAB
 ```
@@ -326,15 +362,21 @@ release {
 - [ ] 绑定丢失后禁止自动重连、重新配对后手动重试的完整流程。
 - [ ] 各机型上的权限弹窗、拒绝后跳系统设置的行为。
 - [ ] 横屏、大屏、折叠屏的 Edge-to-edge 与列表布局表现。
+- [ ] WorkManager 在网络恢复后自动推送、断网连续失败进入纯本地模式。
+- [ ] 冷启动 3 秒内增量拉取与超时回退本地数据的表现。
+- [ ] v1 → v2 Room 迁移在已有数据的真实设备上执行（本机仅验证 schema 与构建）。
 
 其他限制：
 
-- Mock 服务为公开临时服务（Quickmock.dev），**预计 2026-12-04 到期**；到期后产品/市场/详情信息接口会失败（界面会显示错误与重试，不会崩溃），需更换 BASE_URL。
+- **同步后端尚未提供/联调**：当前按约定的 v1 契约实现，`accepted / conflicts / nextCursor` 字段以服务端实际返回为准；本地没有 Go 服务时同步会失败并降级，需接后端后做真机联调。
+- 匿名 token 使用 `EncryptedSharedPreferences`（Keystore 包装）；该 API 已被 AndroidX 标记为 deprecated，但当前功能可用，后续可平滑替换为自实现 Keystore 封装。
 - 未实现真实 OTA、GATT 服务发现与写入，仅展示型号库中的 GATT 元数据。
+- 产品 / 市场 / 设备详情依赖同一可配置 Base URL，本地后端未启动时显示真实错误空状态。
 
 ---
 
 ## 11. 版本记录
 
+- `v0.3.0`：接入多设备同步客户端（匿名登录、加密 token、增量拉取、幂等批量推送、冲突上报、tombstone），Room v1→v2 迁移，WorkManager 后台同步与纯本地降级，「我的」同步状态卡片，同步单测。
 - `v0.2.0`：项目定位改为 BLE 设备数据面板；五模块底部导航、BLE 扫描/连接、Room、Retrofit、规则引擎、Android 16 适配、签名 Release、GitHub Actions CI。
 - `v0.1.0`：初始纯 Kotlin + View 待办 Demo（已被本版本覆盖）。

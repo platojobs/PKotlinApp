@@ -120,6 +120,18 @@
     <string name="market_compatibility">兼容性：%1$s</string>
 
     <string name="profile_title">我的</string>
+
+    <string name="sync_banner_local_only">网络同步不可用，当前为纯本地模式；本地数据仍可正常使用</string>
+    <string name="profile_sync_title">同步状态</string>
+    <string name="profile_sync_last">上次同步：%1$s</string>
+    <string name="profile_sync_never">上次同步：尚未同步</string>
+    <string name="profile_sync_pending">待上传：%1$d 条</string>
+    <string name="profile_sync_conflicts">最近冲突：%1$d 条（已采用服务端版本）</string>
+    <string name="profile_sync_local_only">已连续失败，切换为纯本地模式。可点击“立即同步”重试。</string>
+    <string name="profile_sync_now">立即同步</string>
+    <string name="profile_sync_running">同步中…</string>
+    <string name="profile_sync_success">同步完成：上传 %1$d 条，拉取 %2$d 条</string>
+    <string name="profile_sync_failure">同步失败：%1$s</string>
     <string name="profile_permissions_title">权限自检</string>
     <string name="profile_permission_scan">蓝牙扫描权限</string>
     <string name="profile_permission_connect">蓝牙连接权限</string>

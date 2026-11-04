@@ -22,7 +22,9 @@ import com.platojobs.pkotlinapp.PKotlinApplication
 import com.platojobs.pkotlinapp.R
 import com.platojobs.pkotlinapp.data.prefs.ThemeMode
 import com.platojobs.pkotlinapp.databinding.FragmentProfileBinding
+import com.platojobs.pkotlinapp.domain.sync.SyncStatus
 import com.platojobs.pkotlinapp.ui.common.BlePermissions
+import com.platojobs.pkotlinapp.ui.common.TimeFormat
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
@@ -62,6 +64,7 @@ class ProfileFragment : Fragment() {
         binding.openSettingsButton.setOnClickListener { openAppSettings() }
         binding.githubButton.setOnClickListener { openRepository() }
         binding.clearLogsButton.setOnClickListener { confirmClearLogs() }
+        binding.syncNowButton.setOnClickListener { viewModel.manualSync() }
 
         binding.themeGroup.check(
             when (viewModel.themeMode.value) {
@@ -97,6 +100,22 @@ class ProfileFragment : Fragment() {
                         binding.clearLogsButton.isEnabled = logs.isNotEmpty()
                     }
                 }
+                launch {
+                    viewModel.syncStatus.collect { renderSyncStatus(it) }
+                }
+                launch {
+                    viewModel.syncing.collect { syncing ->
+                        binding.syncNowButton.isEnabled = !syncing
+                        binding.syncNowButton.setText(
+                            if (syncing) R.string.profile_sync_running else R.string.profile_sync_now,
+                        )
+                    }
+                }
+                launch {
+                    viewModel.syncMessage.collect { message ->
+                        Snackbar.make(binding.root, message, Snackbar.LENGTH_LONG).show()
+                    }
+                }
             }
         }
     }
@@ -110,6 +129,23 @@ class ProfileFragment : Fragment() {
         binding.logsList.adapter = null
         _binding = null
         super.onDestroyView()
+    }
+
+    private fun renderSyncStatus(status: SyncStatus) {
+        binding.syncLastAt.text = if (status.lastSyncAt == null) {
+            getString(R.string.profile_sync_never)
+        } else {
+            getString(
+                R.string.profile_sync_last,
+                TimeFormat.relative(requireContext(), status.lastSyncAt),
+            )
+        }
+        binding.syncPending.text = getString(R.string.profile_sync_pending, status.pendingCount)
+        binding.syncConflicts.text = getString(
+            R.string.profile_sync_conflicts,
+            status.lastConflictCount,
+        )
+        binding.syncLocalOnly.visibility = if (status.localOnly) View.VISIBLE else View.GONE
     }
 
     private fun renderPermissions(status: PermissionStatus) {

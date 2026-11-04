@@ -1,5 +1,6 @@
 package com.platojobs.pkotlinapp.data.local
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
@@ -9,6 +10,12 @@ data class DeviceEntity(
     val name: String,
     val lastRssi: Int,
     val lastSeenTimestamp: Long,
+    @ColumnInfo(defaultValue = "''") val id: String,
+    @ColumnInfo(defaultValue = "'android'") val platform: String,
+    @ColumnInfo(defaultValue = "''") val externalId: String,
+    @ColumnInfo(defaultValue = "0") val updatedAt: Long,
+    val deletedAt: Long?,
+    @ColumnInfo(defaultValue = "'pending'") val syncState: String,
 )
 
 @Entity(tableName = "rules")

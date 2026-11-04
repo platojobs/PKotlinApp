@@ -6,13 +6,29 @@ enum class RuleType {
     BOND_LOST,
 }
 
+enum class SyncState {
+    PENDING,
+    SYNCED,
+}
+
 /** Room 中保存的设备历史记录。 */
 data class Device(
     val mac: String,
     val name: String,
     val lastRssi: Int,
     val lastSeenTimestamp: Long,
+    val id: String = "",
+    val platform: String = PLATFORM_ANDROID,
+    val externalId: String = "",
+    val updatedAt: Long = lastSeenTimestamp,
+    val deletedAt: Long? = null,
+    val syncState: SyncState = SyncState.PENDING,
 )
+
+const val PLATFORM_ANDROID = "android"
+
+/** 设备唯一键：Android 使用规范化大写 MAC。 */
+fun normalizeExternalId(mac: String): String = mac.trim().uppercase()
 
 /** 一次 BLE 扫描回调中的设备快照。 */
 data class ScannedDevice(

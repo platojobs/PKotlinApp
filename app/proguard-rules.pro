@@ -35,3 +35,11 @@
 
 # ---------- Room 实体（保留列名与泛型） ----------
 -keep class com.platojobs.pkotlinapp.data.local.** { *; }
+
+# ---------- WorkManager / 同步 ----------
+# Worker 由 WorkManager 按类名反射创建
+-keep class com.platojobs.pkotlinapp.data.sync.SyncWorker { *; }
+-keep class com.platojobs.pkotlinapp.domain.sync.** { *; }
+-keep class com.platojobs.pkotlinapp.data.sync.SyncManager { *; }
+-keep class androidx.security.crypto.** { *; }
+-dontwarn androidx.security.crypto.**

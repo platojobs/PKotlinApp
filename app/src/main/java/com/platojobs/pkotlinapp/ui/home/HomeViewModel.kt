@@ -10,6 +10,7 @@ import com.platojobs.pkotlinapp.data.ble.BleConnectionManager
 import com.platojobs.pkotlinapp.data.ble.BleError
 import com.platojobs.pkotlinapp.data.ble.BleException
 import com.platojobs.pkotlinapp.data.ble.BleScanner
+import com.platojobs.pkotlinapp.data.sync.SyncScheduler
 import com.platojobs.pkotlinapp.domain.model.Device
 import com.platojobs.pkotlinapp.domain.model.ScanLog
 import com.platojobs.pkotlinapp.domain.model.ScannedDevice
@@ -36,6 +37,7 @@ class HomeViewModel(
     private val bleScanner: BleScanner,
     private val bleConnectionManager: BleConnectionManager,
     private val ruleEngine: RuleEngine,
+    private val syncScheduler: SyncScheduler,
     private val unknownDeviceName: String,
 ) : ViewModel() {
 
@@ -112,6 +114,8 @@ class HomeViewModel(
                         lastSeenTimestamp = now,
                     ),
                 )
+                // 网络可用时由 WorkManager 批量推送，失败自动退避。
+                runCatching { syncScheduler.schedule() }
             }
         }
 
@@ -156,6 +160,7 @@ class HomeViewModel(
                     scanLogRepository = container.scanLogRepository,
                     bleScanner = container.bleScanner,
                     bleConnectionManager = container.bleConnectionManager,
+                    syncScheduler = container.syncScheduler,
                     ruleEngine = container.ruleEngine,
                     unknownDeviceName = app.getString(R.string.device_unknown),
                 )

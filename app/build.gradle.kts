@@ -13,6 +13,16 @@ val keystoreProperties = Properties().apply {
     }
 }
 
+// 后端域名尚未确定：不硬编码公网地址。
+// 优先级：Gradle 属性 > local.properties > 本地 Go 服务默认地址。
+val localProperties = Properties().apply {
+    rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+}
+val configuredApiBaseUrl: String = providers.gradleProperty("apiBaseUrl").orNull
+    ?: localProperties.getProperty("apiBaseUrl")
+    ?: "http://10.0.2.2:8080/"
+val apiBaseUrl = configuredApiBaseUrl.trimEnd('/') + "/"
+
 android {
     namespace = "com.platojobs.pkotlinapp"
     compileSdk = 36
@@ -21,13 +31,9 @@ android {
         applicationId = "com.platojobs.pkotlinapp"
         minSdk = 24
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.2.0"
-        buildConfigField(
-            "String",
-            "API_BASE_URL",
-            "\"https://quickmock.dev/m/ecHT7ex3yQPA/\"",
-        )
+        versionCode = 3
+        versionName = "0.3.0"
+        buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
     }
 
     signingConfigs {
@@ -100,6 +106,8 @@ dependencies {
     implementation(libs.moshi)
     implementation(libs.moshi.kotlin)
     implementation(libs.kotlin.reflect)
+    implementation(libs.androidx.work.runtime.ktx)
+    implementation(libs.androidx.security.crypto)
 
     testImplementation(libs.junit)
 }

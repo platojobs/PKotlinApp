@@ -15,6 +15,13 @@ import com.platojobs.pkotlinapp.data.repository.RuleEventRepositoryImpl
 import com.platojobs.pkotlinapp.data.repository.RuleRepositoryImpl
 import com.platojobs.pkotlinapp.data.repository.ScanLogRepositoryImpl
 import com.platojobs.pkotlinapp.data.rule.AndroidRuleTextProvider
+import com.platojobs.pkotlinapp.data.sync.RemoteSyncDataSource
+import com.platojobs.pkotlinapp.data.sync.RoomSyncLocalStore
+import com.platojobs.pkotlinapp.data.sync.SecureTokenStore
+import com.platojobs.pkotlinapp.data.sync.SyncManager
+import com.platojobs.pkotlinapp.data.sync.SyncPrefs
+import com.platojobs.pkotlinapp.data.sync.SyncScheduler
+import com.platojobs.pkotlinapp.data.sync.SyncStatusStore
 import com.platojobs.pkotlinapp.domain.repository.DeviceInfoRepository
 import com.platojobs.pkotlinapp.domain.repository.DeviceRepository
 import com.platojobs.pkotlinapp.domain.repository.MarketRepository
@@ -23,6 +30,7 @@ import com.platojobs.pkotlinapp.domain.repository.RuleEventRepository
 import com.platojobs.pkotlinapp.domain.repository.RuleRepository
 import com.platojobs.pkotlinapp.domain.repository.ScanLogRepository
 import com.platojobs.pkotlinapp.domain.rule.RuleEngine
+import com.platojobs.pkotlinapp.domain.sync.SyncEngine
 
 class AppContainer(context: Context) {
 
@@ -31,6 +39,14 @@ class AppContainer(context: Context) {
     private val database by lazy { AppDatabase.getInstance(appContext) }
 
     private val apiService by lazy { ApiClient.create() }
+
+    private val syncApi by lazy { ApiClient.createSync() }
+
+    private val secureTokenStore by lazy { SecureTokenStore(appContext) }
+
+    private val syncPrefs by lazy { SyncPrefs(appContext) }
+
+    private val syncStatusStore by lazy { SyncStatusStore(appContext) }
 
     val deviceRepository: DeviceRepository by lazy {
         DeviceRepositoryImpl(database.deviceDao())
@@ -75,4 +91,22 @@ class AppContainer(context: Context) {
             textProvider = AndroidRuleTextProvider(appContext),
         )
     }
+
+    val syncManager: SyncManager by lazy {
+        SyncManager(
+            dao = database.deviceDao(),
+            engine = SyncEngine(
+                local = RoomSyncLocalStore(database.deviceDao()),
+                remote = RemoteSyncDataSource(
+                    api = syncApi,
+                    tokenStore = secureTokenStore,
+                    installId = syncPrefs.installId,
+                ),
+                cursorStore = syncPrefs,
+            ),
+            statusStore = syncStatusStore,
+        )
+    }
+
+    val syncScheduler: SyncScheduler by lazy { SyncScheduler(appContext) }
 }

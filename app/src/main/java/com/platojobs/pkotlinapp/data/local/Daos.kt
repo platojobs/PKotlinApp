@@ -12,20 +12,48 @@ interface DeviceDao {
     @Upsert
     suspend fun insertOrUpdate(device: DeviceEntity)
 
-    @Query("SELECT * FROM devices ORDER BY lastSeenTimestamp DESC")
+    @Query("SELECT * FROM devices WHERE deletedAt IS NULL ORDER BY lastSeenTimestamp DESC")
     suspend fun getAllDevices(): List<DeviceEntity>
 
-    @Query("SELECT * FROM devices ORDER BY lastSeenTimestamp DESC")
+    @Query("SELECT * FROM devices WHERE deletedAt IS NULL ORDER BY lastSeenTimestamp DESC")
     fun observeDevices(): Flow<List<DeviceEntity>>
 
-    @Query("SELECT * FROM devices WHERE mac = :mac LIMIT 1")
+    @Query("SELECT * FROM devices WHERE mac = :mac AND deletedAt IS NULL LIMIT 1")
     suspend fun find(mac: String): DeviceEntity?
 
-    @Query("SELECT * FROM devices WHERE mac = :mac LIMIT 1")
+    @Query("SELECT * FROM devices WHERE mac = :mac AND deletedAt IS NULL LIMIT 1")
     fun observe(mac: String): Flow<DeviceEntity?>
+
+    @Query("SELECT * FROM devices WHERE mac = :mac LIMIT 1")
+    suspend fun findAny(mac: String): DeviceEntity?
+
+    @Query("SELECT * FROM devices WHERE externalId = :externalId LIMIT 1")
+    suspend fun findByExternalId(externalId: String): DeviceEntity?
 
     @Query("DELETE FROM devices WHERE mac = :mac")
     suspend fun delete(mac: String)
+
+    /** 软删除：保留 tombstone 等待推送，UI 通过 deletedAt IS NULL 过滤。 */
+    @Query(
+        "UPDATE devices SET deletedAt = :timestamp, updatedAt = :timestamp, " +
+            "syncState = 'pending' WHERE mac = :mac",
+    )
+    suspend fun tombstone(mac: String, timestamp: Long)
+
+    @Query("SELECT * FROM devices WHERE syncState = 'pending' ORDER BY updatedAt ASC LIMIT :limit")
+    suspend fun pendingDevices(limit: Int): List<DeviceEntity>
+
+    @Query("SELECT COUNT(*) FROM devices WHERE syncState = 'pending'")
+    fun observePendingCount(): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM devices WHERE syncState = 'pending'")
+    suspend fun pendingCount(): Int
+
+    @Query("UPDATE devices SET syncState = 'synced' WHERE externalId IN (:externalIds)")
+    suspend fun markSyncedByExternalIds(externalIds: List<String>)
+
+    @Query("DELETE FROM devices WHERE externalId = :externalId")
+    suspend fun deleteByExternalId(externalId: String)
 }
 
 @Dao

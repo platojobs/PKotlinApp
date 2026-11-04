@@ -10,9 +10,12 @@ import com.platojobs.pkotlinapp.data.local.ScanLogDao
 import com.platojobs.pkotlinapp.data.local.ScanLogEntity
 import com.platojobs.pkotlinapp.domain.model.Device
 import com.platojobs.pkotlinapp.domain.model.DeviceRule
+import com.platojobs.pkotlinapp.domain.model.PLATFORM_ANDROID
 import com.platojobs.pkotlinapp.domain.model.RuleEvent
 import com.platojobs.pkotlinapp.domain.model.RuleType
 import com.platojobs.pkotlinapp.domain.model.ScanLog
+import com.platojobs.pkotlinapp.domain.model.SyncState
+import com.platojobs.pkotlinapp.domain.model.normalizeExternalId
 import com.platojobs.pkotlinapp.domain.model.ruleTypeOf
 import com.platojobs.pkotlinapp.domain.repository.DeviceRepository
 import com.platojobs.pkotlinapp.domain.repository.RuleEventRepository
@@ -20,13 +23,31 @@ import com.platojobs.pkotlinapp.domain.repository.RuleRepository
 import com.platojobs.pkotlinapp.domain.repository.ScanLogRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import java.util.UUID
 
 class DeviceRepositoryImpl(
     private val dao: DeviceDao,
 ) : DeviceRepository {
 
     override suspend fun saveDevice(device: Device) {
-        dao.insertOrUpdate(device.toEntity())
+        val normalizedExternalId = normalizeExternalId(
+            device.externalId.ifBlank { device.mac },
+        )
+        val existing = dao.findAny(device.mac) ?: dao.findByExternalId(normalizedExternalId)
+        val clientId = device.id.ifBlank {
+            existing?.id?.takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString()
+        }
+        dao.insertOrUpdate(
+            device.copy(
+                mac = existing?.mac ?: device.mac,
+                id = clientId,
+                platform = PLATFORM_ANDROID,
+                externalId = normalizedExternalId,
+                updatedAt = maxOf(device.updatedAt, device.lastSeenTimestamp),
+                deletedAt = null,
+                syncState = SyncState.PENDING,
+            ).toEntity(),
+        )
     }
 
     override suspend fun getDevices(): List<Device> = dao.getAllDevices().map { it.toDomain() }
@@ -39,7 +60,9 @@ class DeviceRepositoryImpl(
     override fun observeDevice(mac: String): Flow<Device?> =
         dao.observe(mac).map { it?.toDomain() }
 
-    override suspend fun deleteDevice(mac: String) = dao.delete(mac)
+    override suspend fun deleteDevice(mac: String) {
+        dao.tombstone(mac, System.currentTimeMillis())
+    }
 }
 
 class RuleRepositoryImpl(
@@ -103,6 +126,12 @@ private fun DeviceEntity.toDomain() = Device(
     name = name,
     lastRssi = lastRssi,
     lastSeenTimestamp = lastSeenTimestamp,
+    id = id,
+    platform = platform,
+    externalId = externalId,
+    updatedAt = updatedAt,
+    deletedAt = deletedAt,
+    syncState = if (syncState == "synced") SyncState.SYNCED else SyncState.PENDING,
 )
 
 private fun Device.toEntity() = DeviceEntity(
@@ -110,6 +139,12 @@ private fun Device.toEntity() = DeviceEntity(
     name = name,
     lastRssi = lastRssi,
     lastSeenTimestamp = lastSeenTimestamp,
+    id = id,
+    platform = platform,
+    externalId = externalId,
+    updatedAt = updatedAt,
+    deletedAt = deletedAt,
+    syncState = syncState.name.lowercase(),
 )
 
 private fun RuleEntity.toDomain() = DeviceRule(

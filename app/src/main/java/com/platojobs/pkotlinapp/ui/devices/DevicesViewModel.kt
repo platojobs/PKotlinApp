@@ -7,6 +7,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.platojobs.pkotlinapp.PKotlinApplication
 import com.platojobs.pkotlinapp.data.ble.BleConnectionManager
 import com.platojobs.pkotlinapp.data.ble.BleConnectionState
+import com.platojobs.pkotlinapp.data.sync.SyncScheduler
 import com.platojobs.pkotlinapp.domain.model.Device
 import com.platojobs.pkotlinapp.domain.model.DeviceRule
 import com.platojobs.pkotlinapp.domain.model.RuleEvent
@@ -31,6 +32,7 @@ class DevicesViewModel(
     private val scanLogRepository: ScanLogRepository,
     private val bleConnectionManager: BleConnectionManager,
     private val ruleEngine: RuleEngine,
+    private val syncScheduler: SyncScheduler,
 ) : ViewModel() {
 
     val devices: StateFlow<List<Device>> = deviceRepository.observeDevices()
@@ -83,7 +85,11 @@ class DevicesViewModel(
     }
 
     fun deleteDevice(mac: String) {
-        viewModelScope.launch { deviceRepository.deleteDevice(mac) }
+        viewModelScope.launch {
+            // 软删除 + tombstone，等待同步层推送后再物理清理。
+            deviceRepository.deleteDevice(mac)
+            runCatching { syncScheduler.schedule() }
+        }
     }
 
     companion object {
@@ -97,6 +103,7 @@ class DevicesViewModel(
                     scanLogRepository = container.scanLogRepository,
                     bleConnectionManager = container.bleConnectionManager,
                     ruleEngine = container.ruleEngine,
+                    syncScheduler = container.syncScheduler,
                 )
             }
         }

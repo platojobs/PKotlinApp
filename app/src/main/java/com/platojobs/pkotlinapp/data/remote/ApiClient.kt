@@ -11,7 +11,13 @@ import retrofit2.converter.moshi.MoshiConverterFactory
 
 object ApiClient {
 
-    fun create(baseUrl: String = BuildConfig.API_BASE_URL): ApiService {
+    fun create(baseUrl: String = BuildConfig.API_BASE_URL): ApiService =
+        retrofit(baseUrl).create(ApiService::class.java)
+
+    fun createSync(baseUrl: String = BuildConfig.API_BASE_URL): SyncApi =
+        retrofit(baseUrl).create(SyncApi::class.java)
+
+    private fun retrofit(baseUrl: String): Retrofit {
         val moshi = Moshi.Builder()
             .add(KotlinJsonAdapterFactory())
             .build()
@@ -35,6 +41,5 @@ object ApiClient {
             .client(client)
             .addConverterFactory(MoshiConverterFactory.create(moshi).asLenient())
             .build()
-            .create(ApiService::class.java)
     }
 }

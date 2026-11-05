@@ -121,6 +121,11 @@ class AppContainer(context: Context) {
         )
     }
 
+    /** 意见反馈：当前无远端接口，提交如实落在本地待发队列。 */
+    val feedbackStore: com.platojobs.pkotlinapp.data.feedback.FeedbackStore by lazy {
+        com.platojobs.pkotlinapp.data.feedback.FeedbackStore(database.feedbackDao())
+    }
+
     /** 本地场景仓库：仅本机，不参与云端同步。 */
     val sceneRepository: SceneRepository by lazy {
         SceneRepositoryImpl(database.sceneDao())

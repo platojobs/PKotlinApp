@@ -444,6 +444,29 @@ interface SceneDao {
     suspend fun delete(id: Long)
 }
 
+/** 本地反馈草稿：pending 即「未发送」，等待未来接入远端后重试。 */
+@Dao
+interface FeedbackDao {
+
+    @Insert
+    suspend fun insert(draft: FeedbackDraftEntity): Long
+
+    @Query(
+        "SELECT * FROM feedback_drafts WHERE state = 'pending' " +
+            "ORDER BY createdAt DESC, id DESC",
+    )
+    fun observePending(): Flow<List<FeedbackDraftEntity>>
+
+    @Query("SELECT * FROM feedback_drafts WHERE id = :id LIMIT 1")
+    suspend fun find(id: Long): FeedbackDraftEntity?
+
+    @Query("UPDATE feedback_drafts SET state = 'sent' WHERE id = :id")
+    suspend fun markSent(id: Long)
+
+    @Query("DELETE FROM feedback_drafts WHERE id = :id")
+    suspend fun delete(id: Long)
+}
+
 @Dao
 interface ScanLogDao {
 

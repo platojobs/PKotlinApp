@@ -6,6 +6,20 @@
 
 ---
 
+## v0.16.0
+
+**主题：接入后端 v0.14.0 的所有权转让与 `isSelf`，产品页做成真实目录，「我的」补齐帮助 / 反馈 / 关于**
+
+- 契约升级：对齐 PJGoIoT v0.14.0，新增 `POST /households/{id}/transfer-ownership`（`{userId}`，返回 Household）；成员列表每条带 `isSelf`。
+- 转让入口：owner 长按其他成员行，与「移除成员」并列出现「转让所有权」；`isSelf` 为真或非 owner 时两者都不渲染。二次确认明确「自己降为普通成员，失去改名 / 邀请码 / 移除成员权限」。
+- 失败与降级：403/404/409 统一提示并刷新家庭与成员，不停在旧角色；成功后再拉一次成员，能力矩阵随 `role` 收起管理入口。老后端成员列表全缺 `isSelf` 或转让返回 405 时静默隐藏入口，不弹错误。
+- 产品目录：按真实 `deviceType` 分为健康 / 环境 / 网关·中继 / 其他，Chip 显示 catalog 条目数量徽标；条目进入详情页，展示类型说明、`ReadingUuids.supported` 判定的指标、兼容性 / 固件 / GATT 服务与同类型「我的设备」。列表与详情复用 `ThreeStateHost`，不写死假文案。
+- 帮助中心：5 条可展开 FAQ（Transfer Code、连接失败、读数不刷新、同步冲突、退出家庭），答案与真实行为一致。
+- 意见反馈：类型下拉 + 描述 + 可选联系方式；无远端接口时先落 Room v14 `feedback_drafts` 待发队列，界面如实标注「未发送」，支持重试与删除，不伪装成功。
+- 关于：版本号与构建类型取 `BuildConfig`；开源许可、隐私政策、数据安全复用现有文档。
+- 数据模型：Room v14（`MIGRATION_13_14`）新增 `feedback_drafts(id, category, description, contact, createdAt, state)`，`state` 默认 `pending`。
+- 测试与 CI：新增 `FeedbackStoreTest`、`FeedbackMigrationTest`（真实 SQLite，v13→v14 不动既有数据）、`ProductCatalogTest`、`ProductsUiStateTest`、`HouseholdDtoContractTest`（`isSelf` 缺失/真假、转让请求序列化）；e2e 补「isSelf 双视角 → member 转让 403 → 未知目标 404 → 转让成功降级 → 旧 owner 改名/签发 403 → 新 owner 移除并退出」，fixture 与真 Postgres 均通过。单测 266 全绿，`lintDebug` 0 issue，`assembleDebug` 全绿；tag `v0.16.0`。
+
 ## v0.15.0
 
 **主题：接入后端 v0.13.0 的家庭管理能力（成员移除 / 退出 / 邀请码撤销 / 整段房间排序）**

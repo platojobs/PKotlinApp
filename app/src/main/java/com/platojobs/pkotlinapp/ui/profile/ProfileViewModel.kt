@@ -11,6 +11,7 @@ import com.platojobs.pkotlinapp.data.account.AccountService
 import com.platojobs.pkotlinapp.data.collection.CollectionLauncher
 import com.platojobs.pkotlinapp.data.collection.CollectionSession
 import com.platojobs.pkotlinapp.data.collection.CollectionStatus
+import com.platojobs.pkotlinapp.data.feedback.FeedbackStore
 import com.platojobs.pkotlinapp.data.household.HouseholdRepository
 import com.platojobs.pkotlinapp.data.prefs.AppSettings
 import com.platojobs.pkotlinapp.data.prefs.ThemeMode
@@ -22,6 +23,8 @@ import com.platojobs.pkotlinapp.domain.account.PairingCode
 import com.platojobs.pkotlinapp.domain.account.PairingCodeFormat
 import com.platojobs.pkotlinapp.domain.account.PairingCodeInvalidException
 import com.platojobs.pkotlinapp.domain.account.PairingRateLimitedException
+import com.platojobs.pkotlinapp.domain.feedback.FeedbackCategory
+import com.platojobs.pkotlinapp.domain.feedback.FeedbackDraft
 import com.platojobs.pkotlinapp.domain.household.Household
 import com.platojobs.pkotlinapp.domain.household.HouseholdErrorKind
 import com.platojobs.pkotlinapp.domain.household.HouseholdInvitation
@@ -99,6 +102,7 @@ class ProfileViewModel(
     private val accountService: AccountService,
     private val tokenStore: TokenStore,
     private val householdRepository: HouseholdRepository,
+    private val feedbackStore: FeedbackStore,
     collectionSession: CollectionSession,
 ) : ViewModel() {
 
@@ -304,6 +308,49 @@ class ProfileViewModel(
                 _claiming.value = false
             }
         }
+    }
+
+    // ---- 意见反馈（本地待发队列） ----
+
+    /** 待发反馈草稿：state=pending 即「未发送」，UI 直接展示真实条数。 */
+    val pendingFeedback: StateFlow<List<FeedbackDraft>> = feedbackStore.observePending()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /**
+     * 提交反馈：先落本地草稿再尝试发送。
+     * 当前版本没有远端接口，结果如实返回「未发送」，不伪装成功。
+     */
+    fun submitFeedback(category: FeedbackCategory, description: String, contact: String?) {
+        if (description.isBlank()) {
+            viewModelScope.launch {
+                _accountMessage.emit(appContext.getString(R.string.feedback_description_required))
+            }
+            return
+        }
+        viewModelScope.launch {
+            val result = feedbackStore.submit(category, description, contact)
+            _accountMessage.emit(
+                appContext.getString(
+                    if (result.sent) R.string.feedback_sent else R.string.feedback_queued_unsent,
+                ),
+            )
+        }
+    }
+
+    /** 重试发送同一条草稿；失败时草稿仍保留在本地队列。 */
+    fun retryFeedback(id: Long) {
+        viewModelScope.launch {
+            val result = feedbackStore.retry(id)
+            _accountMessage.emit(
+                appContext.getString(
+                    if (result.sent) R.string.feedback_sent else R.string.feedback_retry_unsent,
+                ),
+            )
+        }
+    }
+
+    fun discardFeedback(id: Long) {
+        viewModelScope.launch { feedbackStore.discard(id) }
     }
 
     // ---- 家庭 ----
@@ -671,6 +718,7 @@ class ProfileViewModel(
                     accountService = app.container.accountService,
                     tokenStore = app.container.tokenStore,
                     householdRepository = app.container.householdRepository,
+                    feedbackStore = app.container.feedbackStore,
                     collectionSession = app.container.collectionSession,
                 )
             }

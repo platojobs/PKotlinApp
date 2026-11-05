@@ -177,6 +177,21 @@ data class SceneActionEntity(
     val muteMinutes: Int? = null,
 )
 
+/**
+ * 本地意见反馈草稿：尚未接入反馈服务端时先落库排队。
+ * state=pending 表示「未发送」，sent 仅在未来接入远端后使用。
+ */
+@Entity(tableName = "feedback_drafts", indices = [Index("state")])
+data class FeedbackDraftEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    /** [com.platojobs.pkotlinapp.domain.feedback.FeedbackCategory] 名称。 */
+    val category: String,
+    val description: String,
+    val contact: String? = null,
+    val createdAt: Long,
+    @ColumnInfo(defaultValue = "'pending'") val state: String = "pending",
+)
+
 @Entity(tableName = "scan_logs")
 data class ScanLogEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,

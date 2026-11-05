@@ -151,6 +151,24 @@ internal object HouseholdCountsMigrationSql {
     )
 }
 
+/** v13 -> v14：本地反馈草稿队列。 */
+internal object FeedbackMigrationSql {
+    val V13_TO_V14 = listOf(
+        """
+        CREATE TABLE IF NOT EXISTS `feedback_drafts` (
+            `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+            `category` TEXT NOT NULL,
+            `description` TEXT NOT NULL,
+            `contact` TEXT,
+            `createdAt` INTEGER NOT NULL,
+            `state` TEXT NOT NULL DEFAULT 'pending'
+        )
+        """.trimIndent(),
+        "CREATE INDEX IF NOT EXISTS `index_feedback_drafts_state` " +
+            "ON `feedback_drafts` (`state`)",
+    )
+}
+
 @Database(
     entities = [
         DeviceEntity::class,
@@ -162,8 +180,9 @@ internal object HouseholdCountsMigrationSql {
         SceneActionEntity::class,
         RoomEntity::class,
         HouseholdEntity::class,
+        FeedbackDraftEntity::class,
     ],
-    version = 13,
+    version = 14,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -183,6 +202,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun roomDao(): RoomDao
 
     abstract fun householdDao(): HouseholdDao
+
+    abstract fun feedbackDao(): FeedbackDao
 
     companion object {
         private const val DB_NAME = "device_dashboard.db"
@@ -318,6 +339,13 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v13 -> v14：新增本地反馈草稿表，不动任何既有业务表。 */
+        val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                FeedbackMigrationSql.V13_TO_V14.forEach(db::execSQL)
+            }
+        }
+
         @Volatile
         private var instance: AppDatabase? = null
 
@@ -340,6 +368,7 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_10_11,
                     MIGRATION_11_12,
                     MIGRATION_12_13,
+                    MIGRATION_13_14,
                 )
                     .build()
                     .also { instance = it }

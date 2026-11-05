@@ -604,6 +604,19 @@ Debug / Release 都可通过 `apiBaseUrl` 切换；发布前请传入正式域�
 - **权限与可见性**：`householdCapabilities()` 统一计算入口——owner 可见重命名、签发/撤销邀请码、移除成员；member 全部隐藏，仅保留「退出家庭」；owner 且 `memberCount > 1` 时退出按钮被拦截，展示「请先转让所有权或移除其他成员」。成员行仅 owner 可长按移除，二次确认文案说明对方设备会回到其个人家庭。
 - **计数**：首页家庭 Chip 使用服务端 `deviceCount`，家庭卡片使用 `memberCount/deviceCount/roomCount`；服务端数字是唯一来源。
 
+### 6.14 所有权转让、产品目录与「我的」三入口（v0.16.0）
+
+- **后端契约（PJGoIoT v0.14.0）**：`POST /households/{id}/transfer-ownership`（请求体 `{userId}`，成功返回 Household，调用者 `role` 立即变为 `member`、`ownerUserId` 指向接任者）；成员列表每条带 `isSelf`。`isSelf` 只用于本机判定「这一行是我」，不再用用户名或 id 猜测。
+- **老后端降级**：成员列表所有条目都缺 `isSelf` 时把 `transferCapable` 置 false 并隐藏入口；若仍触发转让并收到 405，同样静默置 false 刷新列表，不弹错误。
+- **转让入口**：owner 长按其他成员行，菜单并列「移除成员」「转让所有权」；`isSelf` 为真或非 owner 时两个入口都不出现。二次确认文案明确「你降为普通成员、失去改名/邀请码/移除成员权限」。
+- **失败处理**：403/404/409 统一走到可读提示并立刻刷新家庭与成员列表，不停在旧角色；转让成功后重新拉取成员与家庭，`householdCapabilities()` 随 `role` 收起管理入口。
+- **产品目录**：产品页按真实 `deviceType` 分组为 健康 / 环境 / 网关·中继 / 其他，Chip 带数量徽标（计数来自 catalog 条目，不是本地设备数）；条目进入 `ProductDetailActivity`，展示设备类型说明、可解析指标、兼容性与固件、GATT 服务与「我的设备」中同 `deviceType` 的条目。
+- **指标不造假**：GATT 服务 UUID → 测量特征 UUID → 仅当特征在 `ReadingUuids.supported` 内才展示（心率/电量/温度/NUS），解析器没实现的指标不显示。
+- **三态复用**：产品列表与详情统一使用现有 `ThreeStateHost`，未新增第二套空/错/加载组件。
+- **帮助中心**：本地结构化 FAQ（配对/Transfer Code、连接失败、读数不刷新、同步冲突、退出家庭），每条点击展开；答案与真实行为一致（例如 owner 有其他成员时退出返回 409、已同步读数保留 7 天、冲突以服务端为准）。
+- **意见反馈**：表单为类型下拉 + 描述 + 可选联系方式；当前版本没有反馈接口，提交先落本地 `feedback_drafts` 队列（Room v14），提示「已保存到本地待发队列（未发送）」，列表可重试/删除，绝不伪装发送成功。
+- **关于**：版本号与构建类型取自 `BuildConfig`，并提供开源许可、隐私政策、数据安全的现有文档入口（浏览器打开）。
+
 ---
 
 ## 7. 构建与运行
@@ -613,7 +626,7 @@ export JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk-21.jdk/Contents/Home
 
 ./gradlew assembleDebug        # Debug APK
 ./gradlew lintDebug            # Lint
-./gradlew testDebugUnitTest    # 单元测试：245 个（含规则防抖/恢复/迁移、图表命中、推荐模板、双语/无障碍/200% 字号、家庭移除/退出/邀请码/重排 409）
+./gradlew testDebugUnitTest    # 单元测试：266 个（含规则防抖/恢复/迁移、图表命中、推荐模板、双语/无障碍/200% 字号、家庭转让/isSelf、产品目录、反馈队列）
 ./gradlew assembleRelease      # 签名 Release APK
 ./gradlew bundleRelease        # 签名 Release AAB
 
@@ -954,6 +967,7 @@ CI：GitHub Actions 的 `e2e-postgres` job 与该次运行同一脚本，日志�
 
 ## 16. 版本记录
 
+- `v0.16.0`：接入后端 v0.14.0 的所有权转让与 `isSelf`，产品页升级为真实产品目录，「我的」补齐帮助中心 / 意见反馈 / 关于三入口。Room v14（`MIGRATION_13_14`）新增 `feedback_drafts` 表（id/category/description/contact/createdAt/state，默认 `pending`）。成员 DTO 增加 `isSelf`，本机不再按用户名/id 猜「这一行是我」；owner 长按其他成员行可并列选择「移除成员 / 转让所有权」，`isSelf` 为真或非 owner 时两者都不出现。转让二次确认写明降级后果；403/404/409 统一可读提示并刷新家庭与成员；成功及失败后都重拉成员与能力矩阵，入口随角色收起。老后端成员列表全缺 `isSelf` 或转让返回 405 时静默隐藏入口。产品页按 `deviceType` 分组为健康/环境/网关·中继/其他（Chip 带 catalog 数量徽标），详情页展示类型说明、`ReadingUuids.supported` 判定的可解析指标、兼容性/固件/GATT 服务与同类型「我的设备」，列表与详情复用 `ThreeStateHost`。帮助中心为 5 条可展开 FAQ（答案对齐 409 退出、7 天读数保留、冲突以服务端为准）；意见反馈落本地待发队列，无远端时如实标注「未发送」并支持重试/删除；关于页版本号/构建类型取 `BuildConfig`，许可/隐私/数据安全复用现有文档。新增 `FeedbackStoreTest`、`FeedbackMigrationTest`（v13→v14，真实 SQLite）、`ProductCatalogTest`、`ProductsUiStateTest`、`HouseholdDtoContractTest`（`isSelf` 缺失/真假与转让请求序列化）；e2e 补「isSelf 双视角 → member 转让 403 → 未知目标 404 → 转让成功降级 → 旧 owner 改名/签发 403 → 新 owner 移除并退出」，fixture 与真 Postgres 均通过。单测 266 全绿、`lintDebug` 0 issue、`assembleDebug`，tag `v0.16.0`。
 - `v0.15.0`：接入后端 v0.13.0 的家庭管理能力。Room v13（`MIGRATION_12_13`）为 `households` 增加 `roomCount`，统一保存服务端 `memberCount/deviceCount/roomCount` 真实数字，首页 Chip 与家庭卡片不再数本地缓存。新增 `DELETE /households/{id}/members/{userId}`（owner 移除成员，本地刷新计数并重拉设备清理共享行）、`POST /households/{id}/leave`（成员退出，owner 有其他成员时 409；本地删除该家庭房间/共享设备/归属并回落个人家庭）、`GET /households/{id}/invitations`（只取 `codeHashPrefix`/状态/过期时间，绝无明文）与 `DELETE .../invitations/{invitationId}`、`PUT /households/{id}/rooms/order`（整段集合排序）。409 机读判定为 HTTP 409 + `error.code`（后端 v0.13.0 无 `ROOM_SET_MISMATCH`），重排冲突自动重拉并提示「房间列表已变化，已刷新」，离线保留本地顺序标「未同步」。`householdCapabilities()` 统一 owner/member 可见性：member 看不到重命名、邀请码签发/撤销与成员移除，owner 带成员退出时提示「请先转让所有权或移除其他成员」。新增 `HouseholdRepositoryTest`（成员移除清理、退出回落、邀请码列表/撤销、重排 409 重试、离线排序）、`HouseholdMigrationTest` v12→v13 与 owner/member 能力单测；fixture 与真 Postgres e2e 补「服务端计数 → 邀请码列表无明文 → 撤销后 claim 404 → 重排缺项 409 → owner 带成员退出 409 → 移除成员后对方 404 → owner 退出 204」。单测 245 全绿、`lintDebug` 0 issue、`assembleDebug`、两套 e2e 全绿，tag `v0.15.0`。
 - `v0.14.0`：家庭接上后端，房间真正归属家庭并支持成员共享。Room v12（`MIGRATION_11_12`）新增 `households` 表，`rooms` 增加 `remoteId/householdId`，`devices` 增加 `householdId/remoteRoomId/pendingRoomPatch/pendingRoomLocalId/pendingHouseholdRemoteId/shared`；设备归属选择反规范化 `devices.remoteRoomId` 而不是映射表（单一可选属性、PATCH 按设备粒度，理由见 §6.12）。登录/手动同步/重登三条路径拉 `GET /households` 并持久化当前家庭，切换家庭按家庭拉房间与设备。首次接入按规范化名称认领服务端同名房间、其余按本地顺序上传，绝不静默丢弃本机房间，`planRoomMerge` + `HouseholdMigrationTest` 覆盖。设备房间归属只走 `PATCH /my/devices`（不塞 push，避免 LWW），失败保留 pending 重试，4xx 清 pending 并回读服务端。「我的」新增家庭管理（角色/成员、创建、8 位邀请码 + 服务端倒计时 + 复制 + 重新生成、加入家庭复用配对码规范化与 404/429 文案）；首页仅在多家庭时显示可见切换 Chip；服务端房间为权威来源，未上传房间与离线状态明确标注「未同步」；403/404/429/离线全部降级为可读提示。fixture 与真 Postgres e2e 均跑通「创建家庭 → 邀请码 → 第二账号领取 → 成员可见设备 → member 改房间 403 → 跨家庭 404」；单测 235 全绿、`lintDebug` 0 issue、`assembleDebug` 全绿，tag `v0.14.0`。
 - `v0.13.0`：本机房间与首页分区。Room v11 新增 `rooms(id, name, sortOrder, createdAt)` 与可空 `devices.roomId`（`MIGRATION_10_11`），旧设备保持未分配、`deviceGroup` 原样保留；`RoomMigrationTest` 用真实 SQLite 验证升级。首页按房间分段、房间头可折叠、「未分配」固定最后；搜索时平铺结果并忽略折叠，排序只在房间内生效，分组 Chip 仅按 `deviceGroup` 过滤并隐藏空房间（决策见 §6.11）。房间支持新建/重命名/删除（二次确认，删除后设备回到未分配），设备可长按或详情页移入移出；空态区分「还没有房间」与「房间内无设备引导扫描」。房间仅本机、不参与同步，扫描/编辑/拉取均保留 `roomId`。`RoomRepositoryTest` 覆盖排序、重命名与删除落点；单测 227 全绿、`lintDebug` 0 issue、`assembleDebug`、fixture 与真 Postgres e2e 全绿，tag `v0.13.0`。

@@ -13,6 +13,12 @@ import android.text.InputFilter
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ArrayAdapter
+import android.widget.EditText
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.Spinner
+import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
@@ -23,6 +29,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.google.android.material.button.MaterialButton
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.snackbar.Snackbar
 import com.platojobs.pkotlinapp.BuildConfig
@@ -32,6 +39,8 @@ import com.platojobs.pkotlinapp.data.collection.CollectionStatus
 import com.platojobs.pkotlinapp.data.prefs.ThemeMode
 import com.platojobs.pkotlinapp.databinding.FragmentProfileBinding
 import com.platojobs.pkotlinapp.domain.account.PairingCodeFormat
+import com.platojobs.pkotlinapp.domain.feedback.FeedbackCategory
+import com.platojobs.pkotlinapp.domain.feedback.FeedbackDraft
 import com.platojobs.pkotlinapp.domain.household.Household
 import com.platojobs.pkotlinapp.domain.household.HouseholdInvitationInfo
 import com.platojobs.pkotlinapp.domain.household.HouseholdMember
@@ -92,6 +101,11 @@ class ProfileFragment : Fragment() {
 
         binding.openSettingsButton.setOnClickListener { openAppSettings() }
         binding.githubButton.setOnClickListener { openRepository() }
+        binding.helpCenterButton.setOnClickListener { showHelpCenter() }
+        binding.feedbackButton.setOnClickListener { showFeedbackDialog() }
+        binding.licenseButton.setOnClickListener { openUrl(LICENSE_URL) }
+        binding.privacyButton.setOnClickListener { openUrl(PRIVACY_URL) }
+        binding.securityButton.setOnClickListener { openUrl(DATA_SAFETY_URL) }
         binding.clearLogsButton.setOnClickListener { confirmClearLogs() }
         binding.syncNowButton.setOnClickListener { viewModel.manualSync() }
         binding.reloginButton.setOnClickListener { confirmRelogin() }
@@ -201,6 +215,14 @@ class ProfileFragment : Fragment() {
                 }
                 launch {
                     viewModel.collectionStatus.collect { renderCollection(it) }
+                }
+                launch {
+                    viewModel.pendingFeedback.collect { drafts ->
+                        binding.feedbackPending.visibility =
+                            if (drafts.isEmpty()) View.GONE else View.VISIBLE
+                        binding.feedbackPending.text =
+                            getString(R.string.profile_feedback_pending, drafts.size)
+                    }
                 }
             }
         }
@@ -730,6 +752,216 @@ class ProfileFragment : Fragment() {
             if (status.active) View.VISIBLE else View.GONE
     }
 
+    // ---- 帮助中心 / 意见反馈 / 关于文档 ----
+
+    /** 本地结构化 FAQ：问题可展开，答案与实际行为一致（含 409 与 7 天保留等真实规则）。 */
+    private fun showHelpCenter() {
+        val faqs = listOf(
+            R.string.help_faq_pairing_q to R.string.help_faq_pairing_a,
+            R.string.help_faq_connect_q to R.string.help_faq_connect_a,
+            R.string.help_faq_readings_q to R.string.help_faq_readings_a,
+            R.string.help_faq_sync_q to R.string.help_faq_sync_a,
+            R.string.help_faq_leave_q to R.string.help_faq_leave_a,
+        )
+        val context = requireContext()
+        val padding = resources.getDimensionPixelSize(R.dimen.card_padding)
+        val gap = resources.getDimensionPixelSize(R.dimen.space_8)
+        val container = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(padding, gap, padding, gap)
+        }
+        faqs.forEach { (questionRes, answerRes) ->
+            val question = TextView(context).apply {
+                setText(questionRes)
+                setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_TitleSmall)
+                minHeight = resources.getDimensionPixelSize(R.dimen.touch_min)
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                isClickable = true
+                isFocusable = true
+                contentDescription = getString(questionRes)
+            }
+            val answer = TextView(context).apply {
+                setText(answerRes)
+                setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodyMedium)
+                visibility = View.GONE
+            }
+            question.setOnClickListener {
+                answer.visibility =
+                    if (answer.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+            }
+            container.addView(question)
+            container.addView(answer)
+        }
+        val scroll = ScrollView(context).apply { addView(container) }
+        MaterialAlertDialogBuilder(context)
+            .setTitle(R.string.help_title)
+            .setView(scroll)
+            .setPositiveButton(R.string.action_close, null)
+            .show()
+    }
+
+    /**
+     * 反馈表单：类型 + 描述 + 可选联系方式。
+     * 当前无远端接口，提交后草稿落库并如实标注「未发送」；列表提供重试与删除。
+     */
+    private fun showFeedbackDialog() {
+        val context = requireContext()
+        val categories = FeedbackCategory.entries
+        val padding = resources.getDimensionPixelSize(R.dimen.card_padding)
+        val gap = resources.getDimensionPixelSize(R.dimen.space_8)
+        val touch = resources.getDimensionPixelSize(R.dimen.touch_min)
+
+        val container = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(padding, gap, padding, gap)
+        }
+
+        container.addView(caption(getString(R.string.feedback_backend_hint)))
+        container.addView(caption(getString(R.string.feedback_category_label)))
+        val spinner = Spinner(context).apply {
+            adapter = ArrayAdapter(
+                context,
+                android.R.layout.simple_spinner_item,
+                categories.map(::feedbackCategoryLabel),
+            ).apply {
+                setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            }
+            minimumHeight = touch
+            contentDescription = getString(R.string.feedback_category_label)
+        }
+        container.addView(spinner)
+
+        container.addView(caption(getString(R.string.feedback_description_label)))
+        val descriptionInput = EditText(context).apply {
+            hint = getString(R.string.feedback_description_hint)
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            minLines = 3
+            gravity = android.view.Gravity.TOP or android.view.Gravity.START
+            contentDescription = getString(R.string.feedback_description_label)
+        }
+        container.addView(descriptionInput)
+
+        container.addView(caption(getString(R.string.feedback_contact_label)))
+        val contactInput = EditText(context).apply {
+            hint = getString(R.string.feedback_contact_hint)
+            inputType = android.text.InputType.TYPE_CLASS_TEXT
+            setSingleLine()
+            contentDescription = getString(R.string.feedback_contact_label)
+        }
+        container.addView(contactInput)
+
+        container.addView(caption(getString(R.string.feedback_pending_title)))
+        val pendingList = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        container.addView(pendingList)
+
+        fun renderPending(drafts: List<FeedbackDraft>) {
+            pendingList.removeAllViews()
+            if (drafts.isEmpty()) {
+                pendingList.addView(caption(getString(R.string.feedback_pending_empty)))
+                return
+            }
+            drafts.forEach { draft ->
+                val row = LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = android.view.Gravity.CENTER_VERTICAL
+                }
+                val label = TextView(context).apply {
+                    text = getString(
+                        R.string.feedback_pending_row,
+                        feedbackCategoryLabel(draft.category),
+                        TimeFormat.date(context, draft.createdAt),
+                    )
+                    setTextAppearance(
+                        com.google.android.material.R.style.TextAppearance_Material3_BodyMedium,
+                    )
+                }
+                val retry = actionText(
+                    getString(R.string.feedback_retry),
+                    ContextCompat.getColor(context, R.color.primary_text),
+                ) {
+                    viewModel.retryFeedback(draft.id)
+                }
+                val discard = actionText(
+                    getString(R.string.action_delete),
+                    ContextCompat.getColor(context, R.color.danger),
+                ) {
+                    viewModel.discardFeedback(draft.id)
+                    renderPending(viewModel.pendingFeedback.value.filterNot { it.id == draft.id })
+                }
+                row.addView(
+                    label,
+                    LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+                )
+                row.addView(retry)
+                row.addView(discard)
+                pendingList.addView(row)
+            }
+        }
+        renderPending(viewModel.pendingFeedback.value)
+
+        val submit = MaterialButton(context).apply {
+            setText(R.string.feedback_submit)
+            minHeight = touch
+            contentDescription = getString(R.string.feedback_submit)
+        }
+        container.addView(submit)
+
+        val scroll = ScrollView(context).apply { addView(container) }
+        val dialog = MaterialAlertDialogBuilder(context)
+            .setTitle(R.string.feedback_title)
+            .setView(scroll)
+            .setNegativeButton(R.string.action_close, null)
+            .create()
+
+        submit.setOnClickListener {
+            val description = descriptionInput.text?.toString().orEmpty()
+            if (description.isBlank()) {
+                Snackbar.make(binding.root, R.string.feedback_description_required, Snackbar.LENGTH_LONG)
+                    .show()
+                return@setOnClickListener
+            }
+            viewModel.submitFeedback(
+                categories[spinner.selectedItemPosition],
+                description,
+                contactInput.text?.toString(),
+            )
+            dialog.dismiss()
+        }
+        dialog.show()
+    }
+
+    private fun caption(text: String): TextView = TextView(requireContext()).apply {
+        this.text = text
+        setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodySmall)
+        setTextColor(ContextCompat.getColor(requireContext(), R.color.text_secondary))
+        setPadding(0, resources.getDimensionPixelSize(R.dimen.space_4), 0, 0)
+    }
+
+    private fun actionText(label: String, color: Int, onClick: () -> Unit): TextView =
+        TextView(requireContext()).apply {
+            text = label
+            setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_LabelLarge)
+            setTextColor(color)
+            minHeight = resources.getDimensionPixelSize(R.dimen.touch_min)
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            val horizontal = resources.getDimensionPixelSize(R.dimen.space_12)
+            setPadding(horizontal, 0, horizontal, 0)
+            isClickable = true
+            isFocusable = true
+            contentDescription = label
+            setOnClickListener { onClick() }
+        }
+
+    private fun feedbackCategoryLabel(category: FeedbackCategory): String = getString(
+        when (category) {
+            FeedbackCategory.BUG -> R.string.feedback_category_bug
+            FeedbackCategory.CONNECTION -> R.string.feedback_category_connection
+            FeedbackCategory.SYNC -> R.string.feedback_category_sync
+            FeedbackCategory.OTHER -> R.string.feedback_category_other
+        },
+    )
+
     private fun renderSyncStatus(status: SyncStatus) {
         binding.syncLastAt.text = if (status.lastSyncAt == null) {
             getString(R.string.profile_sync_never)
@@ -840,10 +1072,13 @@ class ProfileFragment : Fragment() {
     }
 
     private fun openRepository() {
+        openUrl(REPOSITORY_URL)
+    }
+
+    /** 关于页文档统一走浏览器；失败只提示，不阻塞页面。 */
+    private fun openUrl(url: String) {
         try {
-            startActivity(
-                Intent(Intent.ACTION_VIEW, "https://github.com/platojobs/PKotlinApp".toUri()),
-            )
+            startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
         } catch (e: ActivityNotFoundException) {
             Snackbar.make(binding.root, R.string.error_unknown, Snackbar.LENGTH_LONG).show()
         }
@@ -856,5 +1091,12 @@ class ProfileFragment : Fragment() {
             .setNegativeButton(R.string.action_cancel, null)
             .setPositiveButton(R.string.action_confirm) { _, _ -> viewModel.clearLogs() }
             .show()
+    }
+
+    private companion object {
+        const val REPOSITORY_URL = "https://github.com/platojobs/PKotlinApp"
+        const val LICENSE_URL = "$REPOSITORY_URL/blob/main/LICENSE"
+        const val PRIVACY_URL = "$REPOSITORY_URL/blob/main/docs/privacy-policy.md"
+        const val DATA_SAFETY_URL = "$REPOSITORY_URL/blob/main/docs/data-safety.md"
     }
 }

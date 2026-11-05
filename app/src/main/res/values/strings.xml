@@ -94,10 +94,12 @@
     <string name="rule_desc_bond_lost">收到绑定丢失广播时记录并提示重新配对</string>
     <string name="rule_enabled_desc">规则已启用</string>
     <string name="rule_disabled_desc">规则已停用</string>
+    <string name="rule_state_enabled">已启用</string>
+    <string name="rule_state_disabled">已停用</string>
     <string name="rule_threshold_default" translatable="false">-70</string>
     <string name="rule_metric_threshold">指标阈值</string>
     <string name="rule_metric_title">%1$s %2$s %3$s</string>
-    <string name="rule_metric_consecutive">连续 %1$d 条满足 · %2$s</string>
+
     <string name="rule_add_metric_title">新增指标阈值规则</string>
     <string name="rule_metric_label">指标</string>
     <string name="rule_metric_comparator_label">比较符</string>
@@ -217,7 +219,7 @@
     <string name="profile_logs_title">扫描日志</string>
     <string name="profile_logs_clear">清空</string>
     <string name="profile_logs_empty">暂无扫描日志，去首页扫描后会自动记录</string>
-    <string name="profile_logs_count">最近 %1$d 条</string>
+
     <string name="profile_settings_title">设置</string>
     <string name="profile_theme_system">跟随系统</string>
     <string name="profile_theme_light">浅色</string>
@@ -248,9 +250,18 @@
     <string name="toolbar_back">返回</string>
 
     <string name="time_just_now">刚刚</string>
-    <string name="time_minutes_ago">%1$d 分钟前</string>
-    <string name="time_hours_ago">%1$d 小时前</string>
-    <string name="time_days_ago">%1$d 天前</string>
+    <plurals name="time_minutes_ago">
+        <item quantity="one">%1$d 分钟前</item>
+        <item quantity="other">%1$d 分钟前</item>
+    </plurals>
+    <plurals name="time_hours_ago">
+        <item quantity="one">%1$d 小时前</item>
+        <item quantity="other">%1$d 小时前</item>
+    </plurals>
+    <plurals name="time_days_ago">
+        <item quantity="one">%1$d 天前</item>
+        <item quantity="other">%1$d 天前</item>
+    </plurals>
     <string name="time_unknown">未知</string>
     <string name="time_format">MM-dd HH:mm</string>
     <string name="time_format_date">yyyy-MM-dd</string>
@@ -292,11 +303,11 @@
     <string name="readings_range_24h">24 小时</string>
     <string name="readings_range_7d">7 天</string>
     <string name="readings_range_30d">30 天</string>
-    <string name="readings_metric_with_count">%1$s · %2$s 条</string>
+
     <string name="readings_series_empty">该区间暂无读数</string>
     <string name="readings_summary_line">最近 24 小时汇总：最小 %1$s · 最大 %2$s · 平均 %3$s · 最新 %4$s</string>
     <string name="readings_recent_title">最近记录</string>
-    <string name="readings_chart_desc">区间内 %1$d 个分桶的折线图</string>
+
     <string name="readings_chart_a11y_summary">%1$s，%2$s，最低 %3$s，最高 %4$s，共 %5$d 个数据点</string>
     <string name="readings_chart_a11y_bucket">%1$s，%2$s，最低 %3$s，最高 %4$s，平均 %5$s，最新 %6$s，共 %7$s 个数据点</string>
     <string name="readings_chart_bucket_detail">%1$s · 最低 %2$s · 最高 %3$s · 平均 %4$s · 最新 %5$s · %6$s 条</string>
@@ -456,7 +467,7 @@
     <string name="home_scenes_manage">管理场景</string>
     <string name="home_scenes_empty">还没有场景，先去智能页创建第一个</string>
     <string name="home_scenes_local">仅本机</string>
-    <string name="home_scene_actions_count">%1$d 个动作</string>
+
     <string name="home_scene_run">执行</string>
 
     <!-- 智能：自动化 + 场景 -->
@@ -506,4 +517,38 @@
     <string name="scene_action_sync_now">刷新同步</string>
     <string name="scene_action_mute_minutes">静音 %1$d 分钟</string>
     <string name="scene_action_current_device">当前连接的设备</string>
+
+    <!-- 复数资源：中文 one/other 同形，英文按数量变化 -->
+    <plurals name="rule_metric_consecutive">
+        <item quantity="one">连续 %1$d 条满足 · %2$s</item>
+        <item quantity="other">连续 %1$d 条满足 · %2$s</item>
+    </plurals>
+    <plurals name="profile_logs_count">
+        <item quantity="one">最近 %1$d 条</item>
+        <item quantity="other">最近 %1$d 条</item>
+    </plurals>
+    <plurals name="readings_metric_with_count">
+        <item quantity="one">%1$s · %2$d 条</item>
+        <item quantity="other">%1$s · %2$d 条</item>
+    </plurals>
+    <plurals name="readings_chart_desc">
+        <item quantity="one">区间内 %1$d 个分桶的折线图</item>
+        <item quantity="other">区间内 %1$d 个分桶的折线图</item>
+    </plurals>
+    <plurals name="home_scene_actions_count">
+        <item quantity="one">%1$d 个动作</item>
+        <item quantity="other">%1$d 个动作</item>
+    </plurals>
+
+    <!-- 智能页操作结果与失败兜底 -->
+    <string name="intelligence_scene_load_failed">本地场景读取失败</string>
+    <string name="intelligence_rule_save_failed">规则保存失败</string>
+    <string name="intelligence_rule_state_failed">规则状态更新失败</string>
+    <string name="intelligence_rule_delete_failed">规则删除失败</string>
+    <string name="intelligence_rule_recommend_applied">推荐规则已添加，立即生效</string>
+    <string name="intelligence_scene_saved">场景已保存</string>
+    <string name="intelligence_scene_save_failed">场景保存失败</string>
+    <string name="intelligence_scene_delete_failed">场景删除失败</string>
+    <string name="intelligence_scene_status_success">成功</string>
+    <string name="intelligence_scene_status_failure">失败</string>
 </resources>

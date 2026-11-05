@@ -2,6 +2,7 @@ package com.platojobs.pkotlinapp.ui.intelligence
 
 import android.view.LayoutInflater
 import android.view.ViewGroup
+import androidx.core.view.ViewCompat
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
@@ -70,8 +71,9 @@ class RuleAdapter(
                 )
             }
             binding.ruleDetail.text = if (rule.type == RuleType.METRIC_THRESHOLD) {
-                context.getString(
-                    R.string.rule_metric_consecutive,
+                context.resources.getQuantityString(
+                    R.plurals.rule_metric_consecutive,
+                    rule.consecutive,
                     rule.consecutive,
                     enabledText,
                 )
@@ -86,6 +88,12 @@ class RuleAdapter(
 
             binding.ruleSwitch.setOnCheckedChangeListener(null)
             binding.ruleSwitch.isChecked = rule.enabled
+            ViewCompat.setStateDescription(
+                binding.ruleSwitch,
+                context.getString(
+                    if (rule.enabled) R.string.rule_state_enabled else R.string.rule_state_disabled,
+                ),
+            )
             binding.ruleSwitch.setOnCheckedChangeListener { _, isChecked ->
                 onToggle(rule, isChecked)
             }
@@ -190,8 +198,9 @@ class SceneAdapter(
                 )
                 binding.sceneRun.isEnabled = false
             } else {
-                binding.sceneMeta.text = context.getString(
-                    R.string.home_scene_actions_count,
+                binding.sceneMeta.text = context.resources.getQuantityString(
+                    R.plurals.home_scene_actions_count,
+                    scene.actions.size,
                     scene.actions.size,
                 )
                 binding.sceneRun.isEnabled = true

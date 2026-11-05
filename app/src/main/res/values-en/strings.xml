@@ -1,0 +1,550 @@
+<resources>
+    <string name="app_name">BLE Device Panel</string>
+
+    <string name="nav_home">Home</string>
+    <string name="nav_intelligence">Intelligence</string>
+    <string name="nav_products">Products</string>
+    <string name="nav_market">Market</string>
+    <string name="nav_profile">Profile</string>
+
+    <string name="action_cancel">Cancel</string>
+    <string name="action_save">Save</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_edit">Edit</string>
+    <string name="action_confirm">OK</string>
+    <string name="action_open_settings">Open app settings</string>
+    <string name="action_disconnect">Disconnect</string>
+    <string name="action_scan">Start scan</string>
+    <string name="action_stop_scan">Stop scan</string>
+    <string name="permission_dialog_continue">Continue</string>
+
+    <!-- First-run onboarding: shown once or until completed; can be skipped, and skipping counts as completed -->
+    <string name="onboarding_skip">Skip</string>
+    <string name="onboarding_step_indicator">Step %1$d of %2$d</string>
+    <string name="onboarding_continue">Continue</string>
+    <string name="onboarding_step_bluetooth_title">Why nearby device permission is needed</string>
+    <string name="onboarding_step_bluetooth_body">Scanning discovers nearby devices through their Bluetooth broadcasts. After connecting, the app reads heart rate, battery, temperature and other readings. On Android 12 and above only Nearby devices is requested; scan results are not used for location.</string>
+    <string name="onboarding_step_notification_title">Why notification permission is needed</string>
+    <string name="onboarding_step_notification_body">Sends local alerts when a rule triggers (signal below threshold, device disconnected, bond lost). A persistent notification is also shown during background collection. If denied, rules are still recorded but no reminder is sent.</string>
+    <string name="onboarding_step_location_title_current">Why location is explained here</string>
+    <string name="onboarding_step_location_body_current">On Android 11 and below, the system requires location permission to scan for BLE devices. This app does not use or collect location data, and location never leaves the device. This system is Android 12 or above, so scanning does not depend on location and this step will not request it.</string>
+    <string name="onboarding_step_location_title_legacy">Why location permission is needed</string>
+    <string name="onboarding_step_location_body_legacy">On Android 11 and below, the system requires location permission to scan for BLE devices (a system restriction). This app uses it only to scan for devices; it does not use or collect location data, and location never leaves the device.</string>
+    <string name="onboarding_result_all_title">Permissions ready</string>
+    <string name="onboarding_result_all_body">You can scan for and connect to nearby devices. Readings are stored on this device and sync automatically when online.</string>
+    <string name="onboarding_result_limited_title">Some permissions not granted</string>
+    <string name="onboarding_result_limited_body">You can still view devices and readings stored on this device, but the following features are unavailable:</string>
+    <string name="onboarding_result_local_only">On this device only: scanning and connecting are unavailable, and live readings cannot be read from devices.</string>
+    <string name="onboarding_result_no_notification">Alerts are still recorded but no notification is sent, and the background collection notification is not shown.</string>
+    <string name="onboarding_result_location_denied">Location permission is missing on Android 11 and below, so nearby BLE devices cannot be scanned.</string>
+    <string name="onboarding_status_scan">Bluetooth scan</string>
+    <string name="onboarding_status_connect">Bluetooth connection</string>
+    <string name="onboarding_status_notification">Alert notifications</string>
+    <string name="onboarding_permission_line">%1$s: %2$s</string>
+    <string name="onboarding_settings_hint">You can turn it back on in Settings → Apps → %1$s → Permissions.</string>
+    <string name="onboarding_open_settings">Open app settings</string>
+    <string name="onboarding_use_limited">Use with limited features</string>
+    <string name="onboarding_start">Get started</string>
+    <string name="onboarding_rationale_scan_title">Bluetooth permission required</string>
+    <string name="onboarding_rationale_scan_body">Scanning needs nearby device permission to discover device broadcasts; scan results are not used for location. If denied, scanning is unavailable, but readings stored on this device remain viewable.</string>
+    <string name="onboarding_rationale_connect_body">Connecting needs nearby device permission to read heart rate, battery, temperature and other readings. If denied, this device cannot be connected.</string>
+
+    <string name="status_scanning">Scanning for nearby BLE devices…</string>
+    <string name="status_scan_idle">Not scanning</string>
+    <string name="status_bluetooth_off">Bluetooth is off. Please turn it on first</string>
+    <string name="status_ble_unsupported">This device does not support BLE</string>
+    <string name="status_permission_missing">Bluetooth or nearby device permission is missing. Enable it in system settings and try again</string>
+    <string name="status_scan_failed">Scan failed (error code %1$d)</string>
+
+    <string name="device_unknown">Unknown device</string>
+    <string name="device_rssi_value">%1$d dBm</string>
+    <string name="device_rssi_unknown">-- dBm</string>
+    <string name="device_last_seen">Last seen: %1$s</string>
+
+    <string name="home_live_title">Nearby devices</string>
+    <string name="home_recent_title">Recent devices</string>
+
+    <string name="devices_saved_title">Saved devices</string>
+    <string name="devices_count_with_groups">Devices: %1$d · Groups: %2$d</string>
+    <string name="device_group_value">Group: %1$s</string>
+    <string name="devices_connected">Connected</string>
+    <string name="devices_connecting">Connecting</string>
+    <string name="devices_disconnected">Disconnected</string>
+    <string name="devices_trend">Trend: %1$s</string>
+    <string name="devices_trend_up">Up %1$d dBm</string>
+    <string name="devices_trend_down">Down %1$d dBm</string>
+    <string name="devices_trend_flat">Stable</string>
+    <string name="devices_trend_unknown">No trend readings yet</string>
+    <string name="devices_delete_desc">Remove device</string>
+    <string name="devices_delete_title">Remove device</string>
+    <string name="devices_delete_message">Remove %1$s from local records?</string>
+
+    <string name="rules_add">New rule</string>
+    <string name="rules_empty">No rules yet. New rules are recorded and reported during scanning or connection</string>
+    <string name="rule_low_rssi">RSSI below threshold</string>
+    <string name="rule_disconnected">Device disconnected</string>
+    <string name="rule_bond_lost">Bond information lost</string>
+    <string name="rule_threshold_value">Threshold %1$d dBm</string>
+    <string name="rule_add_title">New local rule</string>
+    <string name="rule_type_label">Rule type</string>
+    <string name="rule_threshold_hint">RSSI threshold (-100 to 0)</string>
+    <string name="rule_threshold_error">Enter an integer between -100 and 0</string>
+    <string name="rule_desc_low_rssi">Records an event when a scanned device signal drops below the threshold</string>
+    <string name="rule_desc_disconnected">Records an event when a connected device disconnects</string>
+    <string name="rule_desc_bond_lost">Records an event and prompts to re-pair the device when a bond loss broadcast is received</string>
+    <string name="rule_enabled_desc">Rule enabled</string>
+    <string name="rule_disabled_desc">Rule disabled</string>
+    <string name="rule_state_enabled">Enabled</string>
+    <string name="rule_state_disabled">Disabled</string>
+    <string name="rule_metric_threshold">Metric threshold</string>
+    <string name="rule_metric_title">%1$s %2$s %3$s</string>
+
+    <string name="rule_add_metric_title">New metric threshold rule</string>
+    <string name="rule_metric_label">Metric</string>
+    <string name="rule_metric_comparator_label">Comparator</string>
+    <string name="rule_metric_threshold_hint">Threshold</string>
+    <string name="rule_metric_threshold_error">Enter a valid number</string>
+    <string name="rule_metric_consecutive_hint">Consecutive readings (1 to 5)</string>
+    <string name="rule_metric_consecutive_error">Enter an integer between 1 and 5</string>
+    <string name="rule_comparator_greater">%1$s above</string>
+    <string name="rule_comparator_less">%1$s below</string>
+    <string name="rule_comparator_gte">%1$s at or above</string>
+    <string name="rule_comparator_lte">%1$s at or below</string>
+    <string name="rule_metric_desc">Records an event and sends an alert when readings meet the condition consecutively</string>
+    <string name="rule_metric_no_metrics">No metric readings yet. Connect a device to collect readings</string>
+    <string name="intelligence_rules_recommend">Recommended rules</string>
+    <string name="intelligence_recommend_title">Recommended rules</string>
+    <string name="intelligence_recommend_entry">%1$s · %2$s %3$s %4$s%5$s</string>
+    <string name="intelligence_recommend_added">Rule added: %1$s</string>
+    <string name="intelligence_recommend_empty">Connect to a device and collect readings to create recommended rules</string>
+    <string name="intelligence_recommend_none_left">Rules already exist for all current metrics</string>
+    <string name="intelligence_recommend_close">Got it</string>
+    <string name="list_meta_line">%1$s · %2$s</string>
+
+    <string name="events_empty">No rule triggers yet</string>
+
+    <string name="detail_title">Device details</string>
+    <string name="detail_status_title">Connection status</string>
+    <string name="detail_connecting">Connecting…</string>
+    <string name="detail_connected">Connected</string>
+    <string name="detail_disconnected">Disconnected</string>
+    <string name="detail_key_missing_title">Device bond information lost. Please re-pair the device</string>
+    <string name="detail_key_missing_hint">Auto-reconnect is stopped. Remove and re-pair the device in system Bluetooth settings, then retry manually.</string>
+    <string name="detail_key_missing_action">Re-paired, retry connection</string>
+    <string name="detail_info_title">Device information</string>
+    <string name="detail_info_loading">Reading device information…</string>
+    <string name="detail_info_error">Failed to read device information: %1$s</string>
+    <string name="detail_vendor">Vendor</string>
+    <string name="detail_device_type">Device type</string>
+    <string name="detail_firmware">Firmware version</string>
+    <string name="detail_unknown_value">Unknown</string>
+    <string name="detail_device_type_unknown">Model unknown</string>
+    <string name="detail_device_type_unrecognized">%1$s (unrecognized model)</string>
+    <string name="device_edit_action">Edit alias and group</string>
+    <string name="device_edit_title">Edit device</string>
+    <string name="device_edit_group_hint">Leave empty for no group</string>
+    <string name="device_edit_save">Save</string>
+    <string name="detail_alias">Alias</string>
+    <string name="detail_group">Group</string>
+    <string name="detail_group_empty">No group</string>
+    <string name="detail_last_seen">Last seen</string>
+    <string name="detail_compatibility">Compatibility</string>
+    <string name="detail_offline_hint">Network unavailable. Showing cached local data.</string>
+    <string name="detail_security_title">Android 16 security events</string>
+    <string name="detail_security_hint">Listens for ACTION_KEY_MISSING and ACTION_ENCRYPTION_CHANGE; auto-reconnect is disabled after a bond loss broadcast.</string>
+    <string name="detail_encryption_idle">No encryption status broadcast received yet</string>
+    <string name="detail_encryption_enabled">Encrypted</string>
+    <string name="detail_encryption_disabled">Not encrypted</string>
+    <string name="detail_encryption_changed">Latest encryption broadcast: %1$s</string>
+
+    <string name="products_subtitle">Model library: vendor, firmware version and GATT services/characteristics</string>
+    <string name="products_empty_title">No model data</string>
+    <string name="products_empty_hint">Check your network connection and try again</string>
+    <string name="products_error">Load failed: %1$s</string>
+    <string name="product_firmware">Firmware %1$s</string>
+    <string name="product_services">GATT services and characteristics</string>
+
+    <string name="market_subtitle">Accessories and firmware information only, no purchasing</string>
+    <string name="market_empty_title">No market data</string>
+    <string name="market_empty_hint">Check your network connection and try again</string>
+    <string name="market_error">Load failed: %1$s</string>
+    <string name="market_version">SKU: %1$s</string>
+    <string name="market_compatibility">Compatibility: %1$s</string>
+    <string name="market_vendor">Vendor: %1$s</string>
+    <string name="market_filter_all">All</string>
+    <string name="market_filter_vendor_group">Vendor filter</string>
+    <string name="market_filter_compatibility_group">Compatibility filter</string>
+    <string name="market_filter_selected">Selected</string>
+    <string name="market_filter_not_selected">Not selected</string>
+    <string name="market_filter_empty_title">No accessories match</string>
+    <string name="market_filter_empty_hint">Adjust the vendor or compatibility filter and try again.</string>
+    <string name="market_filter_reset">Clear filters</string>
+
+    <string name="sync_banner_local_only">Network sync unavailable. Local-only mode; local data still works normally</string>
+    <string name="profile_sync_title">Sync status</string>
+    <string name="profile_sync_last">Last sync: %1$s</string>
+    <string name="profile_sync_never">Last sync: never</string>
+    <string name="profile_sync_pending">Pending sync: %1$d</string>
+    <string name="profile_sync_conflicts">Recent conflicts: %1$d (server version adopted)</string>
+    <string name="profile_sync_local_only">Repeated failures. Switched to local-only mode. Tap Sync now to retry.</string>
+    <string name="profile_sync_now">Sync now</string>
+    <string name="profile_sync_running">Syncing…</string>
+    <string name="profile_sync_success">Sync complete. Pushed: %1$d, pulled: %2$d</string>
+    <string name="profile_sync_failure">Sync failed: %1$s</string>
+    <string name="profile_sync_last_error">Last error: %1$s</string>
+    <string name="profile_sync_error_network">Network unavailable. Check your connection and try again</string>
+    <string name="profile_sync_error_timeout">Request timed out. Try again later</string>
+    <string name="profile_sync_error_auth">Session expired. Tap Sign in again</string>
+    <string name="profile_sync_error_resync">Cloud change log expired. Full sync completed</string>
+    <string name="profile_sync_error_busy">Server busy. Try again later</string>
+    <string name="profile_sync_resynced">Cloud change log expired. Full sync completed (%1$s)</string>
+    <string name="profile_session_expires">Session expires: %1$s (read-only)</string>
+    <string name="profile_session_expires_unknown">Session expires: not signed in</string>
+    <string name="profile_sync_error_conflict">Unresolved sync conflict. Try again later</string>
+    <string name="profile_sync_error_server">Server temporarily unavailable. Try again later</string>
+    <string name="profile_sync_error_unknown">Unknown error. Try again later</string>
+    <string name="profile_sync_auth_expired">Session expired and sync is paused; local data and the sync cursor are preserved.</string>
+    <string name="profile_relogin">Sign in again</string>
+    <string name="profile_relogin_title">Sign in again</string>
+    <string name="profile_relogin_message">This clears the expired credential and requests a new anonymous account. Existing device data on this device syncs to the new account. Data in the old account is not deleted or overwritten. Continue?</string>
+    <string name="profile_permissions_title">Permission check</string>
+    <string name="profile_permission_scan">Bluetooth scan permission</string>
+    <string name="profile_permission_connect">Bluetooth connect permission</string>
+    <string name="profile_permission_location">Location permission (Android 11 and below)</string>
+    <string name="profile_permission_granted">Granted</string>
+    <string name="profile_permission_denied">Not granted</string>
+    <string name="profile_permission_settings_hint">If a permission is denied, enable it manually in system settings</string>
+    <string name="profile_logs_title">Scan logs</string>
+    <string name="profile_logs_clear">Clear</string>
+    <string name="profile_logs_empty">No scan logs yet. Scanning from Home records them automatically</string>
+
+    <string name="profile_settings_title">Settings</string>
+    <string name="profile_theme_system">Follow system</string>
+    <string name="profile_theme_light">Light</string>
+    <string name="profile_theme_dark">Dark</string>
+    <string name="profile_about_title">About</string>
+    <string name="profile_version">Version %1$s (versionCode %2$d)</string>
+    <string name="profile_build_type">Build type: %1$s</string>
+    <string name="profile_about_desc">A reference BLE device data panel built with pure Kotlin and Views</string>
+    <string name="profile_github">Project repository</string>
+
+    <string name="scan_log_clear_title">Clear scan logs</string>
+    <string name="scan_log_clear_message">Clear all local scan logs?</string>
+
+    <string name="error_network">Network request failed</string>
+    <string name="error_no_permission">Bluetooth connect permission missing. Grant it in system settings and try again</string>
+    <string name="error_connect_failed">Cannot start connection. Make sure Bluetooth is on and permission is granted</string>
+    <string name="error_unknown">Unknown error</string>
+
+
+    <string name="rssi_desc_strong">Very strong signal</string>
+    <string name="rssi_desc_good">Good signal</string>
+    <string name="rssi_desc_fair">Fair signal</string>
+    <string name="rssi_desc_weak">Weak signal</string>
+    <string name="rssi_desc_unknown">No signal data</string>
+    <string name="rssi_content_desc">Signal strength: %1$s</string>
+
+    <string name="empty_state_icon_desc">Empty state icon</string>
+    <string name="toolbar_back">Back</string>
+
+    <string name="time_just_now">Just now</string>
+    <plurals name="time_minutes_ago">
+        <item quantity="one">%1$d minute ago</item>
+        <item quantity="other">%1$d minutes ago</item>
+    </plurals>
+    <plurals name="time_hours_ago">
+        <item quantity="one">%1$d hour ago</item>
+        <item quantity="other">%1$d hours ago</item>
+    </plurals>
+    <plurals name="time_days_ago">
+        <item quantity="one">%1$d day ago</item>
+        <item quantity="other">%1$d days ago</item>
+    </plurals>
+    <string name="time_unknown">Unknown</string>
+    <string name="time_format">MMM d, HH:mm</string>
+    <string name="time_format_date">yyyy-MM-dd</string>
+
+    <string name="products_retry">Retry loading model library</string>
+    <string name="market_retry">Retry loading market data</string>
+    <string name="rule_threshold_not_applicable">No threshold needed</string>
+    <string name="devices_section_rules">Local rules</string>
+    <string name="devices_section_events">Recent triggers</string>
+
+    <string name="detail_connect">Reconnect</string>
+    <string name="detail_info_retry">Retry reading device information</string>
+    <string name="detail_disconnected_hint">Not connected. Once connected, vendor and firmware information is read from the server.</string>
+
+    <string name="profile_theme_desc">Choose light, dark or follow system. Applies immediately</string>
+    <string name="profile_location_not_required">Location permission is not required on this Android version</string>
+    <string name="profile_logs_desc">Scan records are stored in the local Room database</string>
+
+    <string name="market_disclaimer">This page only shows accessory and firmware information. It does not support ordering, payment or orders.</string>
+
+    <string name="rule_event_low_rssi">%1$s signal %2$d dBm, below threshold %3$d dBm</string>
+    <string name="rule_event_disconnected">%1$s disconnected</string>
+    <string name="rule_event_bond_lost">%1$s bond information lost. Please re-pair the device</string>
+    <string name="rule_event_metric_threshold">%1$s · %2$s %3$s %4$s threshold %5$s</string>
+
+    <string name="product_service_item">%1$s (%2$s)</string>
+    <string name="product_characteristics_item">Characteristics: %1$s</string>
+    <string name="product_no_gatt">No GATT service information for this model</string>
+
+    <string name="readings_title">Readings</string>
+    <string name="readings_loading">Loading local data…</string>
+    <string name="readings_empty_hint">No readings yet. Connect a device to start collecting.</string>
+    <string name="readings_permission_hint">Bluetooth connect permission missing, so readings cannot be collected or shown. Grant Nearby devices permission in app settings.</string>
+    <string name="readings_permission_action">Open app settings</string>
+    <string name="readings_offline_hint">Offline: local data</string>
+    <string name="readings_offline_local_7d">Offline: local 7-day data only</string>
+    <string name="readings_range_title">Range</string>
+    <string name="readings_range_1h">1 hour</string>
+    <string name="readings_range_24h">24 hours</string>
+    <string name="readings_range_7d">7 days</string>
+    <string name="readings_range_30d">30 days</string>
+
+    <string name="readings_series_empty">No readings in this range</string>
+    <string name="readings_summary_line">Last 24 hours: min %1$s · max %2$s · avg %3$s · latest %4$s</string>
+    <string name="readings_recent_title">Recent records</string>
+
+    <string name="readings_chart_a11y_summary">%1$s, %2$s, lowest %3$s, highest %4$s, points: %5$d</string>
+    <string name="readings_chart_a11y_bucket">%1$s, %2$s, lowest %3$s, highest %4$s, avg %5$s, latest %6$s, %7$s data points</string>
+    <string name="readings_chart_bucket_detail">%1$s · lowest %2$s · highest %3$s · avg %4$s · latest %5$s · %6$s readings</string>
+    <string name="readings_chart_tap_hint">Tap or long-press the chart to see bucket details</string>
+    <string name="time_format_time">HH:mm</string>
+    <string name="readings_metric_temperature">Temperature</string>
+    <string name="readings_metric_humidity">Humidity</string>
+    <string name="readings_metric_battery">Battery</string>
+    <string name="readings_metric_heart_rate">Heart rate</string>
+    <string name="readings_metric_co2">CO₂</string>
+    <string name="readings_metric_pressure">Pressure</string>
+    <string name="readings_metric_other">Other</string>
+
+    <string name="alert_channel_name">Device alerts</string>
+    <string name="alert_channel_description">Reminders when local threshold rules trigger</string>
+    <string name="alert_notify_title">Device alert</string>
+    <string name="alert_notify_triggered_rssi">%1$s · signal strength %2$d dBm (threshold %3$d dBm) · %4$s</string>
+    <string name="alert_notify_triggered_disconnected">%1$s · connection lost · %2$s</string>
+    <string name="alert_notify_triggered_bond_lost">%1$s · bond information lost, please re-pair the device · %2$s</string>
+    <string name="alert_notify_recovered_title">Alert cleared</string>
+    <string name="alert_notify_recovered_rssi">%1$s · signal strength %2$d dBm back within threshold %3$d dBm · %4$s</string>
+    <string name="alert_notify_triggered_metric">%1$s · %2$s above threshold %3$s%4$s · %5$s</string>
+    <string name="alert_notify_metric_hit">%1$s · %2$s %3$s %4$s threshold %5$s · %6$s</string>
+    <string name="alert_notify_metric_recovered">%1$s · %2$s back within threshold (now %3$s) · %4$s</string>
+
+    <string name="profile_alerts_title">Alert notifications</string>
+    <string name="profile_alerts_switch">Receive alert notifications</string>
+    <string name="profile_alerts_desc">Sends a local notification when a rule triggers; when off, rules are still recorded but no alert is shown.</string>
+    <string name="profile_alert_throttle_title">Reminder interval per device and rule</string>
+    <string name="profile_alert_throttle_minutes">%1$d min</string>
+    <string name="profile_alert_permission_denied">Notification permission is not granted, so alerts are not delivered.</string>
+    <string name="profile_alert_permission_action">Grant notification permission in settings</string>
+
+    <string name="detail_export_desc">Exports all readings for the current device, metric and range. The CSV opens directly in Excel.</string>
+    <string name="detail_export_button">Export CSV</string>
+    <string name="detail_export_running">Exporting… %1$d</string>
+    <string name="detail_export_success">Exported %1$d. Opening share options</string>
+    <string name="detail_export_error">Export failed: %1$s</string>
+    <string name="detail_export_too_many">More than %1$d. Shorten the range and try again</string>
+    <string name="detail_export_no_metric">Select a metric first</string>
+    <string name="detail_export_share_title">Share readings CSV</string>
+    <string name="detail_export_retry">Retry</string>
+
+    <string name="devices_search_hint">Search alias, broadcast name, model or MAC</string>
+    <string name="devices_sort_title">Sort</string>
+    <string name="devices_sort_recent">Last seen</string>
+    <string name="devices_sort_name">Name</string>
+    <string name="devices_sort_rssi">Signal strength</string>
+    <string name="devices_sort_added">Date added</string>
+    <string name="devices_group_all">All</string>
+    <string name="devices_group_ungrouped">Ungrouped</string>
+    <string name="devices_filter_empty_title">No matching devices</string>
+    <string name="devices_filter_empty_hint">Try another keyword or clear the filters.</string>
+    <string name="devices_filter_clear">Clear filters</string>
+    <string name="devices_empty_scan_action">Scan</string>
+
+    <!-- Account migration (Transfer Code) -->
+    <string name="account_migration_title">Move to a new device</string>
+    <string name="account_migration_desc">Generate an 8-digit Transfer Code on the old device; it is valid for 10 minutes. Enter it on the new device to take over the same account.</string>
+    <string name="account_pairing_generate">Generate Transfer Code</string>
+    <string name="account_pairing_regenerate">Regenerate</string>
+    <string name="account_pairing_copy">Copy</string>
+    <string name="account_pairing_copied">Transfer Code copied</string>
+    <string name="account_pairing_expires_in">Expires in %1$d min %2$d s</string>
+    <string name="account_pairing_expired">Transfer Code expired. Please regenerate</string>
+    <string name="account_pairing_unknown_expiry">Validity comes from the server and cannot be parsed yet</string>
+    <string name="account_pairing_regenerated">New code generated. The old code is now invalid</string>
+    <string name="account_pairing_regenerate_title">Generate a new Transfer Code?</string>
+    <string name="account_pairing_regenerate_message">Once a new code is generated, the previously shown Transfer Code becomes invalid immediately.</string>
+    <string name="account_pairing_generate_failed">Generation failed: %1$s</string>
+
+    <string name="account_claim_title">Take over from old device</string>
+    <string name="account_claim_desc">Enter the 8-digit Transfer Code from the old device. After takeover, devices and readings on this device re-sync to that account.</string>
+    <string name="account_claim_hint">8-digit Transfer Code</string>
+    <string name="account_claim_button">Take over account</string>
+    <string name="account_claim_format_error">Enter the full 8-digit Transfer Code</string>
+    <string name="account_claim_invalid">Code is invalid or expired</string>
+    <string name="account_claim_rate_limited">Too many attempts. Try again later</string>
+    <string name="account_claim_rate_limited_seconds">Too many attempts. Try again in %1$d s</string>
+    <string name="account_claim_success">Takeover succeeded. Local data is queued for sync again (account %1$s)</string>
+
+    <!-- Account export and deletion -->
+    <string name="account_export_title">Export my data</string>
+    <string name="account_export_desc">Fetches all account data (devices and readings) from the server, builds a JSON file and exports it through the system share options.</string>
+    <string name="account_export_button">Export account data</string>
+    <string name="account_export_progress">Fetching page %1$d · total: %2$d</string>
+    <string name="account_export_ready">Export complete: readings %1$d · pages %2$d</string>
+    <string name="account_export_share">Share file</string>
+    <string name="account_export_chooser">Share account export file</string>
+    <string name="account_export_failed">Export failed: %1$s</string>
+    <string name="account_export_retry">Retry export</string>
+
+    <string name="account_delete_title">Delete account</string>
+    <string name="account_delete_desc">Permanently deletes the server account with all devices and readings, and clears local data.</string>
+    <string name="account_delete_button">Delete account</string>
+    <string name="account_delete_confirm_title">Delete account?</string>
+    <string name="account_delete_confirm_message">Devices and readings will be permanently deleted and cannot be recovered. This cannot be undone.</string>
+    <string name="account_delete_confirm_ok">Delete permanently</string>
+    <string name="account_delete_success">Account deleted. Local data cleared. Back to the initial anonymous state</string>
+    <string name="account_delete_failure">Deletion failed: %1$s</string>
+    <string name="account_error_network">Network unavailable. Check your connection and try again</string>
+    <string name="account_error_generic">Service temporarily unavailable. Try again later</string>
+
+    <!-- Background collection -->
+    <string name="profile_collection_title">Background collection</string>
+    <string name="profile_collection_active">Background collection: %1$s · collected: %2$d</string>
+    <string name="profile_collection_inactive">Not collecting in the background</string>
+    <string name="profile_collection_stop">Stop collection</string>
+    <string name="profile_collection_desc">Enable in device details after connecting; a foreground service keeps notify collection running and stops automatically on disconnect.</string>
+    <string name="collection_channel_name">Data collection</string>
+    <string name="collection_channel_description">Keeps background reading collection while a device is connected</string>
+    <string name="collection_notification_title">Collecting in the background</string>
+    <string name="collection_notification_text">%1$s · collected: %2$d</string>
+    <string name="collection_notification_stop">Stop collection</string>
+    <string name="detail_collection_switch">Background collection</string>
+    <string name="detail_collection_desc">Keeps notify collection after connecting; stops automatically on disconnect or exit</string>
+    <string name="collection_start_failed">Cannot start background collection. Check Bluetooth and foreground service permissions</string>
+    <string name="collection_notification_denied">Notification permission is not granted. Collection keeps running but no notification is shown</string>
+    <string name="collection_requires_connection">Connect a device before enabling background collection</string>
+
+    <!-- Three states: skeleton delay 300ms; empty state has a primary action; error block can retry -->
+    <string name="state_loading_desc">Loading</string>
+    <string name="state_error_title">Load failed</string>
+    <string name="state_error_hint">Check your network or try again later</string>
+    <string name="state_retry">Retry</string>
+
+    <!-- Home: device card grid -->
+    <string name="home_alert_title">Alerts today</string>
+    <string name="home_alert_count">Alerts today: %1$d</string>
+    <string name="home_alert_none">No alerts today</string>
+    <string name="home_alert_desc">Tap to view automations and recent triggers</string>
+    <string name="home_device_last_reading_at">%1$s · %2$s</string>
+    <string name="home_device_open_named">%1$s %2$s</string>
+    <string name="home_scene_meta_local">%1$s · %2$s</string>
+    <string name="home_devices_title">My devices</string>
+    <string name="home_devices_count">Devices: %1$d · Groups: %2$d</string>
+    <string name="home_device_connected">Connected</string>
+    <string name="home_device_disconnected">Disconnected</string>
+    <string name="home_device_last_reading">Latest reading</string>
+    <string name="home_device_no_reading">No readings</string>
+    <string name="home_device_signal">Signal %1$s</string>
+    <string name="home_device_open">View details</string>
+    <string name="home_devices_empty_title">No devices yet</string>
+    <string name="home_devices_empty_hint">Turn on Bluetooth, grant nearby device permission and scan. Devices appear here automatically</string>
+    <string name="home_devices_empty_action">Start scan</string>
+    <string name="home_search_hint">Search device name or MAC</string>
+    <string name="home_scan_add">Scan to add</string>
+    <string name="home_sort_recent">Last seen</string>
+    <string name="home_sort_name">Name</string>
+    <string name="home_sort_rssi">Signal</string>
+    <string name="home_sort_added">Recently added</string>
+    <string name="home_ungrouped">Ungrouped</string>
+    <string name="home_group_all">All groups</string>
+    <string name="home_scenes_title">Quick scenes</string>
+    <string name="home_scenes_manage">Manage scenes</string>
+    <string name="home_scenes_empty">No scenes yet. Create your first one on the Intelligence page</string>
+    <string name="home_scenes_local">On this device only</string>
+
+    <string name="home_scene_run">Run</string>
+
+    <!-- Intelligence: automations + scenes -->
+    <string name="intelligence_automation_title">Automations</string>
+    <string name="intelligence_automation_hint">Add, remove, enable or disable rules, and view recent triggers</string>
+    <string name="intelligence_rules_title">My rules</string>
+    <string name="intelligence_rules_empty_title">No automation rules yet</string>
+    <string name="intelligence_rules_empty_hint">After adding a rule, it is evaluated and recorded automatically during scanning or connection</string>
+    <string name="intelligence_rules_add">New rule</string>
+    <string name="intelligence_events_title">Recent triggers</string>
+    <string name="intelligence_events_empty_title">No triggers yet</string>
+    <string name="intelligence_events_empty_hint">Real records appear here when a rule triggers</string>
+    <string name="intelligence_scenes_title">Scenes</string>
+    <string name="intelligence_scenes_hint">Scenes are stored on this device only and do not sync to the cloud</string>
+    <string name="intelligence_scenes_empty_title">No scenes yet</string>
+    <string name="intelligence_scenes_empty_hint">Combine actions such as connecting a device, starting collection or muting alerts, then run them with one tap</string>
+    <string name="intelligence_scenes_add">New scene</string>
+    <string name="intelligence_scene_running">Running %1$s…</string>
+    <string name="intelligence_scene_progress">%2$d/%3$d %1$s</string>
+    <string name="intelligence_scene_result_title">%1$s result</string>
+
+    <!-- Scenes -->
+    <string name="scene_local_badge">On this device only</string>
+    <string name="scene_add_title">New scene</string>
+    <string name="scene_edit_title">Edit scene</string>
+    <string name="scene_name_hint">Scene name</string>
+    <string name="scene_name_required">Enter a scene name</string>
+    <string name="scene_actions_title">Actions (run in order)</string>
+    <string name="scene_action_add">Add action</string>
+    <string name="scene_actions_empty">No actions yet. Add at least one to save</string>
+    <string name="scene_delete_title">Delete scene</string>
+    <string name="scene_delete_message">Delete %1$s? This only affects this device; there is no cloud copy</string>
+    <string name="scene_edit_hint">Tap the plus button to add a real, runnable action</string>
+    <string name="scene_choose_device">Choose device</string>
+    <string name="scene_choose_mute">Mute duration</string>
+    <string name="scene_action_device_required">Choose a device</string>
+    <string name="scene_action_invalid">%1$s</string>
+    <string name="scene_action_remove">Remove action</string>
+    <string name="scene_save_failed">Save failed: %1$s</string>
+    <string name="scene_deleted">Scene %1$s deleted</string>
+
+    <string name="scene_action_connect_device">Connect device</string>
+    <string name="scene_action_disconnect_device">Disconnect device</string>
+    <string name="scene_action_start_collection">Start background collection</string>
+    <string name="scene_action_stop_collection">Stop background collection</string>
+    <string name="scene_action_mute_alerts">Mute alerts</string>
+    <string name="scene_action_sync_now">Refresh sync</string>
+    <string name="scene_action_mute_minutes">Mute for %1$d min</string>
+    <string name="scene_action_current_device">Currently connected device</string>
+
+    <!-- Plurals: English forms vary with quantity -->
+    <plurals name="rule_metric_consecutive">
+        <item quantity="one">%1$d consecutive reading met · %2$s</item>
+        <item quantity="other">%1$d consecutive readings met · %2$s</item>
+    </plurals>
+    <plurals name="profile_logs_count">
+        <item quantity="one">Last %1$d entry</item>
+        <item quantity="other">Last %1$d entries</item>
+    </plurals>
+    <plurals name="readings_metric_with_count">
+        <item quantity="one">%1$s · %2$d reading</item>
+        <item quantity="other">%1$s · %2$d readings</item>
+    </plurals>
+    <plurals name="readings_chart_desc">
+        <item quantity="one">Line chart with %1$d bucket in this range</item>
+        <item quantity="other">Line chart with %1$d buckets in this range</item>
+    </plurals>
+    <plurals name="home_scene_actions_count">
+        <item quantity="one">%1$d action</item>
+        <item quantity="other">%1$d actions</item>
+    </plurals>
+
+    <!-- Intelligence results and failure fallbacks -->
+    <string name="intelligence_scene_load_failed">Failed to load local scenes</string>
+    <string name="intelligence_rule_save_failed">Failed to save rule</string>
+    <string name="intelligence_rule_state_failed">Failed to update rule state</string>
+    <string name="intelligence_rule_delete_failed">Failed to delete rule</string>
+    <string name="intelligence_rule_recommend_applied">Recommended rule added and active immediately</string>
+    <string name="intelligence_scene_saved">Scene saved</string>
+    <string name="intelligence_scene_save_failed">Failed to save scene</string>
+    <string name="intelligence_scene_delete_failed">Failed to delete scene</string>
+    <string name="intelligence_scene_status_success">Success</string>
+    <string name="intelligence_scene_status_failure">Failed</string>
+</resources>

@@ -22,9 +22,18 @@ object TimeFormat {
         val diff = System.currentTimeMillis() - timestamp
         return when {
             diff < 60_000L -> context.getString(R.string.time_just_now)
-            diff < 3_600_000L -> context.getString(R.string.time_minutes_ago, diff / 60_000L)
-            diff < 86_400_000L -> context.getString(R.string.time_hours_ago, diff / 3_600_000L)
-            diff < 7 * 86_400_000L -> context.getString(R.string.time_days_ago, diff / 86_400_000L)
+            diff < 3_600_000L -> {
+                val minutes = diff / 60_000L
+                context.resources.getQuantityString(R.plurals.time_minutes_ago, minutes.toInt(), minutes)
+            }
+            diff < 86_400_000L -> {
+                val hours = diff / 3_600_000L
+                context.resources.getQuantityString(R.plurals.time_hours_ago, hours.toInt(), hours)
+            }
+            diff < 7 * 86_400_000L -> {
+                val days = diff / 86_400_000L
+                context.resources.getQuantityString(R.plurals.time_days_ago, days.toInt(), days)
+            }
             else -> SimpleDateFormat(
                 context.getString(R.string.time_format),
                 Locale.getDefault(),

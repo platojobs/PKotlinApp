@@ -2,6 +2,7 @@ package com.platojobs.pkotlinapp.data.notification
 
 import android.app.NotificationManager
 import androidx.core.app.NotificationCompat
+import com.platojobs.pkotlinapp.R
 import com.platojobs.pkotlinapp.domain.model.DeviceRule
 import com.platojobs.pkotlinapp.domain.model.RuleType
 import org.junit.Assert.assertEquals
@@ -57,7 +58,7 @@ class AlertNotificationFactoryTest {
         val manager = context.getSystemService(NotificationManager::class.java)
         val channel = manager.getNotificationChannel(AlertNotificationFactory.CHANNEL_ID)
         assertNotNull(channel)
-        assertEquals("设备告警", channel.name.toString())
+        assertEquals(context.getString(R.string.alert_channel_name), channel.name.toString())
     }
 
     @Test
@@ -78,11 +79,13 @@ class AlertNotificationFactoryTest {
             timestamp = 0L,
         )
         assertTrue(content.text.contains("客厅温度计"))
-        assertTrue(content.text.contains("信号强度"))
+        assertTrue(
+            content.text.lowercase().contains(context.getString(R.string.devices_sort_rssi).lowercase()),
+        )
         assertTrue(content.text.contains("-85"))
         assertTrue(content.text.contains("-70"))
         assertTrue(content.text.contains(":"))
         assertTrue(!content.text.contains("token", ignoreCase = true))
-        assertTrue(!content.text.contains("账号"))
+        assertTrue(!content.text.contains("account", ignoreCase = true))
     }
 }

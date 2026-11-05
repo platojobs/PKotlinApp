@@ -22,8 +22,6 @@
             style="@style/Widget.App.TextView"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:ellipsize="end"
-            android:maxLines="1"
             android:textAppearance="@style/TextAppearance.App.Callout"
             tools:text="温湿度计" />
 
@@ -58,8 +56,6 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="@dimen/space_12"
-            android:ellipsize="end"
-            android:maxLines="1"
             android:textAppearance="@style/TextAppearance.App.NumericM"
             tools:text="24.6 °C" />
 
@@ -69,8 +65,6 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="@dimen/space_4"
-            android:ellipsize="end"
-            android:maxLines="1"
             android:textAppearance="@style/TextAppearance.App.Footnote"
             tools:text="最近读数" />
     </LinearLayout>

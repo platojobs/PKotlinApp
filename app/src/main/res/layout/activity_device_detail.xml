@@ -227,8 +227,10 @@
                             android:orientation="horizontal">
 
                             <TextView
-                                android:layout_width="100dp"
+                                android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
+                                android:minWidth="100dp"
+                                android:layout_marginEnd="8dp"
                                 android:text="@string/detail_vendor"
                                 android:textAppearance="@style/TextAppearance.App.Body"
                                 android:textColor="@color/text_secondary" />
@@ -248,8 +250,10 @@
                             android:orientation="horizontal">
 
                             <TextView
-                                android:layout_width="100dp"
+                                android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
+                                android:minWidth="100dp"
+                                android:layout_marginEnd="8dp"
                                 android:text="@string/detail_device_type"
                                 android:textAppearance="@style/TextAppearance.App.Body"
                                 android:textColor="@color/text_secondary" />
@@ -269,8 +273,10 @@
                             android:orientation="horizontal">
 
                             <TextView
-                                android:layout_width="100dp"
+                                android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
+                                android:minWidth="100dp"
+                                android:layout_marginEnd="8dp"
                                 android:text="@string/detail_firmware"
                                 android:textAppearance="@style/TextAppearance.App.Body"
                                 android:textColor="@color/text_secondary" />
@@ -290,8 +296,10 @@
                             android:orientation="horizontal">
 
                             <TextView
-                                android:layout_width="100dp"
+                                android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
+                                android:minWidth="100dp"
+                                android:layout_marginEnd="8dp"
                                 android:text="@string/detail_alias"
                                 android:textAppearance="@style/TextAppearance.App.Body"
                                 android:textColor="@color/text_secondary" />
@@ -311,8 +319,10 @@
                             android:orientation="horizontal">
 
                             <TextView
-                                android:layout_width="100dp"
+                                android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
+                                android:minWidth="100dp"
+                                android:layout_marginEnd="8dp"
                                 android:text="@string/detail_group"
                                 android:textAppearance="@style/TextAppearance.App.Body"
                                 android:textColor="@color/text_secondary" />
@@ -332,8 +342,10 @@
                             android:orientation="horizontal">
 
                             <TextView
-                                android:layout_width="100dp"
+                                android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
+                                android:minWidth="100dp"
+                                android:layout_marginEnd="8dp"
                                 android:text="@string/detail_last_seen"
                                 android:textAppearance="@style/TextAppearance.App.Body"
                                 android:textColor="@color/text_secondary" />
@@ -353,8 +365,10 @@
                             android:orientation="horizontal">
 
                             <TextView
-                                android:layout_width="100dp"
+                                android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
+                                android:minWidth="100dp"
+                                android:layout_marginEnd="8dp"
                                 android:text="@string/detail_compatibility"
                                 android:textAppearance="@style/TextAppearance.App.Body"
                                 android:textColor="@color/text_secondary" />
@@ -515,7 +529,8 @@
                     <com.platojobs.pkotlinapp.ui.chart.ReadingChartView
                         android:id="@+id/readingsChart"
                         android:layout_width="match_parent"
-                        android:layout_height="160dp"
+                        android:layout_height="wrap_content"
+                        android:minHeight="160dp"
                         android:layout_marginTop="8dp"
                         android:visibility="gone" />
 

@@ -117,7 +117,11 @@ class ProfileFragment : Fragment() {
                 launch {
                     viewModel.scanLogs.collect { logs ->
                         scanLogAdapter.submitList(logs)
-                        binding.logsCount.text = getString(R.string.profile_logs_count, logs.size)
+                        binding.logsCount.text = resources.getQuantityString(
+                            R.plurals.profile_logs_count,
+                            logs.size,
+                            logs.size,
+                        )
                         binding.logsEmpty.visibility =
                             if (logs.isEmpty()) View.VISIBLE else View.GONE
                         binding.logsList.visibility =

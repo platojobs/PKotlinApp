@@ -1,10 +1,12 @@
 package com.platojobs.pkotlinapp.ui.intelligence
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.platojobs.pkotlinapp.PKotlinApplication
+import com.platojobs.pkotlinapp.R
 import com.platojobs.pkotlinapp.domain.model.Device
 import com.platojobs.pkotlinapp.domain.model.DeviceRule
 import com.platojobs.pkotlinapp.domain.model.RuleComparator
@@ -47,6 +49,7 @@ data class IntelligenceUiState(
 )
 
 class IntelligenceViewModel(
+    private val appContext: Context,
     private val ruleRepository: RuleRepository,
     private val ruleEventRepository: RuleEventRepository,
     private val sceneRepository: SceneRepository,
@@ -103,7 +106,7 @@ class IntelligenceViewModel(
                 .onSuccess { _loadError.value = null }
                 .onFailure {
                     _loadError.value = it.message?.takeIf(String::isNotBlank)
-                        ?: "本地场景读取失败"
+                        ?: appContext.getString(R.string.intelligence_scene_load_failed)
                 }
         }
     }
@@ -112,7 +115,7 @@ class IntelligenceViewModel(
         viewModelScope.launch {
             runCatching { ruleRepository.addRule(type, threshold) }
                 .onSuccess { ruleEngine.refresh() }
-                .onFailure { _messages.tryEmit(it.message ?: "规则保存失败") }
+                .onFailure { _messages.tryEmit(it.message ?: appContext.getString(R.string.intelligence_rule_save_failed)) }
         }
     }
 
@@ -125,7 +128,7 @@ class IntelligenceViewModel(
         viewModelScope.launch {
             runCatching { ruleRepository.addMetricRule(metric, comparator, threshold, consecutive) }
                 .onSuccess { ruleEngine.refresh() }
-                .onFailure { _messages.tryEmit(it.message ?: "规则保存失败") }
+                .onFailure { _messages.tryEmit(it.message ?: appContext.getString(R.string.intelligence_rule_save_failed)) }
         }
     }
 
@@ -175,9 +178,9 @@ class IntelligenceViewModel(
             }
                 .onSuccess {
                     ruleEngine.refresh()
-                    _messages.tryEmit("推荐规则已添加，立即生效")
+                    _messages.tryEmit(appContext.getString(R.string.intelligence_rule_recommend_applied))
                 }
-                .onFailure { _messages.tryEmit(it.message ?: "规则保存失败") }
+                .onFailure { _messages.tryEmit(it.message ?: appContext.getString(R.string.intelligence_rule_save_failed)) }
         }
     }
 
@@ -185,7 +188,7 @@ class IntelligenceViewModel(
         viewModelScope.launch {
             runCatching { ruleRepository.setEnabled(rule.id, enabled) }
                 .onSuccess { ruleEngine.refresh() }
-                .onFailure { _messages.tryEmit(it.message ?: "规则状态更新失败") }
+                .onFailure { _messages.tryEmit(it.message ?: appContext.getString(R.string.intelligence_rule_state_failed)) }
         }
     }
 
@@ -193,23 +196,23 @@ class IntelligenceViewModel(
         viewModelScope.launch {
             runCatching { ruleRepository.deleteRule(rule.id) }
                 .onSuccess { ruleEngine.refresh() }
-                .onFailure { _messages.tryEmit(it.message ?: "规则删除失败") }
+                .onFailure { _messages.tryEmit(it.message ?: appContext.getString(R.string.intelligence_rule_delete_failed)) }
         }
     }
 
     fun saveScene(id: Long?, name: String, actions: List<SceneAction>) {
         viewModelScope.launch {
             runCatching { sceneRepository.saveScene(id, name, actions) }
-                .onSuccess { _messages.tryEmit("场景已保存") }
-                .onFailure { _messages.tryEmit(it.message ?: "场景保存失败") }
+                .onSuccess { _messages.tryEmit(appContext.getString(R.string.intelligence_scene_saved)) }
+                .onFailure { _messages.tryEmit(it.message ?: appContext.getString(R.string.intelligence_scene_save_failed)) }
         }
     }
 
     fun deleteScene(scene: Scene) {
         viewModelScope.launch {
             runCatching { sceneRepository.deleteScene(scene.id) }
-                .onSuccess { _messages.tryEmit("已删除场景「${scene.name}」") }
-                .onFailure { _messages.tryEmit(it.message ?: "场景删除失败") }
+                .onSuccess { _messages.tryEmit(appContext.getString(R.string.scene_deleted, scene.name)) }
+                .onFailure { _messages.tryEmit(it.message ?: appContext.getString(R.string.intelligence_scene_delete_failed)) }
         }
     }
 
@@ -236,6 +239,7 @@ class IntelligenceViewModel(
             initializer {
                 val container = app.container
                 IntelligenceViewModel(
+                    appContext = app,
                     ruleRepository = container.ruleRepository,
                     ruleEventRepository = container.ruleEventRepository,
                     sceneRepository = container.sceneRepository,

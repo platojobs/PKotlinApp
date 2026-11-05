@@ -533,7 +533,10 @@ class IntelligenceFragment : Fragment(R.layout.fragment_intelligence) {
             return
         }
         val lines = result.outcomes.mapIndexed { index, outcome ->
-            val status = if (outcome.success) "成功" else "失败"
+            val status = getString(
+                if (outcome.success) R.string.intelligence_scene_status_success
+                else R.string.intelligence_scene_status_failure,
+            )
             "${index + 1}. $status · ${actionLabel(outcome.action)}\n   ${outcome.message}"
         }
         MaterialAlertDialogBuilder(requireContext())

@@ -49,6 +49,11 @@ class ReadingChartView @JvmOverloads constructor(
     private var rangeLabel: String = ""
     private var selectedStart: Long? = null
     private var onBucketSelected: ((ChartBucket?) -> Unit)? = null
+    private val largeFont = resources.configuration.fontScale >= LARGE_FONT_SCALE
+
+    /** 大字号下 Y 轴刻度区间数：2 段即 3 个刻度。 */
+    internal val yTickIntervals: Int
+        get() = if (largeFont) 2 else GRID_LINES
 
     private val gestureDetector = GestureDetector(
         context,
@@ -83,6 +88,7 @@ class ReadingChartView @JvmOverloads constructor(
         selectionPaint.strokeWidth = 2.dp
         labelPaint.color = ContextCompat.getColor(context, R.color.text_secondary)
         labelPaint.textSize = resources.getDimension(R.dimen.chart_label_text_size)
+        minimumHeight = (if (largeFont) 220 else 160).dp.toInt()
         isClickable = true
         updateContentDescription()
     }
@@ -128,7 +134,7 @@ class ReadingChartView @JvmOverloads constructor(
         gestureDetector.onTouchEvent(event) || super.onTouchEvent(event)
 
     private fun selectAt(x: Float) {
-        val left = paddingLeft + LABEL_WIDTH_DP.dp
+        val left = leftEdge()
         val top = paddingTop + 6.dp
         val right = width - paddingRight - 6.dp
         val bottom = height - paddingBottom - LABEL_HEIGHT_DP.dp
@@ -144,15 +150,17 @@ class ReadingChartView @JvmOverloads constructor(
     @SuppressLint("DrawAllocation")
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        val left = paddingLeft + LABEL_WIDTH_DP.dp
+        val left = leftEdge()
         val top = paddingTop + 6.dp
         val right = width - paddingRight - 6.dp
         val bottom = height - paddingBottom - LABEL_HEIGHT_DP.dp
         if (right <= left || bottom <= top) return
 
         // 网格与坐标轴：即使没有数据也画出空白坐标系，避免布局跳动。
-        for (index in 0..GRID_LINES) {
-            val y = top + (bottom - top) * index.toFloat() / GRID_LINES.toFloat()
+        // 200% 字号下 Y 轴只保留 3 个刻度（上下界 + 中位），减少标签相互挤压。
+        val intervals = yTickIntervals
+        for (index in 0..intervals) {
+            val y = top + (bottom - top) * index.toFloat() / intervals.toFloat()
             canvas.drawLine(left, y, right, y, gridPaint)
         }
         canvas.drawLine(left, top, left, bottom, axisPaint)
@@ -174,6 +182,15 @@ class ReadingChartView @JvmOverloads constructor(
             bottom,
             labelPaint,
         )
+        if (largeFont) {
+            val midValue = (plot.maxValue + plot.minValue) / 2
+            canvas.drawText(
+                formatValue(midValue) + unit,
+                paddingLeft.toFloat(),
+                (top + bottom) / 2 + labelPaint.textSize / 2,
+                labelPaint,
+            )
+        }
         if (from > 0L && to > from) {
             val spanHours = (to - from) / 3_600_000L
             val formatter = if (spanHours > 48) dayFormatter else timeFormatter
@@ -229,14 +246,29 @@ class ReadingChartView @JvmOverloads constructor(
 
     private fun formatValue(value: Double): String =
         if (kotlin.math.abs(value - value.toLong()) < 0.05) {
-            String.format(Locale.US, "%.0f", value)
+            String.format(Locale.getDefault(), "%.0f", value)
         } else {
-            String.format(Locale.US, "%.1f", value)
+            String.format(Locale.getDefault(), "%.1f", value)
         }
+
+    /**
+     * 左侧 Y 轴标签区宽度随字号与数值文本自适应，避免超大字号下标签压到绘图区。
+     */
+    private fun leftEdge(): Float {
+        val finite = buckets.filter { it.min.isFinite() && it.max.isFinite() }
+        val high = formatValue(finite.maxOfOrNull { it.max } ?: 0.0) + unit
+        val low = formatValue(finite.minOfOrNull { it.min } ?: 0.0) + unit
+        val needed = maxOf(labelPaint.measureText(high), labelPaint.measureText(low)) + 4.dp
+        return paddingLeft + maxOf(LABEL_WIDTH_DP.dp, needed)
+    }
 
     private fun updateContentDescription() {
         if (buckets.isEmpty()) {
-            contentDescription = context.getString(R.string.readings_chart_desc, 0)
+            contentDescription = resources.getQuantityString(
+                R.plurals.readings_chart_desc,
+                0,
+                0,
+            )
             return
         }
         val selected = selectedStart?.let { start -> buckets.firstOrNull { it.start == start } }
@@ -315,5 +347,6 @@ class ReadingChartView @JvmOverloads constructor(
         const val SELECTED_POINT_RADIUS_DP = 5
         const val HIT_TOLERANCE_DP = 16
         const val UNKNOWN_COUNT = "—"
+        const val LARGE_FONT_SCALE = 1.5f
     }
 }

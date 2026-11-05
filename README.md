@@ -552,6 +552,15 @@ Debug / Release 都可通过 `apiBaseUrl` 切换；发布前请传入正式域�
 - **手动新增**：新增规则弹窗增加「指标阈值」类型，指标下拉只列已采集到的真实指标；比较符四档、阈值支持小数、连续条数限定 1–5，校验失败给出明确错误。
 - **迁移**：Room v10（`MIGRATION_9_10`），旧规则 `type/threshold` 不变并回填指标字段副本，`RuleMigrationTest` + `RuleEngineTest` 覆盖「升级后旧规则仍能触发」。
 
+### 6.10 中英双语、200% 字号与无障碍（v0.12.0）
+
+- **双语资源**：默认 `res/values/strings.xml` 为中文，`res/values-en/strings.xml` 为英文；复数走 `<plurals>`（时间、动作数、读数条数、分桶数、连续条数），所有格式化占位符统一命名参数（`%1$s` / `%2$d`），不存在裸 `%s`。`BilingualAuditTest` 解析两份 XML，断言 key 集合完全一致、占位符个数与类型一致、无空值，并扫描 `ui/` 下 Kotlin 源码不允许出现中文字面量（注释与日志除外）。
+- **术语**：英文统一 Device / Reading / Sync / Scan / Group / Alert / **Transfer Code** / Bucket，8 位接管码绝不写作 “pairing code”，完整对照表见 §13.2。
+- **格式化**：界面上的日期与数字使用 `Locale.getDefault()`（如设备详情读数、图表 Y 轴）；CSV 导出仍固定 `Locale.US`，保证文件小数点与表头跨语言稳定。
+- **200% 字号**：`fontScale ≥ 1.5` 时首页设备卡片由 2 列降为 1 列，卡片文字取消 `maxLines=1`/省略，随内容换行；设备详情标签改为 `wrap_content + minWidth 100dp`；规则新增/编辑弹窗放入 `NestedScrollView`；图表高度 160dp → 220dp 且 Y 轴刻度从 5 段缩为 3 个（上下界 + 中位），左侧标签区宽度按最大标签实测宽度自适应；市场筛选 Chip 从横向滚动改为可换行 `ChipGroup`（`maxLines=2`、不省略）。
+- **无障碍**：扫描、添加设备、规则开关、导出、注销的触控区 ≥48dp；规则开关补 `stateDescription`（「已启用 / 已停用」）；图标补 `contentDescription`；图表整图播报「温度，最近 24 小时，最低 X 最高 Y，共 N 个数据点」，点选后更新为当前桶摘要。文字配色按 WCAG 计算全部 ≥4.5:1（`text_tertiary` 由 `#667085` 调深到 `#5F6A7D` 以覆盖 `surface_sunken` 组合），`BilingualAuditTest` 同时审计浅色/深色配色与触控尺寸。
+- **验证**：`FontScaleLayoutTest` 使用 Robolectric 在 `fontScale=2.0` 实测设备卡片、规则行与规则弹窗（高度 >0、不超父宽、弹窗可滚动），并断言图表刻度数为 3。
+
 ---
 
 ## 7. 构建与运行
@@ -561,7 +570,7 @@ export JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk-21.jdk/Contents/Home
 
 ./gradlew assembleDebug        # Debug APK
 ./gradlew lintDebug            # Lint
-./gradlew testDebugUnitTest    # 单元测试：211 个（含规则防抖/恢复/迁移、图表命中、推荐模板）
+./gradlew testDebugUnitTest    # 单元测试：222 个（含规则防抖/恢复/迁移、图表命中、推荐模板、双语/无障碍/200% 字号）
 ./gradlew assembleRelease      # 签名 Release APK
 ./gradlew bundleRelease        # 签名 Release AAB
 
@@ -803,6 +812,21 @@ adb logcat -d -s ActivityTaskManager:I | grep "Displayed com.platojobs"
 
 落地方式：`TerminologyAuditTest` 直接解析 `strings.xml`，对 9 条高频文案（扫描按钮、首页空态、同步状态、读数标题/空态、首启降级文案等）断言不含「装置/机器/上传/策略/参数/最后在线/数值」；另断言扫描按钮含「扫描」、待同步以「待同步」开头、读数标题为「读数」。
 
+### 13.2 中英术语对照（v0.12.0）
+
+| 中文 | English | 说明 |
+| --- | --- | --- |
+| 设备 | Device | 卡片、空态、错误与设置 |
+| 读数 | Reading | 单条读数；集合用 Readings |
+| 同步 | Sync | 不使用 Upload 表示整条同步链路 |
+| 扫描 | Scan | 发现 BLE 设备；列表过滤仍用 Search |
+| 分组 | Group | 设备分组与规则分组统一 |
+| 告警 | Alert | 通知渠道、今日告警、最近触发 |
+| 接管码 | **Transfer Code** | 8 位账号迁移码；**英文禁用 pairing code**；蓝牙重新配对用 re-pair |
+| 分桶 | Bucket | 图表聚合单元 |
+
+`BilingualAuditTest` 额外断言英文资源中不出现 `pairing code`，且包含 `Transfer Code`。
+
 ## 14. 游标失效与全量重同步（v0.10.0）
 
 ### 14.1 契约
@@ -886,6 +910,7 @@ CI：GitHub Actions 的 `e2e-postgres` job 与该次运行同一脚本，日志�
 
 ## 16. 版本记录
 
+- `v0.12.0`：与 iOS 配平的双语、超大字号与无障碍。全部文案拆为默认中文 `values/strings.xml` 与 `values-en/strings.xml`（457 条字符串 + 8 组 `plurals`，占位符全部命名参数），英文统一 Device/Reading/Sync/Scan/Group/Alert/**Transfer Code**/Bucket，禁止 pairing code；新增 `BilingualAuditTest` 校验两份资源 key/占位符/空值一致性、UI 层 Kotlin 无中文字面量、英文术语、配色对比度与 48dp 触控区。界面日期/数字改用 `Locale.getDefault()`，CSV 仍固定 `Locale.US`。200% 字号下首页降为单列、卡片与详情行自适应换行、规则弹窗可滚动、图表 Y 轴缩为 3 刻度且标签宽度自适应、市场 Chip 换行不省略；`FontScaleLayoutTest` 用 Robolectric 实测高度与父宽。无障碍补规则开关 `stateDescription`、图标 `contentDescription`、图表整图/选中摘要，`text_tertiary` 调深满足 `surface_sunken` 上 ≥4.5:1。单测 222 全绿、`lintDebug` 0 issue、`assembleDebug`、fixture 与真 Postgres e2e 全绿，tag `v0.12.0`。
 - `v0.11.0`：与 iOS 对齐的「有厚度」功能，Android 以规则模板替代 CSV 入口。**指标阈值规则**：`rules` 支持指标 + 比较符（`>`/`<`/`>=`/`<=`）+ 阈值 + 连续 N 条（1–5，默认 1）防抖，接入现有 `RuleEngine` 与读数入库链路（含后台采集），恢复通知只在确实触发过且通知已投递时发一条，节流沿用 `ruleId + mac`；命中事件落库并携带 `metric/value/thresholdValue/unit`，展示 `℃`/`%`/`bpm`。Room v10（`MIGRATION_9_10`）旧规则 `type/threshold` 不变并回填指标字段，旧规则升级后仍触发。**图表点选**：点按/长按选中最近桶，展示区间（本地时区）、min/max/avg/last/条数，点空白取消，不改 Y 轴、只用现有语义色；整图与选中态更新 `contentDescription`；命中几何为纯函数并补单测。**推荐规则**：智能页按设备真实出现过的指标生成模板（温度>30℃/湿度>70%/电量<20%/心率>120/CO₂>1000），一键写入 Room 立即生效；无读数显示真实空态。单测 211 全绿、`lintDebug` 0 issue、`assembleDebug`、fixture 与真 Postgres e2e 全绿，tag `v0.11.0`。
 - `v0.10.0`：跟随后端新增契约并升级真存储联调。`GET /sync/changes` 游标早于最老保留行时返回 `410 RESYNC_REQUIRED`（`cursor=0` 永不 410）；客户端收到后清空游标、只用 `cursor=0` 全量重拉一次，`pending` 设备/读数不丢弃并重新上传，服务端墓碑不覆盖更新的本地 pending；「我的」展示「云端变更记录已过期，已重新全量同步」，该分支与 401（重登）、503 `TIMEOUT`（指数退避）独立。`/auth/anonymous` 与 claim 返回 `expiresAt`（180 天 TTL），「我的」只读展示会话到期日；错误码映射补齐 `RESYNC_REQUIRED`/`TIMEOUT`/`IDEMPOTENCY_CONFLICT`；readings/changes/export 的 limit 在客户端收敛到 500/500/5000。新增 `scripts/e2e-postgres.sh` 与 `:app:e2ePostgres`，用 `stack-for-e2e.sh` + `seed-for-e2e.sh` 起真 Postgres，覆盖登录/push/changes/410（SQL 改 server_ts + cleanup）/series/metrics/export/注销 401；CI 新增并行 `e2e-postgres` job。单测新增 410/503/错误码/limit/expiresAt 用例；`testDebugUnitTest`、`lintDebug` 0 issue、`assembleDebug`、两套 e2e 全绿，tag `v0.10.0`。
 - `v0.9.0`：首次使用路径 + 冷启动性能 + 上架材料。新增 `OnboardingActivity` 三步首启引导（蓝牙/通知/位置的真实用途，可跳过，状态持久化在 `AppSettings.onboardingCompleted`，中途返回不写），权限改为「先说明后申请」（最后一步「继续」才弹系统框，扫描/连接补授权先弹 `PermissionRationale`），拒绝后展示逐项授权状态、「仅本机可用」能力边界与「打开应用设置」入口，返回自动刷新；仅缺通知不算仅本机。首页无设备时只保留「还没有设备」+「开始扫描」一套文案，删除重复空态串，网络不可用只由顶部横幅说明；修复首页三态容器层级缺陷（根布局被整体 `GONE`）。冷启动移除 `awaitInitialSync()`/`syncLoading`，首帧只出应用壳 + 骨架、首页下一帧挂载，同步/清理/调度在首帧后投递 IO，同环境实测 TotalTime 中位数 1098.5 ms → 818 ms（20 次，见 §12）。新增 `docs/store-listing.md`、`docs/privacy-policy.md`、`docs/data-safety.md`；按设计规范第 8 节统一术语并在 §13.1 列表，新增 `TerminologyAuditTest` 检查 9 条高频文案。新增 `OnboardingPolicyTest`、`TerminologyAuditTest`，`AppSettingsTest` 补 `onboardingCompleted`；单测 182 全绿，`assembleDebug`、`lintDebug` 0 issue。

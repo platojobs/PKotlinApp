@@ -105,9 +105,9 @@ class MarketFragment : Fragment(R.layout.fragment_market) {
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     private fun renderFilters(filter: MarketFilterState) {
-        binding.vendorFilterScroll.visibility =
+        binding.vendorFilters.visibility =
             if (filter.vendors.isEmpty()) View.GONE else View.VISIBLE
-        binding.compatibilityFilterScroll.visibility =
+        binding.compatibilityFilters.visibility =
             if (filter.compatibilities.isEmpty()) View.GONE else View.VISIBLE
 
         binding.vendorFilters.removeAllViews()

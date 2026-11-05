@@ -6,6 +6,17 @@
 
 ---
 
+## v0.12.0
+
+**主题：中英双语 / 200% 字号 / 无障碍与 iOS 配平**
+
+- 双语资源：默认 `values/strings.xml` 中文，新增 `values-en/strings.xml` 英文（457 条字符串 + 8 组复数）；所有占位符改为命名参数，复数使用 `<plurals>`。
+- 术语统一：Device / Reading / Sync / Scan / Group / Alert / **Transfer Code** / Bucket；8 位接管码英文不使用 “pairing code”，蓝牙重新配对用 re-pair。
+- 格式化：界面日期与读数使用 `Locale.getDefault()`；CSV 导出继续固定 `Locale.US`，表头与小数点不随系统语言变化。
+- 200% 字号：首页两列卡片在 `fontScale ≥ 1.5` 时降为单列，卡片/场景卡文字取消单行省略；设备详情标签自适应宽度；规则弹窗改为可滚动；图表高度提升到 220dp、Y 轴缩为 3 个刻度且标签区按实测宽度自适应；市场筛选 Chip 改为可换行 `ChipGroup`（最多两行，不省略）。
+- 无障碍：规则开关补 `stateDescription`（已启用/已停用）；扫描、添加设备、规则开关、导出、注销触控区 ≥48dp；图标补 `contentDescription`；图表整图与选中桶均播报摘要。`text_tertiary` 调整为 `#5F6A7D`，浅色/深色所有关键文字组合对比度 ≥4.5:1。
+- 测试：新增 `BilingualAuditTest`（资源 key/占位符/空值、UI 层无中文字面量、术语、对比度、48dp、图标描述、Chip 换行）与 `FontScaleLayoutTest`（Robolectric 在 fontScale=2.0 实测高度/父宽、弹窗可滚动、图表 3 刻度）。单测 222 全绿，`lintDebug` 0 issue，`assembleDebug`、fixture e2e、真 Postgres e2e 全绿；tag `v0.12.0`。
+
 ## v0.11.0
 
 **主题：指标阈值规则与防抖 / 图表点选 / 基于真实指标的推荐规则**

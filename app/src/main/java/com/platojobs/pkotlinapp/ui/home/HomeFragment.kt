@@ -65,10 +65,12 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             onManageScenes = { (activity as? MainActivity)?.openIntelligence() },
         )
 
-        binding.homeList.layoutManager = GridLayoutManager(requireContext(), 2).apply {
+        val columns = if (resources.configuration.fontScale >= LARGE_FONT_SCALE) 1 else 2
+        binding.homeList.layoutManager = GridLayoutManager(requireContext(), columns).apply {
             spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
                 override fun getSpanSize(position: Int): Int =
-                    adapter.currentList.getOrNull(position)?.span ?: 2
+                    if (columns == 1) 1
+                    else adapter.currentList.getOrNull(position)?.span ?: 2
             }
         }
         binding.homeList.adapter = adapter
@@ -254,6 +256,11 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
+    private companion object {
+        /** 200% 字号下两列卡片只剩半屏宽，降为单列保证文案不被截断。 */
+        const val LARGE_FONT_SCALE = 1.5f
+    }
 
     private fun toast(message: String) {
         Toast.makeText(requireContext(), message, Toast.LENGTH_LONG).show()

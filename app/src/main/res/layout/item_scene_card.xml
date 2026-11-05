@@ -3,8 +3,9 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     style="@style/Widget.App.Card"
-    android:layout_width="168dp"
+    android:layout_width="wrap_content"
     android:layout_height="wrap_content"
+    android:minWidth="168dp"
     android:layout_margin="@dimen/space_4"
     android:clickable="true"
     android:focusable="true"
@@ -21,8 +22,7 @@
             style="@style/Widget.App.TextView"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:ellipsize="end"
-            android:maxLines="1"
+            android:maxLines="2"
             android:textAppearance="@style/TextAppearance.App.Callout"
             tools:text="回家模式" />
 
@@ -32,8 +32,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="@dimen/space_4"
-            android:ellipsize="end"
-            android:maxLines="1"
+            android:maxLines="2"
             android:textAppearance="@style/TextAppearance.App.Footnote"
             tools:text="仅本机 · 3 个动作" />
 

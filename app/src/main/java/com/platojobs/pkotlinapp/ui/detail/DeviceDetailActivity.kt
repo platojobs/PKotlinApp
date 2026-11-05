@@ -504,10 +504,11 @@ class DeviceDetailActivity : AppCompatActivity() {
             renderedMetricSignatures = signatures
             binding.readingsChips.removeAllViews()
             metrics.forEach { item ->
-                val label = getString(
-                    R.string.readings_metric_with_count,
+                val label = resources.getQuantityString(
+                    R.plurals.readings_metric_with_count,
+                    item.count.toInt(),
                     metricLabel(item.metric),
-                    item.count.toString(),
+                    item.count,
                 )
                 val chip = Chip(this).apply {
                     id = View.generateViewId()
@@ -667,9 +668,9 @@ class DeviceDetailActivity : AppCompatActivity() {
     private fun formatMeasure(value: Double?, unit: String): String {
         if (value == null || !value.isFinite()) return getString(R.string.detail_unknown_value)
         val number = if (kotlin.math.abs(value - value.toLong()) < 0.05) {
-            String.format(Locale.US, "%.0f", value)
+            String.format(Locale.getDefault(), "%.0f", value)
         } else {
-            String.format(Locale.US, "%.1f", value)
+            String.format(Locale.getDefault(), "%.1f", value)
         }
         return if (unit.isBlank()) number else number + unit
     }

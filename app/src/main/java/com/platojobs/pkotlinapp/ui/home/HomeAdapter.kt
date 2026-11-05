@@ -223,7 +223,11 @@ class HomeAdapter(
                     card.sceneMeta.text = context.getString(
                         R.string.home_scene_meta_local,
                         context.getString(R.string.home_scenes_local),
-                        context.getString(R.string.home_scene_actions_count, scene.actions.size),
+                        context.resources.getQuantityString(
+                            R.plurals.home_scene_actions_count,
+                            scene.actions.size,
+                            scene.actions.size,
+                        ),
                     )
                     card.sceneRun.isEnabled = true
                 }

@@ -651,6 +651,8 @@ release {
 `.github/workflows/android.yml`：
 
 - **verify job**（push main / pull_request）：JDK 21（Temurin）、`./gradlew assembleDebug lintDebug testDebugUnitTest`，要求 lint 0 error / 0 warning；上传 Lint 与单测报告。
+- **e2e-contract job**（与 verify 并行）：checkout 本仓库与 `platojobs/PJGoIoT`，启动 `STORE=fixture` 的 Go 后端，跑 `:app:e2eContract`；失败上传测试报告与 Go 服务日志。
+- **e2e-postgres job**（与 fixture e2e 并行，不阻塞主流程）：Docker 起真 Postgres + API，跑 `scripts/e2e-postgres.sh`（含 410 分支），失败上传 Postgres 服务日志，见 §15。
 - **release job**（仅 `v*` tag 或手动 `workflow_dispatch`）：执行 `assembleRelease`，**不注入签名密钥**，产出未签名 APK 作为构建验证；如需正式签名请在 GitHub Secrets 配置后自行补充注入步骤，仓库内不写任何密码。
 
 ---
@@ -768,8 +770,90 @@ adb logcat -d -s ActivityTaskManager:I | grep "Displayed com.platojobs"
 
 落地方式：`TerminologyAuditTest` 直接解析 `strings.xml`，对 9 条高频文案（扫描按钮、首页空态、同步状态、读数标题/空态、首启降级文案等）断言不含「装置/机器/上传/策略/参数/最后在线/数值」；另断言扫描按钮含「扫描」、待同步以「待同步」开头、读数标题为「读数」。
 
-## 14. 版本记录
+## 14. 游标失效与全量重同步（v0.10.0）
 
+### 14.1 契约
+
+`GET /sync/changes` 的游标指向已被清理的变更行时，服务端返回：
+
+```http
+HTTP/1.1 410 Gone
+Content-Type: application/json
+
+{"error":{"code":"RESYNC_REQUIRED","message":"cursor too old"}}
+```
+
+- 判定条件：`cursor > 0` 且该用户当前最小保留 `seq` 比 `cursor + 1` 还大；
+- `cursor=0` 表示从未同步，**永不返回 410**，直接从头拉剩余变更。
+
+### 14.2 客户端处理（不是重试）
+
+| 分支 | 触发 | 客户端动作 | 是否指数退避 |
+| --- | --- | --- | --- |
+| `RESYNC` | 410 + `RESYNC_REQUIRED` | 清空本地游标 → 立刻用 `cursor=0` 全量重拉**一次**；`pending` 设备/读数不删除，随后重新上传；状态记录 `resyncedAt`，界面提示「云端变更记录已过期，已重新全量同步」 | 否（终态分支，只处理一次） |
+| `AUTH` | 401 / 403 / `UNAUTHORIZED` | 暂停同步，等用户确认重登，文案「登录已失效」 | 否 |
+| `BUSY` | 503 / `TIMEOUT`（查询超时） | 保留游标与 `pending`，文案「服务端繁忙，稍后重试」 | 是（WorkManager 指数退避） |
+| `CONFLICT` | 409 / `IDEMPOTENCY_CONFLICT` | 记录冲突并展示 | 否 |
+
+实现位置：
+
+- [`ApiErrors.kt`](file:///Users/platojobs/Desktop/GitHub/platojobs/PKotlinApp/app/src/main/java/com/platojobs/pkotlinapp/data/remote/ApiErrors.kt)：错误码常量、读取 410/503 响应体、HTTP 异常 → 领域异常；
+- [`SyncEngine.kt`](file:///Users/platojobs/Desktop/GitHub/platojobs/PKotlinApp/app/src/main/java/com/platojobs/pkotlinapp/domain/sync/SyncEngine.kt)：捕获 `CursorExpiredException` → 游标置空 → `pull("0")` 一次，并回调 `onCursorExpired`；
+- [`SyncManager.kt`](file:///Users/platojobs/Desktop/GitHub/platojobs/PKotlinApp/app/src/main/java/com/platojobs/pkotlinapp/data/sync/SyncManager.kt)：冷启动重同步后立即补传 pending 读数（失败不影响首屏）；
+- [`SyncPrefs.kt`](file:///Users/platojobs/Desktop/GitHub/platojobs/PKotlinApp/app/src/main/java/com/platojobs/pkotlinapp/data/sync/SyncPrefs.kt)：`recordResync()` 持久化 `resyncedAt`，「我的」展示提示，不静默。
+
+合并保护：全量重拉应用服务端墓碑前，如果本地同 `externalId` 记录是 `PENDING` 且 `updatedAt` 更新，则保留本地版本；`pending` 读数全程不参与删除。
+
+### 14.3 其它新增契约
+
+- **会话到期（180 天 TTL）**：`/auth/anonymous` 与 `/auth/pairing-code/claim` 返回 `expiresAt`；登录/接管时随 token 保存，「我的」只读展示「会话到期：YYYY-MM-DD（只读）」。401 仍走既有重登流程，文案「登录已失效」。
+- **列表上限**：readings 500、export 5000、changes 500。客户端读数分页固定 100、导出按 `EXPORT_MAX=5000` 分片、changes 显式传 `limit=500`，均在超限前收敛（`ApiLimits`）。
+- **错误码映射补齐**：`RESYNC_REQUIRED` → `RESYNC`、`TIMEOUT` → `BUSY`、`IDEMPOTENCY_CONFLICT` → `CONFLICT`，见 `SyncErrorMappingTest`。
+
+### 14.4 测试
+
+- `SyncEngineTest`：410 → 游标归零、第二次请求用 `cursor=0`、`pending` 保留且不被较旧服务端数据覆盖、服务端墓碑不删较新 pending、连续两次 410 只处理一次；
+- `RemoteSyncTokenTest`：fake transport 下 410 → `CursorExpiredException`、503 `TIMEOUT` → `ServerBusyException`（不重登、不清游标）、changes `limit=500`、登录保存 `expiresAt`；
+- `SyncErrorMappingTest`：HTTP 状态与三个错误码到 `SyncErrorKind` 的映射；
+- `TerminologyAuditTest`：410/401/503 三条 UI 文案分别包含「已重新全量同步」「登录已失效」「服务端繁忙」。
+
+## 15. 真存储契约联调（v0.10.0）
+
+`scripts/e2e-postgres.sh` 一条命令完成：起栈 → seed → 跑契约套件 → 410 分支 → 停栈。
+
+```bash
+./scripts/e2e-postgres.sh
+```
+
+流程：
+
+1. 调 `PJGoIoT/scripts/stack-for-e2e.sh`：Docker 起 `postgres:16-alpine`（自动选空闲端口）、迁移到最新版本、Go 进程以 `STORE=postgres` 启动 API，输出 `BASE_URL`；
+2. 调 `scripts/seed-for-e2e.sh`：写入真实迁移 seed 关联的 ESP32-C3-DevKitM-1 与 24 条读数，并从 API 读回校验；
+3. 跑 `:app:e2ePostgres`：与 fixture 套件共用用例，另加 postgres 专属断言——匿名登录/claim 的 `expiresAt`（180 天）、push 设备+读数、changes、readings/changes/export 的 limit 边界（500/500/5000 通过，501/501/5001 返回 400）、series/metrics、注销 204 后 401；
+4. 410 分支：匿名登录 → push 2 台设备 → SQL 把该用户最老 `seq` 的 `server_ts` 改到 100 天前 → 跑 `cmd/cleanup`（change_log 保留 90 天）→ `cursor=最老seq-1` 断言 `410 RESYNC_REQUIRED` → `cursor=0` 断言 200 且返回剩余变更；
+5. 无论成功失败都停栈；失败时把 `api.log` 复制到 `E2E_LOG_DIR`，供 CI artifact 上传。
+
+本机真实执行输出（2026-11-05，Docker 29.5.2，`cursor` 为该次实际 seq）：
+
+```text
+[E2E:pg] 用户 b63dc736-001e-4a7f-bb75-46e9ebfeee3f 最老 seq=18，把 server_ts 改到 100 天前
+[E2E:pg] 运行 cleanup（change_log 保留 90 天）
+清理完成 readings_deleted=0 readings_cutoff=2016-11-07T09:58:54Z retention_days=3650
+change_log_deleted=1 change_log_cutoff=2026-08-07T09:58:54Z change_log_retention_days=90
+idempotency_keys_deleted=0 idempotency_cutoff=2026-10-29T09:58:54Z idempotency_retention_days=7
+tokens_deleted=0 pairing_codes_deleted=0
+[E2E:pg] 410 校验通过：cursor=17 → RESYNC_REQUIRED
+cursor=0 changes=1 nextCursor=19
+[E2E:pg] cursor=0 从未返回 410，剩余变更已拉回
+[E2E:pg] 通过：postgres @ http://127.0.0.1:50911
+```
+
+CI：GitHub Actions 的 `e2e-postgres` job 与该次运行同一脚本，日志与测试报告见
+<https://github.com/platojobs/PKotlinApp/actions/workflows/android.yml>。
+
+## 16. 版本记录
+
+- `v0.10.0`：跟随后端新增契约并升级真存储联调。`GET /sync/changes` 游标早于最老保留行时返回 `410 RESYNC_REQUIRED`（`cursor=0` 永不 410）；客户端收到后清空游标、只用 `cursor=0` 全量重拉一次，`pending` 设备/读数不丢弃并重新上传，服务端墓碑不覆盖更新的本地 pending；「我的」展示「云端变更记录已过期，已重新全量同步」，该分支与 401（重登）、503 `TIMEOUT`（指数退避）独立。`/auth/anonymous` 与 claim 返回 `expiresAt`（180 天 TTL），「我的」只读展示会话到期日；错误码映射补齐 `RESYNC_REQUIRED`/`TIMEOUT`/`IDEMPOTENCY_CONFLICT`；readings/changes/export 的 limit 在客户端收敛到 500/500/5000。新增 `scripts/e2e-postgres.sh` 与 `:app:e2ePostgres`，用 `stack-for-e2e.sh` + `seed-for-e2e.sh` 起真 Postgres，覆盖登录/push/changes/410（SQL 改 server_ts + cleanup）/series/metrics/export/注销 401；CI 新增并行 `e2e-postgres` job。单测新增 410/503/错误码/limit/expiresAt 用例；`testDebugUnitTest`、`lintDebug` 0 issue、`assembleDebug`、两套 e2e 全绿，tag `v0.10.0`。
 - `v0.9.0`：首次使用路径 + 冷启动性能 + 上架材料。新增 `OnboardingActivity` 三步首启引导（蓝牙/通知/位置的真实用途，可跳过，状态持久化在 `AppSettings.onboardingCompleted`，中途返回不写），权限改为「先说明后申请」（最后一步「继续」才弹系统框，扫描/连接补授权先弹 `PermissionRationale`），拒绝后展示逐项授权状态、「仅本机可用」能力边界与「打开应用设置」入口，返回自动刷新；仅缺通知不算仅本机。首页无设备时只保留「还没有设备」+「开始扫描」一套文案，删除重复空态串，网络不可用只由顶部横幅说明；修复首页三态容器层级缺陷（根布局被整体 `GONE`）。冷启动移除 `awaitInitialSync()`/`syncLoading`，首帧只出应用壳 + 骨架、首页下一帧挂载，同步/清理/调度在首帧后投递 IO，同环境实测 TotalTime 中位数 1098.5 ms → 818 ms（20 次，见 §12）。新增 `docs/store-listing.md`、`docs/privacy-policy.md`、`docs/data-safety.md`；按设计规范第 8 节统一术语并在 §13.1 列表，新增 `TerminologyAuditTest` 检查 9 条高频文案。新增 `OnboardingPolicyTest`、`TerminologyAuditTest`，`AppSettingsTest` 补 `onboardingCompleted`；单测 182 全绿，`assembleDebug`、`lintDebug` 0 issue。
 - `v0.8.0`：设计令牌与信息架构升级。新增 `colors.xml` / `values-night/colors.xml` / `dimens.xml` / 10 级 `TextAppearance` / `res/color` 状态选择器与 `Widget.App.Card`（1dp 描边、零阴影、12dp 圆角），删除布局与代码中的硬编码色值与字号，`windowBackground`/系统栏跟随语义色；自绘大标题 96→56（12dp 阈值、200ms 插值）、行高 56/72/88、页边距 16；统一浅色 6% / 深色 8% 按压遮罩，按钮只变色、卡片按下 0.98；读数/阈值/计数改用 `tnum` 等宽数字；`ChartColorAuditTest` 扩展为同时禁止硬编码字号。底部导航按米家重组为**首页 / 智能 / 产品 / 市场 / 我的**：首页改为设备卡片网格 + 分组分段 + 今日告警摘要 + 快捷场景；新增智能页承载自动化规则与场景；原「设备」Tab 与其规则入口删除。场景为仅本机的有序动作组合（连接/断开设备、开始/停止后台采集、静音告警 10/30/60 分钟、刷新同步），Room v9（`MIGRATION_8_9`）、`SceneExecutor` 顺序执行且失败不阻断、逐动作反馈与汇总；首页展示前 3 个场景。五模块统一骨架（延迟 300ms）/真实空态/可重试错误块。新增场景执行器、持久化、v8→v9 迁移与汇总口径单测；`assembleDebug`、`testDebugUnitTest`、`lintDebug` 全绿。
 - `v0.7.0`：账号迁移与注销 + 后台采集。「我的」新增**迁移到新设备**（`POST /auth/pairing-code`，8 位码 + 服务端 `expiresAt` 真实倒计时、复制、重新生成使旧码立即失效）与**从旧设备接管**（`POST /auth/pairing-code/claim` 换同 `userId` 新 token，保留本地设备/读数并全量重置 `pending` 后重新上传）；输入框按 `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` 自动大写/过滤/截断 8 位；404 统一「码无效或已过期」，429 显示剩余冷却秒数。新增**导出我的数据**（`GET /me/export` 按 `hasMore`/`nextCursor` 循环，cursor 只透传不解析，`devices` 去重、`readings` 拼接，写 `cacheDir/exports/` 后经 FileProvider 分享，显示真实进度与可重试）与**注销账号**（二次确认写明「设备与读数将永久删除且不可恢复」，`DELETE /me` 成功后清 token/游标/同步状态/`clearAllTables()`，401 与网络错误分别提示）。新增**后台采集**前台服务：连接后开关控制，`foregroundServiceType=connectedDevice` + `FOREGROUND_SERVICE_CONNECTED_DEVICE`（Android 14+），通知渠道「数据采集」常驻（设备名 + 已采集条数 + 停止动作），Android 13+ 拒绝通知权限不阻断采集，断开/退出自动停止，开关持久化。单测 168（配对码/导出分页/注销顺序/服务会话/通知构建/Robolectric），e2e 新增账号契约 12 项；lint 0 issue。Room 无 schema 变更（仍为 v8）。

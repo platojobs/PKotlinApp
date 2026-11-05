@@ -49,6 +49,8 @@ class SyncEngineTest {
         var throwAfterApplyOnce = false
         var conflicts: List<SyncConflict> = emptyList()
         var pullPage: SyncPullPage = SyncPullPage(emptyList(), null)
+        val pullErrors = ArrayDeque<Exception>()
+        val pullCursors = mutableListOf<String?>()
 
         override suspend fun push(records: List<SyncRecord>, idempotencyKey: String): SyncPushAck {
             ackCache[idempotencyKey]?.let { return it }
@@ -66,7 +68,11 @@ class SyncEngineTest {
             return ack
         }
 
-        override suspend fun pull(cursor: String?): SyncPullPage = pullPage
+        override suspend fun pull(cursor: String?): SyncPullPage {
+            pullCursors += cursor
+            pullErrors.removeFirstOrNull()?.let { throw it }
+            return pullPage
+        }
     }
 
     private class FakeCursorStore(override var cursor: String? = null) : SyncCursorStore
@@ -313,5 +319,107 @@ class SyncEngineTest {
             IdempotencyKeys.forBatch(listOf(aliasCleared)),
             IdempotencyKeys.forBatch(listOf(aliasCleared.copy())),
         )
+    }
+
+    @Test
+    fun `410 clears cursor refetches from zero and keeps pending`() = runBlocking {
+        val pending = SyncRecord(
+            id = "client-1",
+            platform = "android",
+            externalId = "AA:BB:CC:DD:EE:11",
+            name = "本机待上传",
+            lastRssi = -50,
+            lastSeenTimestamp = 200,
+            updatedAt = 200,
+            syncState = SyncState.PENDING,
+        )
+        val local = FakeLocalStore(listOf(pending))
+        val remote = FakeRemote().apply {
+            pullErrors += CursorExpiredException()
+            pullPage = SyncPullPage(
+                changes = listOf(
+                    pending.copy(
+                        name = "服务端旧名",
+                        updatedAt = 100,
+                        syncState = SyncState.SYNCED,
+                    ),
+                ),
+                nextCursor = "7",
+            )
+        }
+        val cursorStore = FakeCursorStore("12")
+        var expiredCallbacks = 0
+        val engine = SyncEngine(
+            local = local,
+            remote = remote,
+            cursorStore = cursorStore,
+            onCursorExpired = { expiredCallbacks += 1 },
+        )
+
+        engine.pullChanges()
+
+        assertEquals(1, expiredCallbacks)
+        assertTrue(engine.lastPullWasResync)
+        // 第一次用旧游标，410 后立即用 cursor=0 全量重拉。
+        assertEquals(listOf<String?>("12", SyncEngine.CURSOR_START), remote.pullCursors)
+        assertEquals("7", cursorStore.cursor)
+        // 本地 pending 不被服务端较旧数据覆盖，也不被删除。
+        assertEquals("本机待上传", local.records.getValue(pending.externalId).name)
+        assertEquals(SyncState.PENDING, local.records.getValue(pending.externalId).syncState)
+    }
+
+    @Test
+    fun `second 410 is not retried again and surfaces once`() = runBlocking {
+        // 连续两次 410：旧游标一次、cursor=0 一次；只处理一次，不再做第三次请求。
+        val remote = FakeRemote().apply {
+            pullErrors += CursorExpiredException()
+            pullErrors += CursorExpiredException()
+        }
+        val cursorStore = FakeCursorStore("12")
+        var expiredCallbacks = 0
+        val engine = SyncEngine(
+            local = FakeLocalStore(),
+            remote = remote,
+            cursorStore = cursorStore,
+            onCursorExpired = { expiredCallbacks += 1 },
+        )
+        runCatching { engine.pullChanges() }
+
+        assertEquals(listOf<String?>("12", SyncEngine.CURSOR_START), remote.pullCursors)
+        assertEquals(1, expiredCallbacks)
+    }
+
+    @Test
+    fun `server tombstone does not delete newer pending local record`() = runBlocking {
+        val pending = SyncRecord(
+            id = "client-1",
+            platform = "android",
+            externalId = "AA:BB:CC:DD:EE:22",
+            name = "本机修改",
+            lastRssi = -40,
+            lastSeenTimestamp = 300,
+            updatedAt = 300,
+            syncState = SyncState.PENDING,
+        )
+        val local = FakeLocalStore(listOf(pending))
+        val remote = FakeRemote().apply {
+            pullPage = SyncPullPage(
+                changes = listOf(
+                    pending.copy(
+                        name = "服务端墓碑",
+                        updatedAt = 100,
+                        deletedAt = 100,
+                        syncState = SyncState.SYNCED,
+                    ),
+                ),
+                nextCursor = "3",
+            )
+        }
+        val engine = SyncEngine(local, remote, FakeCursorStore())
+
+        engine.pullChanges()
+
+        assertTrue(local.records.containsKey(pending.externalId))
+        assertEquals(SyncState.PENDING, local.records.getValue(pending.externalId).syncState)
     }
 }

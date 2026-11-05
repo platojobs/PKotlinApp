@@ -1,5 +1,6 @@
 package com.platojobs.pkotlinapp.data.sync
 
+import com.platojobs.pkotlinapp.data.remote.ApiLimits
 import com.platojobs.pkotlinapp.data.remote.AppliedChangeDto
 import com.platojobs.pkotlinapp.data.remote.ConflictDto
 import com.platojobs.pkotlinapp.data.remote.PushDeviceDto
@@ -11,6 +12,7 @@ import com.platojobs.pkotlinapp.data.remote.SyncDeviceDto
 import com.platojobs.pkotlinapp.data.remote.SyncPushRequest
 import com.platojobs.pkotlinapp.data.remote.SyncScanRecordDto
 import com.platojobs.pkotlinapp.data.remote.displayLabel
+import com.platojobs.pkotlinapp.data.remote.toSyncException
 import com.platojobs.pkotlinapp.domain.model.PLATFORM_ANDROID
 import com.platojobs.pkotlinapp.domain.model.SyncState
 import com.platojobs.pkotlinapp.domain.model.normalizeExternalId
@@ -24,7 +26,6 @@ import com.platojobs.pkotlinapp.domain.reading.ReadingRemote
 import com.platojobs.pkotlinapp.domain.reading.ReadingSeries
 import com.platojobs.pkotlinapp.domain.reading.ReadingSummary
 import com.platojobs.pkotlinapp.domain.reading.RemoteReading
-import com.platojobs.pkotlinapp.domain.sync.AuthExpiredException
 import com.platojobs.pkotlinapp.domain.sync.Rfc3339
 import com.platojobs.pkotlinapp.domain.sync.SyncConflict
 import com.platojobs.pkotlinapp.domain.sync.SyncPullPage
@@ -70,7 +71,11 @@ class RemoteSyncDataSource(
 
     override suspend fun pull(cursor: String?): SyncPullPage =
         withToken { authorization ->
-            val response = api.changes(authorization, cursor)
+            val response = api.changes(
+                authorization = authorization,
+                cursor = cursor,
+                limit = ApiLimits.CHANGES_MAX,
+            )
             SyncPullPage(
                 changes = response.changes.orEmpty().mapNotNull { it.toDomain() },
                 // 契约 cursor 为整数序列号，本地以字符串透传。
@@ -110,7 +115,8 @@ class RemoteSyncDataSource(
             metric = metric,
             from = from?.let(Rfc3339::format),
             to = to?.let(Rfc3339::format),
-            limit = limit.coerceIn(1, 100),
+            // 契约上限 500；客户端分页默认 100，这里再兜底收敛，避免超限 400。
+            limit = limit.coerceIn(1, ApiLimits.READINGS_MAX),
             cursor = cursor,
         )
         ReadingPage(
@@ -234,8 +240,8 @@ class RemoteSyncDataSource(
         return try {
             block("Bearer $token")
         } catch (e: HttpException) {
-            if (e.code() == 401) throw AuthExpiredException(cause = e)
-            throw e
+            // 401→重登；410→游标失效；503 TIMEOUT→服务端繁忙，三者分开。
+            throw e.toSyncException() ?: e
         }
     }
 
@@ -243,7 +249,7 @@ class RemoteSyncDataSource(
         tokenStore.token()?.takeIf { it.isNotBlank() }?.let { return it }
         val response = api.anonymousLogin()
         val token = response.token?.takeIf { it.isNotBlank() } ?: return null
-        tokenStore.saveToken(token)
+        tokenStore.saveSession(token, Rfc3339.parse(response.expiresAt))
         return token
     }
 }

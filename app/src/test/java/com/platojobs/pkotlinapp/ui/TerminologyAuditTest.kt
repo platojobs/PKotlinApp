@@ -45,6 +45,17 @@ class TerminologyAuditTest {
     }
 
     @Test
+    fun `同步异常文案按 410 401 503 分开`() {
+        val resynced = stringValues.getValue("profile_sync_resynced")
+        assertTrue(resynced.contains("云端变更记录已过期"))
+        assertTrue(resynced.contains("已重新全量同步"))
+
+        assertTrue(stringValues.getValue("profile_sync_error_busy").contains("服务端繁忙"))
+        assertTrue(stringValues.getValue("profile_sync_error_auth").contains("登录已失效"))
+        assertTrue(stringValues.getValue("profile_session_expires").contains("会话到期"))
+    }
+
+    @Test
     fun `扫描与同步使用统一动词`() {
         assertTrue(stringValues.getValue("action_scan").contains("扫描"))
         assertTrue(stringValues.getValue("profile_sync_pending").startsWith("待同步"))

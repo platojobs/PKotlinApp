@@ -53,6 +53,22 @@
                     android:textAppearance="@style/TextAppearance.App.Caption" />
 
                 <TextView
+                    android:id="@+id/sessionExpiresAt"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:textAppearance="@style/TextAppearance.App.Caption" />
+
+                <TextView
+                    android:id="@+id/syncResyncNotice"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:textColor="@color/text_secondary"
+                    android:textAppearance="@style/TextAppearance.App.Caption"
+                    android:visibility="gone" />
+
+                <TextView
                     android:id="@+id/syncLocalOnly"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"

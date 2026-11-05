@@ -395,6 +395,23 @@ class ProfileFragment : Fragment() {
             R.string.profile_sync_conflicts,
             status.lastConflictCount,
         )
+
+        // 410 游标失效：明确提示已重新全量同步，不静默处理。
+        binding.syncResyncNotice.text = status.resyncedAt?.let {
+            getString(R.string.profile_sync_resynced, TimeFormat.relative(requireContext(), it))
+        }
+        binding.syncResyncNotice.visibility =
+            if (status.resyncedAt != null) View.VISIBLE else View.GONE
+
+        val sessionExpiresAt = viewModel.sessionExpiresAt()
+        binding.sessionExpiresAt.text = if (sessionExpiresAt == null) {
+            getString(R.string.profile_session_expires_unknown)
+        } else {
+            getString(
+                R.string.profile_session_expires,
+                TimeFormat.date(requireContext(), sessionExpiresAt),
+            )
+        }
         binding.syncLocalOnly.visibility = if (status.localOnly) View.VISIBLE else View.GONE
 
         // 登录失效：展示暂停说明与「重新登录」入口，同时隐藏普通同步按钮。

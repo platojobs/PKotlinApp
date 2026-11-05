@@ -50,6 +50,11 @@ class SyncManager(
         if (statusStore.state.value.authExpired) return@withLock false
         try {
             engine.pullChanges()
+            if (engine.lastPullWasResync) {
+                // 410 全量重拉后，本机 pending 读数仍然有效，立即尝试补传一次；
+                // 失败（如离线）不影响首屏，pending 标记保留到下一次后台同步。
+                runCatching { readingSyncer.syncPending() }
+            }
             statusStore.recordSuccess(lastSyncAt = System.currentTimeMillis(), conflicts = 0)
             true
         } catch (e: AuthExpiredException) {

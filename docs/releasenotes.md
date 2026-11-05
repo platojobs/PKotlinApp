@@ -6,6 +6,23 @@
 
 ---
 
+## v0.10.0
+
+**主题：后端新增契约跟进（410 全量重同步 / 会话到期 / 上限与错误码）/ 真 Postgres 契约联调**
+
+- 410 `RESYNC_REQUIRED`：`GET /sync/changes` 游标早于最老保留行时返回 `410 + {"error":{"code":"RESYNC_REQUIRED"}}`（`cursor=0` 永不 410）。客户端新增 `CursorExpiredException`，`SyncEngine` 捕获后清空 `SyncPrefs.cursor`，**只做一次** `cursor=0` 全量重拉，回调 `SyncStatusStore.recordResync()` 持久化 `resyncedAt`；「我的」同步卡片展示「云端变更记录已过期，已重新全量同步（时间）」，不静默。该分支不进指数退避，与 401（重登）、503（退避）独立。全量重拉时服务端墓碑只有在本机没有更新的 `PENDING` 版本时才生效，`pending` 设备/读数不删除，冷启动重同步后立即补传 pending 读数（失败不影响首屏）。
+- 会话到期：`/auth/anonymous` 与 `/auth/pairing-code/claim` 返回 `expiresAt`（180 天 TTL），`TokenStore.saveSession` 与 `SecureTokenStore` 持久化到期时间，「我的」只读展示「会话到期：YYYY-MM-DD（只读）」；401（含过期）仍走既有确认重登流程，文案「登录已失效」。
+- 错误映射：新增 `ApiErrors.kt` 读取 `{"error":{"code":...}}`，补 `RESYNC_REQUIRED → RESYNC`、`TIMEOUT → BUSY`（「服务端繁忙，稍后重试」+ WorkManager 指数退避）、`IDEMPOTENCY_CONFLICT → CONFLICT`；HTTP 401/403/410/503/409 与领域异常映射见 `SyncErrorKind`。
+- 列表上限：新增 `ApiLimits`（readings 500 / export 5000 / changes 500）。读数分页保持 100，导出 `limit` 收到 `EXPORT_MAX`，changes 显式传 `limit=500`，均在服务端拒绝前自行收敛。
+- 真 Postgres e2e：新增 `scripts/e2e-postgres.sh`（`PJGoIoT/scripts/stack-for-e2e.sh` 起 Postgres+API、`seed-for-e2e.sh` 写真实 seed、`:app:e2ePostgres` 跑契约、SQL 改最老 `server_ts` 到 100 天前 + `cmd/cleanup` 构造 410、失败保留 `api.log`）与 Gradle 任务 `e2ePostgres`。本机实测通过：最老 `seq=18`、旧 `cursor=17` 返回 410 `RESYNC_REQUIRED`、`cursor=0` 返回 200 且剩余变更 `changes=1 nextCursor=19`。
+- CI：新增并行 job `e2e-postgres`（ubuntu-latest，Docker + Go + JDK21），不阻塞 verify/release；失败上传 `e2ePostgres` 测试报告与 Postgres 服务日志。
+- 测试：`SyncEngineTest` 补 410 游标归零/`cursor=0` 重拉/pending 保留/墓碑不覆盖较新 pending/连续 410 只处理一次；`RemoteSyncTokenTest` 补 fake transport 下 410、503 TIMEOUT、`limit=500`、`expiresAt` 保存；新增 `SyncErrorMappingTest`；`TerminologyAuditTest` 补 410/401/503 文案断言。单测、`assembleDebug`、`lintDebug` 0 issue、fixture e2e 与 Postgres e2e 全绿。
+- 文档：README 新增 §14「游标失效与全量重同步」、§15「真存储契约联调」（含本机真实输出）；`docs/acceptance.md` 补 N5 410 全量重同步与 N6 503 走查，A 节补会话到期只读检查。
+
+版本：`versionCode = 18`、`versionName = 0.10.0`。
+
+---
+
 ## v0.9.0
 
 **主题：首次使用路径 / 冷启动性能 / 上架材料与术语统一**

@@ -1,9 +1,9 @@
-# 真机验收清单（v0.9.0）
+# 真机验收清单（v0.10.0）
 
 本清单用于「执行人不在开发现场」时也能照着做完验收。每项都写明**操作步骤、预期现象、失败判定**。
 所有结果请记录到文末的「验收记录表」；未实际执行的项不要填 PASS。
 
-- 适用版本：`versionName = 0.9.0`（`versionCode = 17`）
+- 适用版本：`versionName = 0.10.0`（`versionCode = 18`）
 - 应用包名：`com.platojobs.pkotlinapp`
 - 主界面：`com.platojobs.pkotlinapp.ui.MainActivity`
 - 设备详情：`com.platojobs.pkotlinapp.ui.detail.DeviceDetailActivity`
@@ -55,7 +55,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versionCode"
 ```
 
-预期：`versionName=0.9.0`、`versionCode=17`。
+预期：`versionName=0.10.0`、`versionCode=18`。
 
 ---
 
@@ -127,9 +127,10 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
   - 权限自检三项（扫描 / 连接 / 定位）与系统授权状态一致；
   - 扫描日志有真实记录，可清空；
   - 主题切换立即生效并持久化（杀进程重开仍生效）；
-  - 版本信息显示「版本 0.9.0」「构建类型：debug」；
+  - 版本信息显示「版本 0.10.0」「构建类型：debug」；
+  - 同步卡片显示只读的「会话到期：YYYY-MM-DD」（服务端 token TTL 180 天，取 `expiresAt`，无手动修改入口）；
   - 项目仓库链接可打开 GitHub。
-- 失败判定：同步卡片空白、权限状态与实际不一致、版本号不是 0.9.0、主题重启后丢失。
+- 失败判定：同步卡片空白、权限状态与实际不一致、版本号不是 0.10.0、会话到期缺失或可编辑、主题重启后丢失。
 
 ---
 
@@ -327,6 +328,31 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
   - 点「重新登录」弹出确认框，明确提示会以新匿名账号同步、旧账号数据不会被删除或覆盖；
   - 确认后同步成功，同步卡片恢复正常，本机设备被推送到新账号。
 - 失败判定：401 后自动重新匿名登录、游标被清空且无提示、本地数据丢失、确认框文案缺失。
+
+### N5 游标失效（410 RESYNC_REQUIRED）与全量重同步
+
+> 需要真 Postgres 栈（fixture 内存存储没有保留期清理）。可先执行 `./scripts/e2e-postgres.sh` 完成自动化验证，再做人工走查。
+
+- 步骤：
+  1. 用 `PJGoIoT/scripts/stack-for-e2e.sh` 起栈，App 指向该 `BASE_URL` 完成一次同步，记录本地游标（`adb shell run-as com.platojobs.pkotlinapp ls shared_prefs` 可确认 `sync_prefs`）；
+  2. 在 App 内新建一台设备并断开网络，使其保持 `pending`；同时在另一台设备/服务端产生一条新变更；
+  3. 用 SQL 把该用户最老 `change_log.seq` 的 `server_ts` 改到 100 天前，运行 `cmd/cleanup`（change_log 保留 90 天）；
+  4. 恢复网络，在「我的」点「立即同步」。
+- 预期：
+  - 同步不再无限重试，只做一次 `cursor=0` 全量拉取；
+  - 本地 `pending` 设备与读数仍在，随后被重新上传，待同步数下降；
+  - 「我的」同步卡片出现「云端变更记录已过期，已重新全量同步（时间）」，不静默；
+  - 之后继续按 `nextCursor` 增量同步，不重复全量。
+- 失败判定：收到 410 后进入指数退避/反复重试、游标未归零、pending 被删除、提示缺失、把 410 当 401 要求重登。
+
+### N6 服务端繁忙（503 TIMEOUT）与指数退避
+
+- 步骤：让后端返回 503 `TIMEOUT`（或临时把查询超时压到极短），在「我的」点「立即同步」。
+- 预期：
+  - 文案为「服务端繁忙，稍后重试」，不是「云端变更记录已过期」，也不弹「重新登录」；
+  - 本地游标与 `pending` 保留，后台按指数退避重试；
+  - 服务恢复后同步自动成功，无需手动重登或清数据。
+- 失败判定：按 410 清空游标并全量重拉、按 401 暂停同步、或直接暴露异常类名。
 
 ---
 
@@ -617,7 +643,7 @@ adb install -r app/build/outputs/apk/release/app-release.apk
 adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versionCode"
 ```
 
-预期：安装成功；版本 `0.9.0 / 17`；能启动；五模块可进入；BLE 扫描/连接可用。
+预期：安装成功；版本 `0.10.0 / 18`；能启动；五模块可进入；BLE 扫描/连接可用。
 失败判定：`INSTALL_FAILED_NO_MATCHING_ABIS`、安装后闪退（多为 R8 裁剪过度或签名问题）。
 
 ### L3 签名验证

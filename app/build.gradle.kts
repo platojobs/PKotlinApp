@@ -31,8 +31,8 @@ android {
         applicationId = "com.platojobs.pkotlinapp"
         minSdk = 24
         targetSdk = 36
-        versionCode = 17
-        versionName = "0.9.0"
+        versionCode = 18
+        versionName = "0.10.0"
         buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
     }
 
@@ -117,6 +117,7 @@ tasks.register<Test>("e2eContract") {
         "e2eBaseUrl",
         providers.gradleProperty("e2eBaseUrl").orNull ?: "http://127.0.0.1:8080",
     )
+    systemProperty("e2eStore", "fixture")
     testLogging {
         showStandardStreams = true
         events("passed", "failed", "skipped")
@@ -126,6 +127,39 @@ tasks.register<Test>("e2eContract") {
     reports.html.outputLocation.set(layout.buildDirectory.dir("reports/tests/e2eContract"))
 
     // 契约联调必须每次真实执行，不能因为 UP-TO-DATE 让 CI 假装通过。
+    outputs.upToDateWhen { false }
+}
+
+/**
+ * 真 Postgres 契约联调：与 fixture 套件共用用例，额外执行 postgres 专属断言
+ * （会话到期、limit 边界、序列/指标、导出、注销 401）。
+ * 410 分支由 scripts/e2e-postgres.sh 用 SQL + cleanup 编排。
+ */
+tasks.register<Test>("e2ePostgres") {
+    group = "verification"
+    description = "对真 Postgres 栈（PJGoIoT scripts/stack-for-e2e.sh）执行契约联调。"
+    dependsOn("testDebugUnitTest")
+
+    val unitTest = tasks.named<Test>("testDebugUnitTest")
+    testClassesDirs = unitTest.get().testClassesDirs
+    classpath = unitTest.get().classpath
+
+    filter {
+        includeTestsMatching("com.platojobs.pkotlinapp.e2e.E2eContractTest")
+    }
+    systemProperty(
+        "e2eBaseUrl",
+        providers.gradleProperty("e2eBaseUrl").orNull ?: "http://127.0.0.1:8080",
+    )
+    systemProperty("e2eStore", "postgres")
+    testLogging {
+        showStandardStreams = true
+        events("passed", "failed", "skipped")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
+    reports.junitXml.outputLocation.set(layout.buildDirectory.dir("test-results/e2ePostgres"))
+    reports.html.outputLocation.set(layout.buildDirectory.dir("reports/tests/e2ePostgres"))
+
     outputs.upToDateWhen { false }
 }
 

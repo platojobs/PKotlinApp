@@ -8,6 +8,15 @@ import java.util.Locale
 
 object TimeFormat {
 
+    /** 只展示日期（会话到期日等不需要时分）。 */
+    fun date(context: Context, timestamp: Long): String {
+        if (timestamp <= 0L) return context.getString(R.string.time_unknown)
+        return SimpleDateFormat(
+            context.getString(R.string.time_format_date),
+            Locale.getDefault(),
+        ).format(Date(timestamp))
+    }
+
     fun relative(context: Context, timestamp: Long): String {
         if (timestamp <= 0L) return context.getString(R.string.time_unknown)
         val diff = System.currentTimeMillis() - timestamp

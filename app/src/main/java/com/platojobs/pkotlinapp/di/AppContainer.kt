@@ -70,6 +70,10 @@ class AppContainer(context: Context) {
 
     private val secureTokenStore by lazy { SecureTokenStore(appContext) }
 
+    /** 「我的」只读展示会话到期日。 */
+    val tokenStore: com.platojobs.pkotlinapp.data.sync.TokenStore
+        get() = secureTokenStore
+
     private val syncPrefs by lazy { SyncPrefs(appContext) }
 
     private val syncStatusStore by lazy { SyncStatusStore(appContext) }
@@ -189,6 +193,8 @@ class AppContainer(context: Context) {
                 local = RoomSyncLocalStore(database.deviceDao()),
                 remote = remoteSyncDataSource,
                 cursorStore = syncPrefs,
+                // 410 只处理一次，记录状态供「我的」展示，不做重试。
+                onCursorExpired = { syncStatusStore.recordResync() },
             ),
             statusStore = syncStatusStore,
             tokenStore = secureTokenStore,

@@ -6,10 +6,11 @@ data class PairingCode(
     val expiresAt: Long,
 )
 
-/** 领取配对码后拿到的同一账号新 token。 */
+/** 领取配对码后拿到的同一账号新 token；expiresAt 为服务端签发时间（epoch millis，缺失为 0）。 */
 data class ClaimedAccount(
     val userId: String,
     val token: String,
+    val expiresAt: Long = 0L,
 )
 
 /**

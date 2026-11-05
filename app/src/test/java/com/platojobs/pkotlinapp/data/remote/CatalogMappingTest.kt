@@ -38,6 +38,7 @@ class CatalogMappingTest {
         override suspend fun changes(
             authorization: String,
             cursor: String?,
+            limit: Int,
         ): SyncChangesResponse = SyncChangesResponse(changes = emptyList(), nextCursor = 0)
 
         override suspend fun push(

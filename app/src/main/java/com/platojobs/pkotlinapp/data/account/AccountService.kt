@@ -50,7 +50,7 @@ class AccountService(
         val code = PairingCodeFormat.sanitize(rawCode)
         require(PairingCodeFormat.isValid(code)) { "配对码必须是 8 位有效字符" }
         val account = remote.claim(code)
-        tokenStore.saveToken(account.token)
+        tokenStore.saveSession(account.token, account.expiresAt.takeIf { it > 0 })
         cursorStore.cursor = null
         markAllPending()
         resetSyncStatus()

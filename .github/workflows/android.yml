@@ -112,6 +112,66 @@ jobs:
           path: e2e-logs
           if-no-files-found: ignore
 
+  e2e-postgres:
+    name: E2E contract (real Postgres + Docker)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # 与 fixture e2e 并行，不阻塞 verify / release 主流程。
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    steps:
+      - name: Checkout app
+        uses: actions/checkout@v7
+
+      - name: Checkout PJGoIoT
+        uses: actions/checkout@v7
+        with:
+          repository: platojobs/PJGoIoT
+          path: PJGoIoT
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: PJGoIoT/go.mod
+          cache: true
+          cache-dependency-path: PJGoIoT/go.sum
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Grant execute permission
+        run: chmod +x ./gradlew ./scripts/e2e-postgres.sh PJGoIoT/scripts/stack-for-e2e.sh PJGoIoT/scripts/seed-for-e2e.sh
+
+      - name: Run e2e contract against real Postgres
+        env:
+          PJGOIOT_DIR: ${{ github.workspace }}/PJGoIoT
+          E2E_LOG_DIR: ${{ github.workspace }}/e2e-logs
+        run: ./scripts/e2e-postgres.sh
+
+      - name: Upload e2e test report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-postgres-report
+          path: |
+            app/build/reports/tests/e2ePostgres
+            app/build/test-results/e2ePostgres
+          if-no-files-found: warn
+
+      - name: Upload Postgres service log
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-postgres-service-log
+          path: e2e-logs
+          if-no-files-found: ignore
+
   release:
     name: Unsigned release build (tags / manual only)
     needs: verify

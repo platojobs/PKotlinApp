@@ -30,6 +30,20 @@ class SecureTokenStore(context: Context) : TokenStore {
         prefs.edit { putString(KEY_TOKEN, token) }
     }
 
+    override fun saveSession(token: String, expiresAt: Long?) {
+        prefs.edit {
+            putString(KEY_TOKEN, token)
+            if (expiresAt != null && expiresAt > 0) {
+                putLong(KEY_EXPIRES_AT, expiresAt)
+            } else {
+                remove(KEY_EXPIRES_AT)
+            }
+        }
+    }
+
+    override fun sessionExpiresAt(): Long? =
+        prefs.getLong(KEY_EXPIRES_AT, 0L).takeIf { it > 0 }
+
     /** 注销账号时整体清空 EncryptedSharedPreferences（含 token 与其它鉴权字段）。 */
     override fun clear() {
         prefs.edit { clear() }
@@ -38,5 +52,6 @@ class SecureTokenStore(context: Context) : TokenStore {
     private companion object {
         const val PREFS_NAME = "sync_auth"
         const val KEY_TOKEN = "anonymous_token"
+        const val KEY_EXPIRES_AT = "token_expires_at"
     }
 }

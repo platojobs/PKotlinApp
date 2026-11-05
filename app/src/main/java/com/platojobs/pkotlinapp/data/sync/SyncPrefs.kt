@@ -58,6 +58,22 @@ class SyncStatusStore(context: Context) {
                 localOnly = false,
                 authExpired = false,
                 lastError = null,
+                // 全量重同步提示保留到下一次手动重置，避免刷新后立刻消失。
+                resyncedAt = _state.value.resyncedAt,
+            ),
+        )
+    }
+
+    /**
+     * 410 游标失效：记录「已从 0 全量重同步」的时间，界面据此提示，不静默。
+     * 该分支不是失败，不计入连续失败次数，也不进入纯本地模式。
+     */
+    fun recordResync(at: Long = System.currentTimeMillis()) {
+        update(
+            _state.value.copy(
+                consecutiveFailures = 0,
+                localOnly = false,
+                resyncedAt = at,
             ),
         )
     }
@@ -119,6 +135,7 @@ class SyncStatusStore(context: Context) {
             putBoolean(KEY_LOCAL_ONLY, newState.localOnly)
             putBoolean(KEY_AUTH_EXPIRED, newState.authExpired)
             putString(KEY_LAST_ERROR, newState.lastError)
+            putLong(KEY_RESYNCED_AT, newState.resyncedAt ?: -1L)
         }
     }
 
@@ -131,6 +148,7 @@ class SyncStatusStore(context: Context) {
             localOnly = prefs.getBoolean(KEY_LOCAL_ONLY, false),
             authExpired = prefs.getBoolean(KEY_AUTH_EXPIRED, false),
             lastError = prefs.getString(KEY_LAST_ERROR, null),
+            resyncedAt = prefs.getLong(KEY_RESYNCED_AT, -1L).takeIf { it > 0 },
         )
     }
 
@@ -142,6 +160,7 @@ class SyncStatusStore(context: Context) {
         const val KEY_LOCAL_ONLY = "local_only"
         const val KEY_AUTH_EXPIRED = "auth_expired"
         const val KEY_LAST_ERROR = "last_error"
+        const val KEY_RESYNCED_AT = "resynced_at"
         const val LOCAL_ONLY_THRESHOLD = 3
         const val AUTH_EXPIRED_MESSAGE = "登录已失效，同步已暂停"
     }

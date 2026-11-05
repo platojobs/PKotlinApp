@@ -14,12 +14,17 @@ import com.platojobs.pkotlinapp.data.remote.SyncChangesResponse
 import com.platojobs.pkotlinapp.data.remote.SyncPushRequest
 import com.platojobs.pkotlinapp.data.remote.SyncPushResponse
 import com.platojobs.pkotlinapp.domain.sync.AuthExpiredException
+import com.platojobs.pkotlinapp.domain.sync.CursorExpiredException
+import com.platojobs.pkotlinapp.domain.sync.Rfc3339
+import com.platojobs.pkotlinapp.domain.sync.ServerBusyException
 import kotlinx.coroutines.runBlocking
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import retrofit2.HttpException
 import retrofit2.Response
@@ -27,14 +32,24 @@ import retrofit2.Response
 class RemoteSyncTokenTest {
 
     private class FakeTokenStore(var stored: String? = null) : TokenStore {
+        var expiresAt: Long? = null
+
         override fun token(): String? = stored
 
         override fun saveToken(token: String) {
             stored = token
         }
 
+        override fun saveSession(token: String, expiresAt: Long?) {
+            stored = token
+            this.expiresAt = expiresAt
+        }
+
+        override fun sessionExpiresAt(): Long? = expiresAt
+
         override fun clear() {
             stored = null
+            expiresAt = null
         }
     }
 
@@ -47,6 +62,7 @@ class RemoteSyncTokenTest {
     ) : SyncApi {
         var loginCalls = 0
         var lastAuthorization: String? = null
+        var lastChangesLimit: Int? = null
 
         override suspend fun anonymousLogin(): AnonymousLoginResponse {
             loginCalls += 1
@@ -56,8 +72,10 @@ class RemoteSyncTokenTest {
         override suspend fun changes(
             authorization: String,
             cursor: String?,
+            limit: Int,
         ): SyncChangesResponse {
             lastAuthorization = authorization
+            lastChangesLimit = limit
             changesError?.let { throw it }
             return SyncChangesResponse(changes = emptyList(), nextCursor = 0)
         }
@@ -118,8 +136,8 @@ class RemoteSyncTokenTest {
         override suspend fun deleteMyAccount(authorization: String) = Unit
     }
 
-    private fun httpError(code: Int) = HttpException(
-        Response.error<Any>(code, "".toResponseBody("application/json".toMediaType())),
+    private fun httpError(code: Int, body: String = "") = HttpException(
+        Response.error<Any>(code, body.toResponseBody("application/json".toMediaType())),
     )
 
     @Test
@@ -175,5 +193,74 @@ class RemoteSyncTokenTest {
             runBlocking { dataSource.pull(null) }
         }
         assertNull(tokenStore.token())
+    }
+
+    @Test
+    fun `anonymous login stores expiresAt from response`() {
+        val tokenStore = FakeTokenStore(null)
+        val expiresAtRaw = "2027-05-04T12:00:00Z"
+        val api = FakeSyncApi(
+            loginResponse = AnonymousLoginResponse(
+                token = "fresh-token",
+                userId = "user-1",
+                expiresAt = expiresAtRaw,
+            ),
+        )
+        val dataSource = RemoteSyncDataSource(api, tokenStore, "install-1")
+
+        runBlocking { dataSource.pull(null) }
+
+        val expiresAt = tokenStore.sessionExpiresAt()
+        assertNotNull(expiresAt)
+        assertEquals(Rfc3339.parse(expiresAtRaw), expiresAt)
+    }
+
+    @Test
+    fun `410 RESYNC_REQUIRED maps to cursor expired`() {
+        val tokenStore = FakeTokenStore("valid-token")
+        val api = FakeSyncApi(
+            changesError = httpError(
+                410,
+                """{"error":{"code":"RESYNC_REQUIRED","message":"cursor too old"}}""",
+            ),
+        )
+        val dataSource = RemoteSyncDataSource(api, tokenStore, "install-1")
+
+        assertThrows(CursorExpiredException::class.java) {
+            runBlocking { dataSource.pull("12") }
+        }
+        assertEquals("valid-token", tokenStore.token())
+        assertEquals(0, api.loginCalls)
+    }
+
+    @Test
+    fun `503 TIMEOUT maps to server busy not resync`() {
+        val tokenStore = FakeTokenStore("valid-token")
+        val api = FakeSyncApi(
+            changesError = httpError(
+                503,
+                """{"error":{"code":"TIMEOUT","message":"query timeout"}}""",
+            ),
+        )
+        val dataSource = RemoteSyncDataSource(api, tokenStore, "install-1")
+
+        assertThrows(ServerBusyException::class.java) {
+            runBlocking { dataSource.pull("12") }
+        }
+        // 不能误判为 410（清游标）或 401（重登）。
+        assertEquals("valid-token", tokenStore.token())
+        assertEquals(0, api.loginCalls)
+    }
+
+    @Test
+    fun `changes request uses contract limit 500`() {
+        val tokenStore = FakeTokenStore("valid-token")
+        val api = FakeSyncApi()
+        val dataSource = RemoteSyncDataSource(api, tokenStore, "install-1")
+
+        runBlocking { dataSource.pull(null) }
+
+        assertEquals(500, api.lastChangesLimit)
+        assertTrue(api.lastChangesLimit!! <= com.platojobs.pkotlinapp.data.remote.ApiLimits.CHANGES_MAX)
     }
 }

@@ -1,7 +1,9 @@
 package com.platojobs.pkotlinapp.data.account
 
+import com.platojobs.pkotlinapp.data.remote.ApiLimits
 import com.platojobs.pkotlinapp.data.remote.PairingClaimRequest
 import com.platojobs.pkotlinapp.data.remote.SyncApi
+import com.platojobs.pkotlinapp.data.remote.toSyncException
 import com.platojobs.pkotlinapp.data.sync.TokenStore
 import com.platojobs.pkotlinapp.domain.account.AccountExportPage
 import com.platojobs.pkotlinapp.domain.account.AccountRemote
@@ -9,14 +11,13 @@ import com.platojobs.pkotlinapp.domain.account.ClaimedAccount
 import com.platojobs.pkotlinapp.domain.account.PairingCode
 import com.platojobs.pkotlinapp.domain.account.PairingCodeInvalidException
 import com.platojobs.pkotlinapp.domain.account.PairingRateLimitedException
-import com.platojobs.pkotlinapp.domain.sync.AuthExpiredException
 import com.platojobs.pkotlinapp.domain.sync.Rfc3339
 import retrofit2.HttpException
 
 /**
  * 账号相关 Retrofit 适配（openapi 0.6.0）：
  * - `POST /auth/pairing-code`（Bearer）→ `{code, expiresAt}`
- * - `POST /auth/pairing-code/claim`（无鉴权）→ `{userId, token}`；404 统一为无效/过期
+ * - `POST /auth/pairing-code/claim`（无鉴权）→ `{userId, token, expiresAt}`；404 统一为无效/过期
  * - `GET /me/export`（Bearer，cursor/limit）→ 一页导出数据
  * - `DELETE /me`（Bearer）→ 204
  *
@@ -47,7 +48,11 @@ class RemoteAccountDataSource(
             ?: throw IllegalStateException("配对响应缺少 userId")
         val token = response.token?.takeIf { it.isNotBlank() }
             ?: throw IllegalStateException("配对响应缺少 token")
-        ClaimedAccount(userId = userId, token = token)
+        ClaimedAccount(
+            userId = userId,
+            token = token,
+            expiresAt = Rfc3339.parse(response.expiresAt) ?: 0L,
+        )
     } catch (e: HttpException) {
         when (e.code()) {
             404 -> throw PairingCodeInvalidException()
@@ -61,7 +66,7 @@ class RemoteAccountDataSource(
             val response = api.exportMyData(
                 authorization = authorization,
                 cursor = cursor,
-                limit = limit.coerceIn(1, MAX_EXPORT_LIMIT),
+                limit = limit.coerceIn(1, ApiLimits.EXPORT_MAX),
             )
             AccountExportPage(
                 user = response.user.orEmpty(),
@@ -84,16 +89,11 @@ class RemoteAccountDataSource(
         return try {
             block("Bearer $token")
         } catch (e: HttpException) {
-            if (e.code() == 401) throw AuthExpiredException(cause = e)
-            throw e
+            // 与同步一致：401→重登，503 TIMEOUT→繁忙可重试。
+            throw e.toSyncException() ?: e
         }
     }
 
     private fun HttpException.retryAfterSeconds(): Int? =
         response()?.headers()?.get("Retry-After")?.trim()?.toIntOrNull()
-
-    companion object {
-        /** 契约上限：单页读数条数 5000。 */
-        const val MAX_EXPORT_LIMIT = 5000
-    }
 }

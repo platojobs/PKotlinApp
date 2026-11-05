@@ -136,7 +136,13 @@ class SyncEngine(
     private val local: SyncLocalStore,
     private val remote: SyncRemote,
     private val cursorStore: SyncCursorStore,
+    /** 410 `RESYNC_REQUIRED` 时回调一次，供上层记录状态并提示界面。 */
+    private val onCursorExpired: () -> Unit = {},
 ) {
+
+    /** 本次 [pullChanges] 是否走了「游标失效 → 从 0 全量重拉」分支。 */
+    var lastPullWasResync: Boolean = false
+        private set
 
     suspend fun pushPending(limit: Int = 50): SyncPushOutcome {
         val pending = local.pending(limit)
@@ -172,10 +178,28 @@ class SyncEngine(
     }
 
     suspend fun pullChanges(): Int {
-        val page = remote.pull(cursorStore.cursor)
+        lastPullWasResync = false
+        val page = try {
+            remote.pull(cursorStore.cursor)
+        } catch (e: CursorExpiredException) {
+            // 410 是终态分支：清空游标后只做一次 cursor=0 的全量重拉，不进指数退避。
+            // pending 设备/读数不在这里删除，保持本地待上传状态。
+            cursorStore.cursor = null
+            lastPullWasResync = true
+            onCursorExpired()
+            remote.pull(CURSOR_START)
+        }
         page.changes.forEach { change ->
             if (change.deletedAt != null) {
-                local.deleteByExternalId(change.externalId)
+                // 服务端墓碑只有在本地没有「更新的 pending 版本」时才生效，
+                // 避免全量重拉把尚未上传的本机修改丢掉。
+                val localRecord = local.findActive(change.externalId)
+                val keepPending = localRecord != null &&
+                    localRecord.syncState == SyncState.PENDING &&
+                    localRecord.updatedAt > change.updatedAt
+                if (!keepPending) {
+                    local.deleteByExternalId(change.externalId)
+                }
             } else {
                 val localRecord = local.findActive(change.externalId)
                 val localUnsyncedWins = localRecord != null &&
@@ -198,5 +222,10 @@ class SyncEngine(
             pulled = pulled,
             conflicts = push.conflicts,
         )
+    }
+
+    companion object {
+        /** 契约规定 cursor=0 表示从头全量拉取，且永不返回 410。 */
+        const val CURSOR_START = "0"
     }
 }

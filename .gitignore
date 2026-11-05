@@ -15,3 +15,6 @@ keystore.properties
 *.jks
 *.keystore
 *.p12
+
+# e2e 失败时保留的服务日志
+e2e-logs/

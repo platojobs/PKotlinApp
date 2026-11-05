@@ -15,6 +15,7 @@ import com.platojobs.pkotlinapp.data.prefs.AppSettings
 import com.platojobs.pkotlinapp.data.prefs.ThemeMode
 import com.platojobs.pkotlinapp.data.sync.SyncErrorKind
 import com.platojobs.pkotlinapp.data.sync.SyncManager
+import com.platojobs.pkotlinapp.data.sync.TokenStore
 import com.platojobs.pkotlinapp.data.sync.classifySyncError
 import com.platojobs.pkotlinapp.domain.account.PairingCode
 import com.platojobs.pkotlinapp.domain.account.PairingCodeFormat
@@ -75,6 +76,7 @@ class ProfileViewModel(
     private val settings: AppSettings,
     private val syncManager: SyncManager,
     private val accountService: AccountService,
+    private val tokenStore: TokenStore,
     collectionSession: CollectionSession,
 ) : ViewModel() {
 
@@ -179,6 +181,8 @@ class ProfileViewModel(
                 SyncErrorKind.NETWORK -> R.string.profile_sync_error_network
                 SyncErrorKind.TIMEOUT -> R.string.profile_sync_error_timeout
                 SyncErrorKind.AUTH -> R.string.profile_sync_error_auth
+                SyncErrorKind.RESYNC -> R.string.profile_sync_error_resync
+                SyncErrorKind.BUSY -> R.string.profile_sync_error_busy
                 SyncErrorKind.CONFLICT -> R.string.profile_sync_error_conflict
                 SyncErrorKind.SERVER -> R.string.profile_sync_error_server
                 SyncErrorKind.UNKNOWN -> R.string.profile_sync_error_unknown
@@ -358,6 +362,9 @@ class ProfileViewModel(
         else -> appContext.getString(R.string.account_error_generic)
     }
 
+    /** 服务端签发的会话到期时间；只读展示，不提供续期入口。 */
+    fun sessionExpiresAt(): Long? = tokenStore.sessionExpiresAt()
+
     private fun readPermissions() = PermissionStatus(
         scanGranted = BlePermissions.hasScan(appContext),
         connectGranted = BlePermissions.hasConnect(appContext),
@@ -374,6 +381,7 @@ class ProfileViewModel(
                     settings = app.container.settings,
                     syncManager = app.container.syncManager,
                     accountService = app.container.accountService,
+                    tokenStore = app.container.tokenStore,
                     collectionSession = app.container.collectionSession,
                 )
             }

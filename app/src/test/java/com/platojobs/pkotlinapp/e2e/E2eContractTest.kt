@@ -30,6 +30,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
@@ -49,6 +50,13 @@ class E2eContractTest {
             ?: System.getenv("E2E_BASE_URL")
             ?: "http://127.0.0.1:8080"
         ).trimEnd('/')
+
+    /** fixture / postgres；由 Gradle 任务或环境变量注入，决定额外契约用例是否执行。 */
+    private val store = (
+        System.getProperty("e2eStore")
+            ?: System.getenv("E2E_STORE")
+            ?: "fixture"
+        ).lowercase()
     private val apiBase = "$baseUrl/api/v1"
 
     private val client = OkHttpClient.Builder()
@@ -84,12 +92,13 @@ class E2eContractTest {
     fun `contract against local go backend`() {
         println("[E2E] baseUrl=$baseUrl")
 
-        step("health 200 + fixture store") {
+        step("health 200 + store=$store") {
             val result = get("/health")
             assertEquals(200, result.code)
             val health = parseMap(result.body)
             assertEquals("ok", health["status"])
-            assertEquals("fixture", health["store"])
+            val actualStore = health["store"] as? String ?: error("missing store")
+            assertEquals(store, actualStore)
             assertNotNull(health["version"])
         }
 
@@ -102,6 +111,7 @@ class E2eContractTest {
             runCatching { UUID.fromString(userId) }
                 .onFailure { error("userId is not UUID: $userId") }
             assertTrue(token.isNotBlank())
+            assertTokenTtl(body, "anonymous login")
             UserSession(userId, token)
         }
 
@@ -632,6 +642,7 @@ class E2eContractTest {
             val result = post("/auth/anonymous")
             assertEquals(201, result.code)
             val body = parseMap(result.body)
+            assertTokenTtl(body, "readings anonymous login")
             UserSession(
                 userId = body["userId"] as? String ?: error("missing userId"),
                 token = body["token"] as? String ?: error("missing token"),
@@ -837,6 +848,7 @@ class E2eContractTest {
             val result = post("/auth/anonymous")
             assertEquals(201, result.code)
             val body = parseMap(result.body)
+            assertTokenTtl(body, "account anonymous login")
             UserSession(
                 userId = body["userId"] as? String ?: error("missing userId"),
                 token = body["token"] as? String ?: error("missing token"),
@@ -885,6 +897,7 @@ class E2eContractTest {
             val token = body["token"] as? String ?: error("missing token")
             assertTrue(token.isNotBlank())
             assertTrue("token should change", token != user.token)
+            assertTokenTtl(body, "claim")
             UserSession(user.userId, token)
         }
 
@@ -1020,7 +1033,151 @@ class E2eContractTest {
         println("[E2E] SUMMARY: account contract cases passed")
     }
 
+    /**
+     * 真 Postgres 才执行的契约：会话到期、列表上限边界、序列/指标、导出、注销 401。
+     * 410 全量重同步分支需要 SQL 改 server_ts + cleanup，由 scripts/e2e-postgres.sh 编排。
+     */
+    @Test
+    fun `postgres store contract limits expiresAt and delete`() {
+        assumeTrue("store=$store，跳过 postgres 专属契约", store == "postgres")
+        println("[E2E] postgres-only contract start")
+
+        val user = captureStep("pg: anonymous login with expiresAt") {
+            val result = post("/auth/anonymous")
+            assertEquals(201, result.code)
+            val body = parseMap(result.body)
+            assertTokenTtl(body, "pg anonymous login")
+            UserSession(
+                userId = body["userId"] as? String ?: error("missing userId"),
+                token = body["token"] as? String ?: error("missing token"),
+            )
+        }
+
+        val externalId = "AA:BB:CC:00:00:44"
+        val now = System.currentTimeMillis()
+        val payload = SyncPushRequest(
+            clientId = "e2e-pg-client",
+            devices = listOf(
+                PushDeviceDto(
+                    id = UUID.randomUUID().toString(),
+                    platform = "android",
+                    externalId = externalId,
+                    mac = externalId.lowercase(),
+                    deviceType = "nordic_uart",
+                    updatedAt = Rfc3339.format(now),
+                ),
+                PushDeviceDto(
+                    id = UUID.randomUUID().toString(),
+                    platform = "android",
+                    externalId = "AA:BB:CC:00:00:45",
+                    mac = "aa:bb:cc:00:00:45",
+                    updatedAt = Rfc3339.format(now),
+                ),
+            ),
+            readings = listOf(
+                PushReadingDto(
+                    id = UUID.randomUUID().toString(),
+                    platform = "android",
+                    externalId = externalId,
+                    metric = "temperature",
+                    value = 21.5,
+                    unit = "°C",
+                    recordedAt = Rfc3339.format(now - 60_000),
+                ),
+                PushReadingDto(
+                    id = UUID.randomUUID().toString(),
+                    platform = "android",
+                    externalId = externalId,
+                    metric = "humidity",
+                    value = 45.0,
+                    unit = "%",
+                    recordedAt = Rfc3339.format(now - 30_000),
+                ),
+            ),
+        )
+
+        step("pg: push two devices and two readings") {
+            val result = push(
+                pushRequestAdapter.toJson(payload),
+                user.token,
+                "e2e-pg-seed-${UUID.randomUUID()}",
+            )
+            assertEquals(200, result.code)
+            val response = pushResponseAdapter.fromJson(result.body) ?: error("empty body")
+            assertEquals(2, response.appliedReadings)
+        }
+
+        val cursorAfterPush = captureStep("pg: changes returns >0 cursor") {
+            val result = get("/sync/changes?cursor=0&limit=500", user.token)
+            assertEquals(200, result.code)
+            val response = changesResponseAdapter.fromJson(result.body) ?: error("empty body")
+            assertTrue(response.changes.orEmpty().isNotEmpty())
+            val next = response.nextCursor ?: 0L
+            assertTrue("nextCursor=$next", next > 0L)
+            next.toString()
+        }
+
+        step("pg: changes limit 501 is rejected with 400") {
+            assertEquals(400, get("/sync/changes?cursor=$cursorAfterPush&limit=501", user.token).code)
+        }
+
+        step("pg: readings limit boundary 500 ok / 501 rejected") {
+            assertEquals(
+                200,
+                get("/my/devices/android/$externalId/readings?limit=500", user.token).code,
+            )
+            assertEquals(
+                400,
+                get("/my/devices/android/$externalId/readings?limit=501", user.token).code,
+            )
+        }
+
+        step("pg: series and metrics work on real storage") {
+            val from = Rfc3339.format(now - 3_600_000L)
+            val to = Rfc3339.format(now + 60_000L)
+            val series = get(
+                "/my/devices/android/$externalId/readings/series" +
+                    "?metric=temperature&from=$from&to=$to&bucket=1h",
+                user.token,
+            )
+            assertEquals(200, series.code)
+            assertTrue(readingSeriesAdapter.fromJson(series.body)!!.buckets.orEmpty().isNotEmpty())
+
+            val metrics = get("/my/devices/android/$externalId/readings/metrics", user.token)
+            assertEquals(200, metrics.code)
+            assertEquals(2, readingMetricsAdapter.fromJson(metrics.body)!!.items.orEmpty().size)
+        }
+
+        step("pg: export limit boundary 5000 ok / 5001 rejected") {
+            assertEquals(
+                200,
+                get("/me/export?limit=5000", user.token).code,
+            )
+            assertEquals(
+                400,
+                get("/me/export?limit=5001", user.token).code,
+            )
+            val page = parseMap(get("/me/export?limit=5000", user.token).body)
+            assertEquals(user.userId, (page["user"] as Map<*, *>)["id"])
+        }
+
+        step("pg: delete 204 then token 401") {
+            assertEquals(204, delete("/me", user.token).code)
+            assertUnauthorized(get("/sync/changes?cursor=0", user.token))
+        }
+
+        println("[E2E] SUMMARY: postgres-only contract passed")
+    }
+
     private fun claimBody(code: String): String = """{"code":"$code"}"""
+
+    /** token TTL 契约：180 天；允许 1 天误差，避免服务端取整/时钟漂移误报。 */
+    private fun assertTokenTtl(body: Map<String, Any?>, label: String) {
+        val raw = body["expiresAt"] as? String ?: error("$label missing expiresAt")
+        val expiresAt = Rfc3339.parse(raw) ?: error("$label bad expiresAt: $raw")
+        val ttl = expiresAt - System.currentTimeMillis()
+        assertTrue("$label ttl=$ttl", ttl in 179L * 86_400_000L..181L * 86_400_000L)
+    }
 
     private data class UserSession(val userId: String, val token: String)
 

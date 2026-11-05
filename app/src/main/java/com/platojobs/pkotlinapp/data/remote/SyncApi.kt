@@ -52,6 +52,8 @@ internal object ReportedStringAdapter : JsonAdapter<Reported<String>>() {
 data class AnonymousLoginResponse(
     val token: String? = null,
     val userId: String? = null,
+    /** RFC3339；服务端 token TTL 180 天，「我的」展示到期日（只读）。 */
+    val expiresAt: String? = null,
 )
 
 /** GET /sync/changes 中 `payload` 对应的用户设备。 */
@@ -250,6 +252,8 @@ data class PairingClaimRequest(val code: String)
 data class PairingClaimResponse(
     val userId: String? = null,
     val token: String? = null,
+    /** 与 token 一起签发，RFC3339。 */
+    val expiresAt: String? = null,
 )
 
 /**
@@ -276,6 +280,8 @@ interface SyncApi {
     suspend fun changes(
         @Header("Authorization") authorization: String,
         @Query("cursor") cursor: String?,
+        /** 契约上限 500；显式传值，避免依赖服务端默认值。 */
+        @Query("limit") limit: Int = ApiLimits.CHANGES_MAX,
     ): SyncChangesResponse
 
     @POST("api/v1/sync/push")

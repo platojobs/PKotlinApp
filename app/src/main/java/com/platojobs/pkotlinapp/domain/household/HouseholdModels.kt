@@ -1,5 +1,7 @@
 package com.platojobs.pkotlinapp.domain.household
 
+import com.platojobs.pkotlinapp.domain.sync.StructuralChange
+
 /** 家庭角色：服务端仅区分 owner / member。 */
 enum class HouseholdRole {
     OWNER,
@@ -167,6 +169,14 @@ interface HouseholdSyncer {
     suspend fun onSync()
 
     suspend fun onRelogin()
+
+    /**
+     * 应用 change_log 中的家庭/房间结构变更（openapi 0.11.0）。
+     *
+     * 默认空实现只是为了让不关心结构变更的测试替身继续编译；
+     * 生产实现必须尊重本地 pending 房间编辑，不能整段覆盖。
+     */
+    suspend fun applyStructural(changes: List<StructuralChange>) = Unit
 }
 
 /** 服务端家庭列表项（还未落库，因此没有 localId）。 */

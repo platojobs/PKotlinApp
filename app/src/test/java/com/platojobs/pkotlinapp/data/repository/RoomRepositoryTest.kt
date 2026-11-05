@@ -119,6 +119,32 @@ class RoomRepositoryTest {
             rooms[id]?.let { rooms[id] = it.copy(sortOrder = sortOrder) }
         }
 
+        override suspend fun markPendingEdit(id: Long) {
+            rooms[id]?.let { rooms[id] = it.copy(pendingEdit = true) }
+        }
+
+        override suspend fun clearPendingEditWithServer(id: Long, name: String, sortOrder: Int) {
+            rooms[id]?.let {
+                rooms[id] = it.copy(
+                    pendingEdit = false,
+                    serverName = null,
+                    serverSortOrder = null,
+                    name = name,
+                    sortOrder = sortOrder,
+                )
+            }
+        }
+
+        override suspend fun stageServerValue(id: Long, name: String, sortOrder: Int) {
+            rooms[id]?.let { rooms[id] = it.copy(serverName = name, serverSortOrder = sortOrder) }
+        }
+
+        override suspend fun clearPendingEdit(id: Long) {
+            rooms[id]?.let {
+                rooms[id] = it.copy(pendingEdit = false, serverName = null, serverSortOrder = null)
+            }
+        }
+
         override suspend fun adoptOrphanRooms(householdId: Long) {
             rooms.values.filter { it.householdId == null }.forEach {
                 rooms[it.id] = it.copy(householdId = householdId)

@@ -92,8 +92,8 @@ interface DeviceDao {
     @Query("DELETE FROM devices WHERE mac IN (:macs)")
     suspend fun deleteByMacs(macs: List<String>)
 
-    /** 删除房间前把房间内设备回到未分配，避免悬空 roomId。 */
-    @Query("UPDATE devices SET roomId = NULL WHERE roomId = :roomId")
+    /** 删除房间前把房间内设备回到未分配，避免悬空 roomId / remoteRoomId。 */
+    @Query("UPDATE devices SET roomId = NULL, remoteRoomId = NULL WHERE roomId = :roomId")
     suspend fun clearRoomAssignments(roomId: Long)
 
     @Query("DELETE FROM devices WHERE shared = 1")
@@ -202,6 +202,25 @@ interface RoomDao {
     @Query("UPDATE rooms SET sortOrder = :sortOrder WHERE id = :id")
     suspend fun updateSortOrder(id: Long, sortOrder: Int)
 
+    /** 本地改名/重排尚未上传：后续结构变更不得覆盖本地值。 */
+    @Query("UPDATE rooms SET pendingEdit = 1 WHERE id = :id")
+    suspend fun markPendingEdit(id: Long)
+
+    /** 本地 pending 已上传成功：清除标记，并应用服务端确认后的名称/顺序。 */
+    @Query(
+        "UPDATE rooms SET pendingEdit = 0, serverName = NULL, serverSortOrder = NULL, " +
+            "name = :name, sortOrder = :sortOrder WHERE id = :id",
+    )
+    suspend fun clearPendingEditWithServer(id: Long, name: String, sortOrder: Int)
+
+    /** pending 期间收到的服务端值先暂存，等下次合并再生效。 */
+    @Query("UPDATE rooms SET serverName = :name, serverSortOrder = :sortOrder WHERE id = :id")
+    suspend fun stageServerValue(id: Long, name: String, sortOrder: Int)
+
+    /** 放弃本地 pending（例如 403），后续合并重新以服务端值为准。 */
+    @Query("UPDATE rooms SET pendingEdit = 0, serverName = NULL, serverSortOrder = NULL WHERE id = :id")
+    suspend fun clearPendingEdit(id: Long)
+
     /** v12 迁移后的旧房间还没有家庭归属，首次同步归入当前家庭。 */
     @Query("UPDATE rooms SET householdId = :householdId WHERE householdId IS NULL")
     suspend fun adoptOrphanRooms(householdId: Long)
@@ -249,6 +268,13 @@ interface HouseholdDao {
         sortOrder: Int,
         createdAt: Long,
     )
+
+    /** change_log 结构同步：只更新接收者可感知的字段，不动个人家庭标记/创世时间。 */
+    @Query(
+        "UPDATE households SET name = :name, role = :role, memberCount = :memberCount " +
+            "WHERE id = :id",
+    )
+    suspend fun updateStructural(id: Long, name: String, role: String, memberCount: Int)
 
     @Query("DELETE FROM households WHERE remoteId NOT IN (:remoteIds)")
     suspend fun deleteMissing(remoteIds: List<String>)

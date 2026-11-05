@@ -76,8 +76,13 @@ class RemoteSyncDataSource(
                 cursor = cursor,
                 limit = ApiLimits.CHANGES_MAX,
             )
+            val parsed = response.changes.orEmpty().mapNotNull { it.toSyncChangeEntry() }
             SyncPullPage(
-                changes = response.changes.orEmpty().mapNotNull { it.toDomain() },
+                changes = parsed.filterIsInstance<SyncChangeEntry.Device>().map { it.record },
+                // 未知 entity 在 parsed 中已消失，但 nextCursor 仍按服务端值前进。
+                structuralChanges = parsed
+                    .filterIsInstance<SyncChangeEntry.Structure>()
+                    .map { it.change },
                 // 契约 cursor 为整数序列号，本地以字符串透传。
                 nextCursor = response.nextCursor?.toString(),
             )

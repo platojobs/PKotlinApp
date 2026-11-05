@@ -79,6 +79,11 @@ data class RoomEntity(
     val remoteId: String? = null,
     // 所属家庭（households.id）；null 表示 v12 迁移前的旧房间，首次家庭同步时归入当前家庭。
     val householdId: Long? = null,
+    // 本地有未上传的改名/排序：结构变更到达时以本地值为准，服务端值先落到暂存列。
+    @ColumnInfo(defaultValue = "0") val pendingEdit: Boolean = false,
+    // 暂存的服务端名称/顺序，等本地 pending 合并后再生效；null 表示没有待合并值。
+    val serverName: String? = null,
+    val serverSortOrder: Int? = null,
 )
 
 /**

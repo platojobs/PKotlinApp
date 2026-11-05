@@ -169,6 +169,15 @@ internal object FeedbackMigrationSql {
     )
 }
 
+/** v14 -> v15：房间接入 change_log 结构增量同步，新增本地 pending/服务端暂存列。 */
+internal object RoomStructuralSyncMigrationSql {
+    val V14_TO_V15 = listOf(
+        "ALTER TABLE rooms ADD COLUMN pendingEdit INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE rooms ADD COLUMN serverName TEXT",
+        "ALTER TABLE rooms ADD COLUMN serverSortOrder INTEGER",
+    )
+}
+
 @Database(
     entities = [
         DeviceEntity::class,
@@ -182,7 +191,7 @@ internal object FeedbackMigrationSql {
         HouseholdEntity::class,
         FeedbackDraftEntity::class,
     ],
-    version = 14,
+    version = 15,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -346,6 +355,13 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v14 -> v15：房间 pending/暂存列；既有房间默认无 pending、无暂存值。 */
+        val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                RoomStructuralSyncMigrationSql.V14_TO_V15.forEach(db::execSQL)
+            }
+        }
+
         @Volatile
         private var instance: AppDatabase? = null
 
@@ -369,6 +385,7 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_11_12,
                     MIGRATION_12_13,
                     MIGRATION_13_14,
+                    MIGRATION_14_15,
                 )
                     .build()
                     .also { instance = it }

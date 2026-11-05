@@ -26,6 +26,7 @@ import com.platojobs.pkotlinapp.domain.household.RoomSetMismatchException
 import com.platojobs.pkotlinapp.domain.household.chooseCurrentHousehold
 import com.platojobs.pkotlinapp.domain.household.classifyHouseholdError
 import com.platojobs.pkotlinapp.domain.household.planRoomMerge
+import com.platojobs.pkotlinapp.domain.sync.StructuralChange
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -86,6 +87,86 @@ class HouseholdRepository(
         syncAll()
     }
 
+    /**
+     * 应用 change_log 家庭/房间结构变更（后端 v0.15.0）。
+     *
+     * 规则：
+     * - 未知/无法解析的变化不会到达这里（解析层已跳过），游标照常前进；
+     * - household 本地不存在（例如刚被邀请）→ 触发一次 `GET /households` 全量基线；
+     * - household delete → 整段移除房间、共享设备、归属与本地家庭行，不逐房间删除；
+     * - room upsert 与本地 pending 改名/重排冲突时，本地 pending 优先，
+     *   服务端值落到 [RoomEntity.serverName] / [RoomEntity.serverSortOrder] 等下次合并；
+     * - room delete → 只删房间并清空设备归属，设备本身保留。
+     */
+    override suspend fun applyStructural(changes: List<StructuralChange>) = mutex.withLock {
+        var baselineRequired = false
+
+        changes.filterIsInstance<StructuralChange.Household>().forEach { change ->
+            if (change.deleted) {
+                removeHouseholdLocally(change.householdRemoteId)
+                return@forEach
+            }
+            val row = householdDao.findByRemoteId(change.householdRemoteId)
+            if (row == null) {
+                baselineRequired = true
+            } else {
+                householdDao.updateStructural(
+                    id = row.id,
+                    name = change.name,
+                    role = change.role.name.lowercase(),
+                    memberCount = change.memberCount,
+                )
+            }
+        }
+
+        changes.filterIsInstance<StructuralChange.Room>().forEach { change ->
+            val household = householdDao.findByRemoteId(change.householdRemoteId)
+            if (household == null) {
+                // 房间先于家庭变更到达或本地没有基线：交给一次全量拉取补全。
+                baselineRequired = true
+                return@forEach
+            }
+            if (change.deleted) {
+                roomDao.findByRemoteId(change.roomRemoteId)?.let { local ->
+                    deviceDao.clearRoomAssignments(local.id)
+                    roomDao.delete(local.id)
+                }
+                return@forEach
+            }
+            val local = roomDao.findByRemoteId(change.roomRemoteId)
+            if (local == null) {
+                roomDao.insert(
+                    RoomEntity(
+                        name = change.name,
+                        sortOrder = change.sortOrder,
+                        createdAt = clock(),
+                        remoteId = change.roomRemoteId,
+                        householdId = household.id,
+                    ),
+                )
+            } else if (local.pendingEdit) {
+                roomDao.stageServerValue(local.id, change.name, change.sortOrder)
+            } else {
+                roomDao.updateFromServer(local.id, change.name, change.sortOrder)
+            }
+        }
+
+        // 后端不回放历史结构：缺家庭/缺房间时只能拉一次基线，增量补不回来。
+        if (baselineRequired) runCatching { syncAllLocked() }
+    }
+
+    private suspend fun removeHouseholdLocally(remoteId: String) {
+        val row = householdDao.findByRemoteId(remoteId) ?: return
+        roomDao.deleteForHousehold(row.id)
+        deviceDao.deleteSharedForHousehold(row.id)
+        deviceDao.clearHouseholdAssignments(row.id)
+        householdDao.delete(row.id)
+        if (prefs.currentHouseholdRemoteId == remoteId) {
+            prefs.currentHouseholdRemoteId = null
+            _currentRemoteId.value = null
+        }
+    }
+
     override suspend fun onRelogin() = mutex.withLock {
         householdDao.clear()
         roomDao.clearRemoteLinks()
@@ -100,18 +181,21 @@ class HouseholdRepository(
      * 登录后/后台同步：拉家庭列表 → 合并房间 → 拉设备 → 补报待处理房间变更。
      * 离线时返回 false，但保留本机数据。
      */
-    suspend fun syncAll(): Boolean = mutex.withLock {
+    suspend fun syncAll(): Boolean = mutex.withLock { syncAllLocked() }
+
+    private suspend fun syncAllLocked(): Boolean {
         val adoptOrphans = prefs.currentHouseholdRemoteId == null
         _status.value = _status.value.copy(syncing = true, lastError = null)
-        try {
+        return try {
             val snapshots = remote.listHouseholds()
             persistHouseholds(snapshots)
             val chosen = chooseCurrentHousehold(snapshots, prefs.currentHouseholdRemoteId)
             setCurrentRemoteId(chosen?.remoteId)
-            val row = chosen?.let { householdDao.findByRemoteId(it.remoteId) } ?: return@withLock false
+            val row = chosen?.let { householdDao.findByRemoteId(it.remoteId) } ?: return false
 
             if (adoptOrphans) roomDao.adoptOrphanRooms(row.id)
             mergeRooms(row)
+            flushPendingRoomEdits(row)
             pullDevices(row)
             val patchError = flushPendingPatches(row)
             _status.value = HouseholdSyncStatus(
@@ -270,6 +354,8 @@ class HouseholdRepository(
         val row = currentRow() ?: throw HouseholdNotFoundException()
         orderedLocalIds.forEachIndexed { index, localId ->
             roomDao.updateSortOrder(localId, index)
+            // 本地顺序先落库；服务端确认前不接受结构变更覆盖。
+            roomDao.markPendingEdit(localId)
         }
         if (roomDao.getRoomsForHousehold(row.id).any { it.remoteId == null }) {
             try {
@@ -294,7 +380,10 @@ class HouseholdRepository(
         val ordered = try {
             remote.reorderRooms(row.remoteId, remoteIds)
         } catch (e: HouseholdConflictException) {
-            // 集合不一致：服务端是权威来源，重新拉取后让用户看到最新顺序。
+            // 集合不一致：服务端是权威来源，放弃本地 pending 后重新拉取。
+            roomDao.getRoomsForHousehold(row.id)
+                .filter { it.pendingEdit }
+                .forEach { roomDao.clearPendingEdit(it.id) }
             runCatching { mergeRooms(row) }
             // v0.14.0 起 409 带 ROOM_SET_MISMATCH；更早版本为 CONFLICT，语义相同。
             if (e.code == null ||
@@ -314,7 +403,8 @@ class HouseholdRepository(
         }
         ordered.forEach { serverRoom ->
             roomDao.findByRemoteId(serverRoom.remoteId)?.let { local ->
-                roomDao.updateFromServer(local.id, serverRoom.name, serverRoom.sortOrder)
+                // 服务端确认整段顺序：清除 pending，并采用服务端回读的名称/顺序。
+                roomDao.clearPendingEditWithServer(local.id, serverRoom.name, serverRoom.sortOrder)
             }
         }
         true
@@ -365,13 +455,39 @@ class HouseholdRepository(
         }
     }
 
+    /**
+     * 改名：本地先落库并标记 pending，在线时立即上传。
+     *
+     * 离线时保留本地值等下次同步补传；4xx 权限/不存在回退到改名前的本地值并抛出，
+     * 避免把「服务端拒绝的改名」长期留在列表里。
+     */
     suspend fun renameRoom(localId: Long, name: String) {
         val room = roomDao.find(localId) ?: return
+        val trimmed = name.trim()
         val current = currentRow()
-        if (room.remoteId != null && current != null) {
-            remote.updateRoom(current.remoteId, room.remoteId, name.trim(), null)
+        roomDao.rename(localId, trimmed)
+        if (room.remoteId == null || current == null) return
+        roomDao.markPendingEdit(localId)
+        try {
+            val server = remote.updateRoom(current.remoteId, room.remoteId, trimmed, null)
+            roomDao.clearPendingEditWithServer(localId, server.name, server.sortOrder)
+        } catch (e: Exception) {
+            when (classifyHouseholdError(e)) {
+                HouseholdErrorKind.OFFLINE -> {
+                    // 本地 pending 保留，下一次同步补传。
+                    _status.value = _status.value.copy(
+                        synced = false,
+                        lastError = HouseholdErrorKind.OFFLINE.name,
+                    )
+                }
+
+                else -> {
+                    roomDao.clearPendingEdit(localId)
+                    roomDao.rename(localId, room.name)
+                    throw e
+                }
+            }
         }
-        roomDao.rename(localId, name.trim())
     }
 
     suspend fun deleteRoom(localId: Long) {
@@ -413,14 +529,32 @@ class HouseholdRepository(
         val plan: RoomMergePlan = planRoomMerge(snapshots, remoteRooms)
 
         plan.update.forEach { (localId, serverRoom) ->
-            roomDao.updateFromServer(localId, serverRoom.name, serverRoom.sortOrder)
+            val local = roomDao.find(localId)
+            if (local?.pendingEdit == true) {
+                // 本地还没上传的改名/重排优先；服务端值暂存，等本地提交后再合并。
+                roomDao.stageServerValue(localId, serverRoom.name, serverRoom.sortOrder)
+            } else {
+                roomDao.updateFromServer(localId, serverRoom.name, serverRoom.sortOrder)
+            }
         }
         plan.adopt.forEach { (localId, serverRoom) ->
+            val local = roomDao.find(localId)
             roomDao.linkRemote(localId, serverRoom.remoteId, row.id, serverRoom.sortOrder)
+            if (local?.pendingEdit == true) {
+                // linkRemote 会用服务端顺序覆盖本地；pending 房间要恢复本地顺序并暂存。
+                roomDao.updateSortOrder(localId, local.sortOrder)
+                roomDao.stageServerValue(localId, serverRoom.name, serverRoom.sortOrder)
+            }
         }
         plan.push.sortedBy { it.sortOrder }.forEach { localRoom ->
             val created = remote.createRoom(row.remoteId, localRoom.name, localRoom.sortOrder)
             roomDao.linkRemote(localRoom.localId, created.remoteId, row.id, created.sortOrder)
+            // 服务端已确认建房；本地 pending 标记与暂存值同时清掉。
+            roomDao.clearPendingEditWithServer(
+                localRoom.localId,
+                created.name,
+                created.sortOrder,
+            )
         }
         plan.insert.forEach { serverRoom ->
             if (roomDao.findByRemoteId(serverRoom.remoteId) == null) {
@@ -440,6 +574,31 @@ class HouseholdRepository(
             deviceDao.clearRoomAssignments(localId)
             roomDao.delete(localId)
         }
+    }
+
+    /**
+     * 补传本地 pending 的房间改名/排序。
+     * 离线保留 pending；4xx 清除 pending，让下一次 merge 回读服务端真值。
+     */
+    private suspend fun flushPendingRoomEdits(row: HouseholdEntity) {
+        roomDao.getRoomsForHousehold(row.id)
+            .filter { it.pendingEdit && it.remoteId != null }
+            .forEach { room ->
+                try {
+                    val server = remote.updateRoom(
+                        remoteId = row.remoteId,
+                        roomRemoteId = room.remoteId.orEmpty(),
+                        name = room.name,
+                        sortOrder = room.sortOrder,
+                    )
+                    roomDao.clearPendingEditWithServer(room.id, server.name, server.sortOrder)
+                } catch (e: Exception) {
+                    when (classifyHouseholdError(e)) {
+                        HouseholdErrorKind.OFFLINE -> Unit
+                        else -> roomDao.clearPendingEdit(room.id)
+                    }
+                }
+            }
     }
 
     private suspend fun pullDevices(row: HouseholdEntity) {

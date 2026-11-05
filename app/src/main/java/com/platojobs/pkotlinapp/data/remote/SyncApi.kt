@@ -82,6 +82,13 @@ data class SyncDeviceDto(
     // openapi 0.12.0 家庭归属；未归属时省略或为 null。
     val householdId: String? = null,
     val roomId: String? = null,
+    // openapi 0.11.0 household/room change payload 的复用字段；设备 payload 不使用。
+    val name: String? = null,
+    val ownerUserId: String? = null,
+    val role: String? = null,
+    val memberCount: Int? = null,
+    val sortOrder: Int? = null,
+    val deleted: Boolean? = null,
 )
 
 /** GET /my/devices 的返回：本人设备 + 家庭成员共享设备。 */
@@ -183,7 +190,14 @@ data class SyncScanRecordDto(
     val at: String? = null,
 )
 
-/** 单条增量变更。 */
+/**
+ * 单条增量变更。
+ *
+ * `payload` 是 entity 的联合体：设备字段之外，openapi 0.11.0 的
+ * household / room 也复用同一结构（`name`、`ownerUserId`、`role`、
+ * `memberCount`、`sortOrder`、`deleted`）。未知 entity 的未知字段
+ * 会被 Moshi 忽略，解析层按 entity 显式分派后丢弃。
+ */
 data class SyncChangeDto(
     val seq: Long? = null,
     val entity: String? = null,

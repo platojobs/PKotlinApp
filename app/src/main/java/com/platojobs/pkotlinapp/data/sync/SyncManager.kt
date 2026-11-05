@@ -53,6 +53,7 @@ class SyncManager(
         if (statusStore.state.value.authExpired) return@withLock false
         try {
             engine.pullChanges()
+            applyStructuralSafely()
             if (engine.lastPullWasResync) {
                 // 410 全量重拉后，本机 pending 读数仍然有效，立即尝试补传一次；
                 // 失败（如离线）不影响首屏，pending 标记保留到下一次后台同步。
@@ -75,6 +76,7 @@ class SyncManager(
         if (statusStore.state.value.authExpired) throw AuthExpiredException()
         try {
             val outcome = engine.syncAll()
+            applyStructuralSafely()
             // 设备先落服务端，再补传读数；同一 push 契约、独立 200/批的幂等批次。
             readingSyncer.syncPending()
             syncHouseholdSafely()
@@ -114,6 +116,7 @@ class SyncManager(
         statusStore.resetForRelogin()
         try {
             val outcome = engine.syncAll()
+            applyStructuralSafely()
             readingSyncer.syncPending()
             syncHouseholdSafely()
             statusStore.recordSuccess(
@@ -133,6 +136,20 @@ class SyncManager(
     fun isLocalOnly(): Boolean = status.value.localOnly
 
     fun isAuthExpired(): Boolean = status.value.authExpired
+
+    /**
+     * 结构变更先落家庭仓库，再由 [syncHouseholdSafely] 拉全量基线。
+     * 失败不阻塞设备/读数同步：未知或异常的家庭状态交给下一次同步修复。
+     */
+    private suspend fun applyStructuralSafely() {
+        val changes = engine.lastStructuralChanges
+        if (changes.isEmpty()) return
+        try {
+            householdSyncer?.applyStructural(changes)
+        } catch (_: Exception) {
+            // 与家庭同步一致的降级策略：保留本机数据，不阻断主同步链路。
+        }
+    }
 
     private suspend fun syncHouseholdSafely() {
         try {

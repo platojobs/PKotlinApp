@@ -39,6 +39,11 @@ data class SyncRecord(
 data class SyncPullPage(
     val changes: List<SyncRecord>,
     val nextCursor: String?,
+    /**
+     * 家庭/房间结构变更。老客户端不认识的 entity 在这里为空，
+     * 但 [nextCursor] 仍然前进（忽略未知类型是硬约束）。
+     */
+    val structuralChanges: List<StructuralChange> = emptyList(),
 )
 
 data class SyncConflict(
@@ -144,6 +149,13 @@ class SyncEngine(
     var lastPullWasResync: Boolean = false
         private set
 
+    /**
+     * 本次 [pullChanges] 拉到的家庭/房间结构变更（按服务端顺序）。
+     * 由上层在拉取结束后交给家庭仓库落库；410 全量重拉的页面同样适用。
+     */
+    var lastStructuralChanges: List<StructuralChange> = emptyList()
+        private set
+
     suspend fun pushPending(limit: Int = 50): SyncPushOutcome {
         val pending = local.pending(limit)
         if (pending.isEmpty()) return SyncPushOutcome(0, emptyList())
@@ -179,6 +191,7 @@ class SyncEngine(
 
     suspend fun pullChanges(): Int {
         lastPullWasResync = false
+        lastStructuralChanges = emptyList()
         val page = try {
             remote.pull(cursorStore.cursor)
         } catch (e: CursorExpiredException) {
@@ -189,6 +202,7 @@ class SyncEngine(
             onCursorExpired()
             remote.pull(CURSOR_START)
         }
+        lastStructuralChanges = page.structuralChanges
         page.changes.forEach { change ->
             if (change.deletedAt != null) {
                 // 服务端墓碑只有在本地没有「更新的 pending 版本」时才生效，

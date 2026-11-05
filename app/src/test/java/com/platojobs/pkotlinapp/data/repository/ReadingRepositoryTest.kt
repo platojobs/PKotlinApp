@@ -43,20 +43,39 @@ class ReadingRepositoryTest {
     }
 
     @Test
-    fun `cleanup removes only rows older than seven days`() = runBlocking {
+    fun `cleanup keeps pending rows no matter how old`() = runBlocking {
         val dao = FakeReadingDao()
         val repository = ReadingRepositoryImpl(dao, now = { now })
         val day = 24L * 60L * 60L * 1000L
 
-        repository.record("AA:BB:CC:00:00:01", ReadingSample("temperature", 20.0, "°C", now - 8 * day))
+        repository.record("AA:BB:CC:00:00:01", ReadingSample("temperature", 20.0, "°C", now - 30 * day))
         repository.record("AA:BB:CC:00:00:01", ReadingSample("temperature", 21.0, "°C", now - day))
         assertEquals(2, dao.stored.size)
 
         repository.cleanup()
 
         assertEquals(now - Reading.LOCAL_RETENTION_MILLIS, dao.lastCutoff)
+        // 两条都尚未同步：即使 30 天前也不能删，离线数据优先保留。
+        assertEquals(2, dao.stored.size)
+    }
+
+    @Test
+    fun `cleanup deletes only synced rows older than seven days`() = runBlocking {
+        val dao = FakeReadingDao()
+        val repository = ReadingRepositoryImpl(dao, now = { now })
+        val day = 24L * 60L * 60L * 1000L
+
+        repository.record("AA:BB:CC:00:00:01", ReadingSample("temperature", 20.0, "°C", now - 8 * day))
+        repository.record("AA:BB:CC:00:00:01", ReadingSample("temperature", 21.0, "°C", now - day))
+        val oldId = dao.stored.first { it.recordedAt == now - 8 * day }.id
+        dao.markSynced(listOf(oldId))
+
+        repository.cleanup()
+
+        assertEquals(now - Reading.LOCAL_RETENTION_MILLIS, dao.lastCutoff)
         assertEquals(1, dao.stored.size)
         assertEquals(now - day, dao.stored.single().recordedAt)
+        assertEquals(Reading.SYNC_STATE_PENDING, dao.stored.single().syncState)
     }
 
     @Test
@@ -140,7 +159,10 @@ class ReadingRepositoryTest {
 
         override suspend fun deleteOlderThan(cutoff: Long) {
             lastCutoff = cutoff
-            stored.removeAll { it.recordedAt < cutoff }
+            // 与 Room 查询语义保持一致：仅删除已同步且超过保留期的记录。
+            stored.removeAll {
+                it.recordedAt < cutoff && it.syncState == Reading.SYNC_STATE_SYNCED
+            }
         }
     }
 }

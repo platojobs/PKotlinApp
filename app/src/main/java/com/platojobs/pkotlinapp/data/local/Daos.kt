@@ -128,8 +128,8 @@ interface ReadingDao {
     @Query("UPDATE readings SET syncState = 'synced' WHERE id IN (:ids)")
     suspend fun markSynced(ids: List<String>)
 
-    /** 本地只保留 7 天；服务端保留 90 天。 */
-    @Query("DELETE FROM readings WHERE recordedAt < :cutoff")
+    /** 本地只保留 7 天；pending 记录无论多旧都必须保留，避免离线数据被清掉。 */
+    @Query("DELETE FROM readings WHERE recordedAt < :cutoff AND syncState = 'synced'")
     suspend fun deleteOlderThan(cutoff: Long)
 }
 

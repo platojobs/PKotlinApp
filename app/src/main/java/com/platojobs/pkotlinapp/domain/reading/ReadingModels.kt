@@ -96,21 +96,21 @@ data class ReadingSummary(
 )
 
 /**
- * GATT notify 解析器。所有异常路径返回 null，由调用方静默丢弃并记录日志，
- * 绝不向 Room 写入非法值。
+ * GATT notify 解析器。所有异常路径返回空列表，由调用方静默丢弃并记录日志，
+ * 绝不向 Room 写入非法值。NUS 一行可能包含多条文本读数。
  */
 object GattReadingParser {
 
-    fun parse(characteristicUuid: String, value: ByteArray, recordedAt: Long): ReadingSample? =
+    fun parse(characteristicUuid: String, value: ByteArray, recordedAt: Long): List<ReadingSample> =
         when (ReadingUuids.normalize(characteristicUuid)) {
-            ReadingUuids.HEART_RATE -> parseHeartRate(value, recordedAt)
-            ReadingUuids.BATTERY -> parseBattery(value, recordedAt)
-            ReadingUuids.TEMPERATURE -> parseTemperature(value, recordedAt)
+            ReadingUuids.HEART_RATE -> listOfNotNull(parseHeartRate(value, recordedAt))
+            ReadingUuids.BATTERY -> listOfNotNull(parseBattery(value, recordedAt))
+            ReadingUuids.TEMPERATURE -> listOfNotNull(parseTemperature(value, recordedAt))
             ReadingUuids.NUS_TX -> parseNus(value, recordedAt)
-            else -> null
+            else -> emptyList()
         }
 
-    /** 心率测量：flags 首字节，bit0=0 时第 2 字节 uint8，否则第 2-3 字节 uint16。 */
+    /** 心率测量：flags 首字节，bit0=0 时第 2 字节 uint8，否则第 2-3 字节 uint16（小端）。 */
     fun parseHeartRate(value: ByteArray, recordedAt: Long): ReadingSample? {
         if (value.size < 2) return null
         val flags = value[0].toInt() and 0xFF
@@ -118,9 +118,10 @@ object GattReadingParser {
             value[1].toInt() and 0xFF
         } else {
             if (value.size < 3) return null
+            // 小端：第二字节为低 8 位，第三字节为高 8 位。
             (value[1].toInt() and 0xFF) or ((value[2].toInt() and 0xFF) shl 8)
         }
-        if (bpm <= 0 || bpm > 300) return null
+        if (bpm !in 1..300) return null
         return ReadingSample(
             metric = ReadingMetrics.HEART_RATE,
             value = bpm.toDouble(),
@@ -129,11 +130,11 @@ object GattReadingParser {
         )
     }
 
-    /** 电池电量：单字节百分比，0..100。 */
+    /** 电池电量：单字节百分比，0 与 100 都是真实值。 */
     fun parseBattery(value: ByteArray, recordedAt: Long): ReadingSample? {
         if (value.isEmpty()) return null
         val percent = value[0].toInt() and 0xFF
-        if (percent > 100) return null
+        if (percent !in 0..100) return null
         return ReadingSample(
             metric = ReadingMetrics.BATTERY,
             value = percent.toDouble(),
@@ -143,23 +144,29 @@ object GattReadingParser {
     }
 
     /**
-     * 温度：兼容两种实际固件格式：
-     * - 0x2A6E 规范定义的 sint16 / 0.01℃ 放大值；
-     * - 部分固件使用的 IEEE-754 半精度（2 字节 little-endian）。
-     * 放大值落在 -40..125℃ 时优先按规范解释；否则回退半精度，两者都不合理则丢弃。
+     * 温度统一口径（与 iOS 对齐）：
+     * - 2 字节：优先 sint16 × 0.01℃；不在 -50..150℃ 时回退 IEEE-754 半精度；
+     * - 4 字节：IEEE-754 float32（小端）；
+     * 任何路径结果超出 -50..150℃ 或 NaN/Inf 都丢弃。
      */
     fun parseTemperature(value: ByteArray, recordedAt: Long): ReadingSample? {
         if (value.size < 2) return null
-        val raw = (value[0].toInt() and 0xFF) or ((value[1].toInt() and 0xFF) shl 8)
-        val half = halfToFloat(raw)
-        val scaled = signed16(value) / 100.0
-        val halfPlausible = half.isFinite() && half in MIN_TEMPERATURE..MAX_TEMPERATURE
-        val scaledPlausible = scaled in MIN_TEMPERATURE..MAX_TEMPERATURE
-        val celsius = when {
-            scaledPlausible -> scaled
-            halfPlausible -> half.toDouble()
-            else -> return null
+        val celsius = if (value.size == 4) {
+            parseFloat32(value)
+        } else {
+            val scaled = signed16(value) / 100.0
+            if (scaled.isFinite() && scaled in MIN_TEMPERATURE..MAX_TEMPERATURE) {
+                scaled
+            } else {
+                val half = halfToFloat(littleEndianUInt16(value))
+                if (half.isFinite() && half in MIN_TEMPERATURE..MAX_TEMPERATURE) {
+                    half.toDouble()
+                } else {
+                    return null
+                }
+            }
         }
+        if (!celsius.isFinite() || celsius !in MIN_TEMPERATURE..MAX_TEMPERATURE) return null
         return ReadingSample(
             metric = ReadingMetrics.TEMPERATURE,
             value = celsius,
@@ -169,18 +176,23 @@ object GattReadingParser {
     }
 
     /**
-     * Nordic UART TX 文本行：
-     * - `metric=value`（metric 不在白名单时记 other 并保留原文）；
-     * - 纯数字（记 other，单位为「」，保留原文）。
-     * 超长、非数字、NaN/Infinity 都丢弃。
+     * Nordic UART TX：按 `\n` 分行逐行解析，一行一条读数；单行失败只丢该行。
+     * 支持 `metric=value`（未知 metric 记 other 并保留原文）与纯数字（other，单位空）。
+     * 整包超过 256 字节直接丢弃；单行超过 64 字符只丢该行。
      */
-    fun parseNus(value: ByteArray, recordedAt: Long): ReadingSample? {
-        if (value.isEmpty() || value.size > MAX_NUS_BYTES) return null
-        val text = String(value, Charsets.UTF_8).trim()
-        if (text.isEmpty()) return null
-        val line = text.lineSequence().firstOrNull { it.isNotBlank() }?.trim() ?: return null
-        if (line.length > MAX_NUS_CHARS) return null
+    fun parseNus(value: ByteArray, recordedAt: Long): List<ReadingSample> {
+        if (value.isEmpty() || value.size > MAX_NUS_BYTES) return emptyList()
+        val lines = String(value, Charsets.UTF_8).split('\n')
+        val samples = mutableListOf<ReadingSample>()
+        lines.forEach { rawLine ->
+            val line = rawLine.trim()
+            if (line.isEmpty() || line.length > MAX_NUS_LINE_CHARS) return@forEach
+            parseNusLine(line, recordedAt)?.let(samples::add)
+        }
+        return samples
+    }
 
+    private fun parseNusLine(line: String, recordedAt: Long): ReadingSample? {
         val separator = line.indexOf('=')
         if (separator > 0) {
             val rawMetric = line.substring(0, separator).trim()
@@ -193,7 +205,11 @@ object GattReadingParser {
                 value = amount,
                 unit = ReadingMetrics.unit(metric),
                 recordedAt = recordedAt,
-                rawSnapshot = if (metric == ReadingMetrics.OTHER) line.take(MAX_SNAPSHOT_CHARS) else null,
+                rawSnapshot = if (metric == ReadingMetrics.OTHER) {
+                    line.take(MAX_SNAPSHOT_CHARS)
+                } else {
+                    null
+                },
             )
         }
 
@@ -214,15 +230,27 @@ object GattReadingParser {
             (byte.toInt() and 0xFF).toString(16).uppercase().padStart(2, '0')
         }.take(maxChars)
 
+    private fun littleEndianUInt16(value: ByteArray): Int =
+        (value[0].toInt() and 0xFF) or ((value[1].toInt() and 0xFF) shl 8)
+
     private fun signed16(value: ByteArray): Int {
-        val raw = (value[0].toInt() and 0xFF) or ((value[1].toInt() and 0xFF) shl 8)
+        val raw = littleEndianUInt16(value)
         return if (raw >= 0x8000) raw - 0x10000 else raw
     }
 
-    private const val MIN_TEMPERATURE = -40.0
-    private const val MAX_TEMPERATURE = 125.0
+    /** float32 小端；使用 [Float.fromBits] 避免依赖平台 ByteBuffer。 */
+    private fun parseFloat32(value: ByteArray): Double {
+        val bits = (value[0].toInt() and 0xFF) or
+            ((value[1].toInt() and 0xFF) shl 8) or
+            ((value[2].toInt() and 0xFF) shl 16) or
+            ((value[3].toInt() and 0xFF) shl 24)
+        return Float.fromBits(bits).toDouble()
+    }
+
+    private const val MIN_TEMPERATURE = -50.0
+    private const val MAX_TEMPERATURE = 150.0
     private const val MAX_NUS_BYTES = 256
-    private const val MAX_NUS_CHARS = 256
+    private const val MAX_NUS_LINE_CHARS = 64
     private const val MAX_SNAPSHOT_CHARS = 64
 }
 

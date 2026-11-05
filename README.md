@@ -412,25 +412,43 @@ Debug / Release 都可通过 `apiBaseUrl` 切换；发布前请传入正式域�
 - 首页 / 设备 / 我的：本地 Room 数据不依赖网络，断网仍可用。
 - 离线验收步骤见 [真机验收清单 §7.2](docs/acceptance.md#72-离线缓存与分组验收v035-新增)；别名/广播名与分组三态验收见 [§7.4](docs/acceptance.md#74-别名--广播名与分组三态验收v036-新增)；清空别名验收见 [§7.5](docs/acceptance.md#75-清空别名验收v037-新增)；读数采集验收见 [§7.6](docs/acceptance.md#76-设备读数readings验收v040-新增)。
 
-### 6.1 数据采集（readings，v0.4.0）
+### 6.1 数据采集（readings，v0.4.1 统一解析口径）
 
 设备连接并发现 GATT 服务后，App 会订阅以下 notify/indicate 特征，并把解析成功的读数写入 Room、随后随同步批次推送到服务端：
 
-| 特征 UUID | 指标 | 解析规则 | 单位 |
+| 特征 UUID | 指标 | 统一解析规则（与 iOS 对齐） | 单位 |
 | --- | --- | --- | --- |
-| `0x2A37` 心率测量 | `heart_rate` | 首字节为 flags；bit0=0 取下一字节 uint8，bit0=1 取后续两字节 uint16；只接受 1..300 | `bpm` |
-| `0x2A19` 电池电量 | `battery` | 单字节百分比，只接受 0..100 | `%` |
-| `0x2A6E` 温度 | `temperature` | 2 字节 little-endian：先按规范 sint16 / 0.01℃ 解释，落在 -40..125℃ 时采用；否则回退 IEEE-754 半精度；两者都不合理则丢弃 | `°C` |
-| `6E400003-B5A3-F393-E0A9-E50E24DCCA9E` NUS TX | 由文本决定 | UTF-8 文本行：`metric=value` 或纯数字；指标走白名单归一化，未知指标记为 `other` 并保留原始文本快照 | 按指标 |
+| `0x2A37` 心率测量 | `heart_rate` | 首字节 flags；bit0=0 取第 2 字节 uint8；bit0=1 取第 2-3 字节 uint16 **小端**（低位在前）；只接受 1..300 | `bpm` |
+| `0x2A19` 电池电量 | `battery` | 单字节百分比，**0 与 100 均合法**；101..255 丢弃 | `%` |
+| `0x2A6E` 温度 | `temperature` | **2 字节**：优先 sint16 × 0.01℃，落在 −50..150℃ 时采用；否则回退 IEEE-754 半精度。**4 字节**：float32（小端）。所有路径 NaN/Inf 或超出 −50..150℃ 都丢弃 | `°C` |
+| `6E400003-B5A3-F393-E0A9-E50E24DCCA9E` NUS TX | 由文本决定 | 按 `\n` **逐行解析**，trim 后每行独立成一条读数；支持 `metric=value` 与纯数字；未知指标记 `other` 并保留原文快照。整包 ≤256 字节，**单行 ≤64 字符**，单行失败只丢该行 | 按指标 |
 
-解析失败（空字节、长度不足、超长 >256 字节、非数字、NaN/Inf、超出合理范围）**静默丢弃**：只写一条 `Log.w("BleReadings", …)` 本地日志（含特征 UUID、长度和十六进制快照），不写 Room、不影响连接状态、不崩溃。可读特征在订阅后还会主动 `readCharacteristic` 一次，获取电池/温度初始值。
+**黄金字节表**（同一输入必须得到唯一输出，已固化在 `GattReadingParserTest`）：
+
+| 特征 | 输入 hex | 输出 |
+| --- | --- | --- |
+| 心率 | `00 48` | `heart_rate` 72 bpm |
+| 心率 | `00 00` | 丢弃（0 不合法） |
+| 心率 | `01 2C 01` | `heart_rate` 300 bpm（小端 uint16） |
+| 心率 | `01 2D 01` | 丢弃（301 超范围） |
+| 电池 | `64` / `00` | `battery` 100% / 0% |
+| 电池 | `65` | 丢弃 |
+| 温度 | `2A 08` | `temperature` 20.90℃（sint16 × 0.01） |
+| 温度 | `70 FE` | `temperature` −4.00℃ |
+| 温度 | `00 00 C0 3F` | `temperature` 1.5℃（float32） |
+| 温度 | `FF FF` | `temperature` −0.01℃（优先 sint16，不按 half NaN 丢弃） |
+| 温度 | `00 4A` / `00 4D` | IEEE-754 half 实际为 12.0℃ / 20.0℃（`00 4A` 不是 20.0℃ 的编码） |
+| NUS | `temperature=23.5\nbattery=88\nxx` | 2 条读数（第 3 行丢弃） |
+| 任意 | 空字节 | 丢弃，不崩溃 |
+
+解析失败（空字节、长度不足、超长、非数字、NaN/Inf、超出合理范围）**静默丢弃**：只写一条 `Log.w("BleReadings", …)` 本地日志（含特征 UUID、长度和十六进制快照），不写 Room、不影响连接状态、不崩溃；NUS 部分行失败时其余合法行照常入库。可读特征在订阅后还会主动 `readCharacteristic` 一次，获取电池/温度初始值。
 
 **本地存储（Room v7）**
 
 - 新增 `readings` 表：`id`（UUID 主键）、`deviceId`（外键指向 `devices.mac`，`ON DELETE CASCADE`）、`metric`、`value`、`unit`、`recordedAt`、`syncState`（`pending`/`synced`）、`rawSnapshot`。
 - 索引：`deviceId`、`syncState`、`(deviceId, metric, recordedAt)`；`MIGRATION_6_7` 只 `CREATE TABLE` + 索引，不重建既有表。
 - 指标白名单：`temperature` / `humidity` / `battery` / `heart_rate` / `co2` / `pressure` / `other`；未知指标入库前归一为 `other`，并保留原始字节/文本摘要。
-- 保留期：客户端本地 **7 天**，在 `Application.onCreate` 与每次读数同步完成后执行清理；服务端保留 **90 天**。
+- 保留期：客户端本地 **7 天**，在 `Application.onCreate` 与每次读数同步完成后执行清理；服务端保留 **90 天**。清理条件为 `recordedAt < cutoff AND syncState = 'synced'`，**pending 记录无论多旧都保留**，避免离线超过 7 天的数据被误删；同步成功后再按保留期清理。
 
 **同步策略**
 
@@ -456,7 +474,7 @@ export JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk-21.jdk/Contents/Home
 
 ./gradlew assembleDebug        # Debug APK
 ./gradlew lintDebug            # Lint
-./gradlew testDebugUnitTest    # 单元测试：73 个（含读数解析/同步/迁移/图表）
+./gradlew testDebugUnitTest    # 单元测试：79 个（含读数解析/同步/迁移/图表/黄金字节表）
 ./gradlew assembleRelease      # 签名 Release APK
 ./gradlew bundleRelease        # 签名 Release AAB
 
@@ -587,6 +605,7 @@ release {
 
 ## 11. 版本记录
 
+- `v0.4.1`：与 iOS 统一读数解析口径：NUS 改为按 `\n` 逐行解析（整包 ≤256 字节、单行 ≤64 字符，单行失败只丢该行）；温度 2 字节优先 sint16 × 0.01℃、否则回退 IEEE-754 half，4 字节走 float32，范围统一 −50..150℃；心率 uint16 明确小端；电池 0% 视为合法。清理逻辑修正为只删除 `syncState = 'synced'` 且超过 7 天的记录，pending 无论多旧都保留。新增黄金字节表单测（总单测 79 个），lint 0 issue。
 - `v0.4.0`：接入设备读数全链路：GATT 订阅心率 `0x2A37`、电池 `0x2A19`、温度 `0x2A6E`、NUS TX `6E400003-…` 并按特征解析（失败静默丢弃 + 本地日志）；Room v7 新增 `readings` 表（`MIGRATION_6_7`），指标白名单 + 未知指标 `other` + 原始快照，本地保留 7 天（服务端 90 天）；读数以 ≤200/批复用 `/sync/push` 按 id 幂等同步，断网累积、恢复补传；详情页新增「数据」区（真实指标 Chip、自绘 60 点折线图、24h min/max/avg/last、最近记录、离线/空状态/权限引导）。单测 73 个、e2e 新增读数契约 6 项（推送/重复 skipped/倒序查询/summary/NaN 400）。
 - `v0.3.7`：修复「清空别名无效」：Room v6 新增 `aliasDirty`（`MIGRATION_5_6`），详情页显式清空别名时上报 `"alias":""`，扫描路径永不置脏，服务端空别名拉回后清空本地并按广播名展示；复核分组 `NULL`/`""` 三态链路不复活；`lintDebug` 从 62 条 warning 清理到 0（硬编码文案抽 strings、未用资源删除、KTX/无障碍/备份规则修复，仅 4 个版本提示类检查在 `lint.xml` 显式抑制并写明理由）；新增 `DeviceAliasPersistenceTest`、v5→v6 迁移测试与 e2e 清空别名断言（e2e 扩到 24 项），单测 51 个。
 - `v0.3.6`：跟随 PJGoIoT openapi 0.3.3：Room v5 新增 `advertisedName`（广播名）并与用户别名 `name` 隔离 + `MIGRATION_4_5`，列表/详情按「别名 → 广播名 → 型号名」展示；扫描只写广播名、编辑只写别名；DTO 引入 `Reported<String>?` 三态（absent / `""` / 值）与 Moshi adapter，删除分组显式上报 `"group":""`、未修改则省略；幂等键只哈希实际上报字段；冲突/拉取缺省字段按 absent 处理并保留本地值；新增三态序列化、别名隔离、清空不复活、幂等键稳定性测试，e2e 扩到 22 项。

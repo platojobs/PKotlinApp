@@ -1,9 +1,9 @@
-# 真机验收清单（v0.4.0）
+# 真机验收清单（v0.4.1）
 
 本清单用于「执行人不在开发现场」时也能照着做完验收。每项都写明**操作步骤、预期现象、失败判定**。
 所有结果请记录到文末的「验收记录表」；未实际执行的项不要填 PASS。
 
-- 适用版本：`versionName = 0.4.0`（`versionCode = 11`）
+- 适用版本：`versionName = 0.4.1`（`versionCode = 12`）
 - 应用包名：`com.platojobs.pkotlinapp`
 - 主界面：`com.platojobs.pkotlinapp.ui.MainActivity`
 - 设备详情：`com.platojobs.pkotlinapp.ui.detail.DeviceDetailActivity`
@@ -55,7 +55,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versionCode"
 ```
 
-预期：`versionName=0.4.0`、`versionCode=11`。
+预期：`versionName=0.4.1`、`versionCode=12`。
 
 ---
 
@@ -111,9 +111,9 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
   - 权限自检三项（扫描 / 连接 / 定位）与系统授权状态一致；
   - 扫描日志有真实记录，可清空；
   - 主题切换立即生效并持久化（杀进程重开仍生效）；
-  - 版本信息显示「版本 0.4.0」「构建类型：debug」；
+  - 版本信息显示「版本 0.4.1」「构建类型：debug」；
   - 项目仓库链接可打开 GitHub。
-- 失败判定：同步卡片空白、权限状态与实际不一致、版本号不是 0.4.0、主题重启后丢失。
+- 失败判定：同步卡片空白、权限状态与实际不一致、版本号不是 0.4.1、主题重启后丢失。
 
 ---
 
@@ -327,7 +327,7 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
 - 预期：设备 / 规则 / 日志均能在界面上看到。
 - 失败判定：旧版本本身无法产生数据（先排除环境问题）。
 
-### M2 覆盖安装 v0.4.0
+### M2 覆盖安装 v0.4.1
 
 - 步骤：
   ```bash
@@ -357,7 +357,7 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
 
 - 步骤：
   1. 安装 v0.3.6 Debug 包（Room v5），扫描一台设备并编辑别名/分组，让 `name/deviceGroup/advertisedName` 落库；
-  2. 覆盖安装 v0.4.0，再导出数据库并查询：
+  2. 覆盖安装 v0.4.1，再导出数据库并查询：
      ```bash
      sqlite3 /tmp/device_dashboard.db "PRAGMA user_version;"
      sqlite3 /tmp/device_dashboard.db \
@@ -370,7 +370,7 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
 
 - 步骤：
   1. 安装 v0.3.7 Debug 包（Room v6），扫描一台设备并编辑别名/分组；
-  2. 覆盖安装 v0.4.0，导出数据库查询：
+  2. 覆盖安装 v0.4.1，导出数据库查询：
      ```bash
      sqlite3 /tmp/device_dashboard.db "PRAGMA user_version;"
      sqlite3 /tmp/device_dashboard.db "SELECT COUNT(*) FROM devices;"
@@ -446,7 +446,7 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
   1. **订阅与采集**：进入设备详情并连接；用 `adb logcat -s BleReadings` 观察，设备真实推送 notify 后应出现解析成功路径的读数，详情「数据」区出现对应指标 Chip；无数据时显示「连接设备后开始采集」，不得出现演示数据。
   2. **解析正确性**：心率带读数与设备屏幕/官方 App 对比误差 ≤1 bpm；电池百分比与系统蓝牙设置中的电量一致；温度计读数与环境温度量级一致；NUS 设备按文本 `metric=value` 解析出正确指标。若无对应特征，该指标 Chip 不应凭空出现。
   3. **非法报文不写脏数据**：用 nRF Connect 发送非数字/超长 NUS 文本或长度不足的报文；`logcat` 出现 `discard invalid reading`，详情页无新增异常值，App 不崩溃、连接不断开。
-  4. **本地保留 7 天**：连接产生读数后杀进程重开，最近记录仍在；把系统时间调快 8 天后重开 App，超过 7 天的本地读数应被清理，最近 7 天保留。
+  4. **本地保留与 pending 保护**：联网同步后把系统时间调快 8 天重开 App，已同步且超过 7 天的读数应被清理、最近 7 天保留；断网产生读数（`syncState=pending`）后同样把时间调快 8 天重开，`sqlite3 ... "SELECT COUNT(*) FROM readings WHERE syncState='pending';"` 必须保持不变，pending 不得被清理。
   5. **同步与幂等**：联网执行「立即同步」，服务端 `GET /api/v1/my/devices/android/{externalId}/readings?limit=100` 返回倒序列表且 id 与本地一致；重复同步同一批不报 409，服务端 `skippedReadings` 增加、列表无重复。
   6. **断网补传**：断网连接设备产生读数（`readings` 表 `syncState=pending`）；恢复网络后同步，`pending` 清零且服务端出现对应读数。
   7. **汇总与离线标注**：`GET .../readings/summary?metric=&hours=24` 的 min/max/avg/last 与详情页汇总行一致；停掉网络/后端后重进详情，仍显示本地图表与最近记录，并出现「离线：本地数据」。
@@ -481,7 +481,7 @@ adb install -r app/build/outputs/apk/release/app-release.apk
 adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versionCode"
 ```
 
-预期：安装成功；版本 `0.4.0 / 11`；能启动；五模块可进入；BLE 扫描/连接可用。
+预期：安装成功；版本 `0.4.1 / 12`；能启动；五模块可进入；BLE 扫描/连接可用。
 失败判定：`INSTALL_FAILED_NO_MATCHING_ABIS`、安装后闪退（多为 R8 裁剪过度或签名问题）。
 
 ### L3 签名验证

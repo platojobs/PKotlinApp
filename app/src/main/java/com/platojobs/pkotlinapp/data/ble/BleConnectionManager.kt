@@ -255,12 +255,12 @@ class BleConnectionManager(
     }
 
     private fun dispatchReading(deviceId: String, uuid: String, value: ByteArray) {
-        val sample = runCatching {
+        val samples = runCatching {
             GattReadingParser.parse(uuid, value, System.currentTimeMillis())
         }.onFailure {
             Log.w(TAG, "parser crashed uuid=$uuid len=${value.size}", it)
-        }.getOrNull()
-        if (sample == null) {
+        }.getOrElse { emptyList() }
+        if (samples.isEmpty()) {
             // 静默丢弃：只留本地日志，不写 Room，不影响 UI/连接状态。
             Log.w(
                 TAG,
@@ -269,7 +269,7 @@ class BleConnectionManager(
             )
             return
         }
-        onReading(deviceId, sample)
+        samples.forEach { sample -> onReading(deviceId, sample) }
     }
 
     fun connect(mac: String): Boolean {

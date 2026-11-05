@@ -8,6 +8,8 @@ import com.platojobs.pkotlinapp.domain.model.MarketItem
 import com.platojobs.pkotlinapp.domain.model.PLATFORM_ANDROID
 import com.platojobs.pkotlinapp.domain.model.ProductModel
 import com.platojobs.pkotlinapp.domain.model.normalizeExternalId
+import com.platojobs.pkotlinapp.domain.product.productCategoryOf
+import com.platojobs.pkotlinapp.domain.product.supportedMetricsOf
 import com.platojobs.pkotlinapp.domain.repository.DeviceInfoRepository
 import com.platojobs.pkotlinapp.domain.repository.MarketRepository
 import com.platojobs.pkotlinapp.domain.repository.ProductRepository
@@ -142,21 +144,27 @@ class ProductRepositoryImpl(
                     val catalog = api.getDeviceCatalog(type.type!!)
                     val latestFirmware = catalog.firmwares.orEmpty()
                         .maxByOrNull { it.releasedAt.orEmpty() }
+                    val deviceType = catalog.deviceType ?: type
+                    val services = (catalog.deviceType?.gattServices ?: type.gattServices)
+                        .orEmpty()
+                        .map { service ->
+                            GattServiceSpec(
+                                uuid = service.uuid.orEmpty(),
+                                name = service.name.orEmpty(),
+                                characteristics = emptyList(),
+                            )
+                        }
                     ProductModel(
                         id = type.type.orEmpty(),
-                        vendor = catalog.deviceType?.vendor ?: type.vendor.orEmpty(),
-                        model = catalog.deviceType?.name ?: type.name.orEmpty(),
+                        vendor = deviceType.vendor ?: type.vendor.orEmpty(),
+                        model = deviceType.name ?: type.name.orEmpty(),
                         firmwareVersion = latestFirmware?.version.orEmpty(),
-                        note = catalog.deviceType?.description ?: type.description.orEmpty(),
-                        services = (catalog.deviceType?.gattServices ?: type.gattServices)
-                            .orEmpty()
-                            .map { service ->
-                                GattServiceSpec(
-                                    uuid = service.uuid.orEmpty(),
-                                    name = service.name.orEmpty(),
-                                    characteristics = emptyList(),
-                                )
-                            },
+                        note = deviceType.description ?: type.description.orEmpty(),
+                        services = services,
+                        deviceTypeKey = type.type.orEmpty(),
+                        compatibility = deviceType.compatibility?.toDomain(),
+                        supportedMetrics = supportedMetricsOf(services.map { it.uuid }),
+                        category = productCategoryOf(type.type),
                     )
                 }
             }

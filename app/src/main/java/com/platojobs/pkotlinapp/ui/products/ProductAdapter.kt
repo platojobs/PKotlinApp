@@ -1,24 +1,25 @@
 package com.platojobs.pkotlinapp.ui.products
 
-import android.graphics.Typeface
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.LinearLayout
-import android.widget.TextView
-import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.platojobs.pkotlinapp.R
 import com.platojobs.pkotlinapp.databinding.ItemProductBinding
 import com.platojobs.pkotlinapp.domain.model.ProductModel
+import com.platojobs.pkotlinapp.domain.product.ProductCategory
+import com.platojobs.pkotlinapp.domain.product.SupportedMetric
 
-class ProductAdapter : ListAdapter<ProductModel, ProductAdapter.ViewHolder>(DIFF) {
+class ProductAdapter(
+    private val deviceCounts: () -> Map<String, Int> = { emptyMap() },
+    private val onClick: (ProductModel) -> Unit,
+) : ListAdapter<ProductModel, ProductAdapter.ViewHolder>(DIFF) {
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
         val binding = ItemProductBinding.inflate(LayoutInflater.from(parent.context), parent, false)
-        return ViewHolder(binding)
+        return ViewHolder(binding, deviceCounts, onClick)
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
@@ -27,70 +28,44 @@ class ProductAdapter : ListAdapter<ProductModel, ProductAdapter.ViewHolder>(DIFF
 
     class ViewHolder(
         private val binding: ItemProductBinding,
+        private val deviceCounts: () -> Map<String, Int>,
+        private val onClick: (ProductModel) -> Unit,
     ) : RecyclerView.ViewHolder(binding.root) {
 
         fun bind(product: ProductModel) {
             val context = binding.root.context
             binding.model.text = product.model.ifBlank { product.id }
             binding.vendor.text = product.vendor
+            binding.meta.text = buildMeta(context.getString(product.category.labelRes()), product)
             binding.firmware.text = context.getString(R.string.product_firmware, product.firmwareVersion)
             binding.firmware.visibility =
                 if (product.firmwareVersion.isBlank()) View.GONE else View.VISIBLE
             binding.note.text = product.note
+            binding.note.visibility = if (product.note.isBlank()) View.GONE else View.VISIBLE
 
-            // GATT 服务/特征表由代码逐行构建，属于“代码建 View”的同一约定。
-            binding.serviceContainer.removeAllViews()
-            if (product.services.isEmpty()) {
-                binding.serviceContainer.addView(
-                    TextView(context).apply {
-                        text = context.getString(R.string.product_no_gatt)
-                        setTextAppearance(R.style.TextAppearance_App_Caption)
-                        setTextColor(ContextCompat.getColor(context, R.color.text_secondary))
-                    },
-                )
-                return
-            }
-            product.services.forEach { service ->
-                binding.serviceContainer.addView(
-                    TextView(context).apply {
-                        text = context.getString(
-                            R.string.product_service_item,
-                            service.name.ifBlank { service.uuid },
-                            service.uuid,
-                        )
-                        setTextAppearance(R.style.TextAppearance_App_Caption)
-                        setTypeface(typeface, Typeface.BOLD)
-                    },
-                )
-                // 新版 catalog 不返回特征列表，没有数据时不渲染空行。
-                if (service.characteristics.isNotEmpty()) {
-                    binding.serviceContainer.addView(
-                        TextView(context).apply {
-                            text = context.getString(
-                                R.string.product_characteristics_item,
-                                service.characteristics.joinToString(" · "),
-                            )
-                            setTextAppearance(R.style.TextAppearance_App_Footnote)
-                            setTextColor(ContextCompat.getColor(context, R.color.text_secondary))
-                            layoutParams = LinearLayout.LayoutParams(
-                                LinearLayout.LayoutParams.MATCH_PARENT,
-                                LinearLayout.LayoutParams.WRAP_CONTENT,
-                            ).apply {
-                                bottomMargin = context.resources.getDimensionPixelSize(
-                                    R.dimen.space_4,
-                                )
-                            }
-                        },
-                    )
-                }
-            }
+            val count = deviceCounts()[product.deviceTypeKey] ?: 0
+            binding.myDevices.text = context.getString(R.string.product_my_devices, count)
+            binding.myDevices.visibility = if (count > 0) View.VISIBLE else View.GONE
+
+            binding.root.setOnClickListener { onClick(product) }
+            binding.root.contentDescription = context.getString(
+                R.string.product_open_description,
+                binding.model.text,
+            )
         }
 
-        private fun Int.dp(context: android.content.Context): Int =
-            (this * context.resources.displayMetrics.density).toInt()
+        /** 分类 + App 真正能解析的指标；没有指标时只显示分类，不编造能力。 */
+        private fun buildMeta(category: String, product: ProductModel): String {
+            val metrics = product.supportedMetrics.joinToString(SEPARATOR) { metric ->
+                binding.root.context.getString(metric.labelRes())
+            }
+            return if (metrics.isBlank()) category else "$category$SEPARATOR$metrics"
+        }
     }
 
     private companion object {
+        const val SEPARATOR = " · "
+
         val DIFF = object : DiffUtil.ItemCallback<ProductModel>() {
             override fun areItemsTheSame(oldItem: ProductModel, newItem: ProductModel) =
                 oldItem.id == newItem.id
@@ -99,4 +74,18 @@ class ProductAdapter : ListAdapter<ProductModel, ProductAdapter.ViewHolder>(DIFF
                 oldItem == newItem
         }
     }
+}
+
+internal fun ProductCategory.labelRes(): Int = when (this) {
+    ProductCategory.HEALTH -> R.string.product_category_health
+    ProductCategory.ENVIRONMENT -> R.string.product_category_environment
+    ProductCategory.GATEWAY -> R.string.product_category_gateway
+    ProductCategory.OTHER -> R.string.product_category_other
+}
+
+internal fun SupportedMetric.labelRes(): Int = when (this) {
+    SupportedMetric.HEART_RATE -> R.string.product_metric_heart_rate
+    SupportedMetric.BATTERY -> R.string.product_metric_battery
+    SupportedMetric.TEMPERATURE -> R.string.product_metric_temperature
+    SupportedMetric.NUS -> R.string.product_metric_nus
 }

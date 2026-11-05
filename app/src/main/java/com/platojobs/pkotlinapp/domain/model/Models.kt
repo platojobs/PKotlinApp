@@ -1,5 +1,8 @@
 package com.platojobs.pkotlinapp.domain.model
 
+import com.platojobs.pkotlinapp.domain.product.ProductCategory
+import com.platojobs.pkotlinapp.domain.product.SupportedMetric
+
 enum class RuleType {
     LOW_RSSI,
     DISCONNECTED,
@@ -208,8 +211,15 @@ data class ProductModel(
     val vendor: String,
     val model: String,
     val firmwareVersion: String,
+    /** 设备类型说明，来自 catalog 真实返回。 */
     val note: String,
     val services: List<GattServiceSpec>,
+    /** 真实 `deviceType` 键，用于分类与「我的设备」匹配。 */
+    val deviceTypeKey: String = id,
+    val compatibility: Compatibility? = null,
+    /** 由 GATT 服务 UUID + 解析器支持集合推导，不写死。 */
+    val supportedMetrics: List<SupportedMetric> = emptyList(),
+    val category: ProductCategory = ProductCategory.OTHER,
 )
 
 data class MarketItem(

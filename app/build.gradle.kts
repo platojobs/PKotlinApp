@@ -31,8 +31,8 @@ android {
         applicationId = "com.platojobs.pkotlinapp"
         minSdk = 24
         targetSdk = 36
-        versionCode = 18
-        versionName = "0.10.0"
+        versionCode = 19
+        versionName = "0.11.0"
         buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
     }
 

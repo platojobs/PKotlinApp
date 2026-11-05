@@ -55,6 +55,22 @@ internal object ReadingMigrationSql {
     )
 }
 
+/** v9 -> v10 的指标阈值规则；旧规则保留 RSSI 语义并回填比较符/阈值副本。 */
+internal object RuleMigrationSql {
+    val V9_TO_V10 = listOf(
+        "ALTER TABLE rules ADD COLUMN metric TEXT",
+        "ALTER TABLE rules ADD COLUMN comparator TEXT NOT NULL DEFAULT '>'",
+        "ALTER TABLE rules ADD COLUMN thresholdValue REAL NOT NULL DEFAULT 0",
+        "ALTER TABLE rules ADD COLUMN consecutive INTEGER NOT NULL DEFAULT 1",
+        // 旧规则仍是 LOW_RSSI（type 不变），这里只把语义字段回填成 `< 阈值`，不放宽触发条件。
+        "UPDATE rules SET comparator = '<', thresholdValue = threshold WHERE type = 'LOW_RSSI'",
+        "ALTER TABLE rule_events ADD COLUMN metric TEXT",
+        "ALTER TABLE rule_events ADD COLUMN value REAL",
+        "ALTER TABLE rule_events ADD COLUMN thresholdValue REAL",
+        "ALTER TABLE rule_events ADD COLUMN unit TEXT",
+    )
+}
+
 /** v8 -> v9 的本地场景表；SQL 与 Room 导出的 9.json 保持一致。 */
 internal object SceneMigrationSql {
     val V8_TO_V9 = listOf(
@@ -92,7 +108,7 @@ internal object SceneMigrationSql {
         SceneEntity::class,
         SceneActionEntity::class,
     ],
-    version = 9,
+    version = 10,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -207,6 +223,16 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v9 -> v10：规则增加指标阈值字段与命中证据列。
+         * 旧 RSSI 规则的 type/threshold 原样保留，只回填比较符与阈值副本，升级后仍能触发。
+         */
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                RuleMigrationSql.V9_TO_V10.forEach(db::execSQL)
+            }
+        }
+
         @Volatile
         private var instance: AppDatabase? = null
 
@@ -225,6 +251,7 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_6_7,
                     MIGRATION_7_8,
                     MIGRATION_8_9,
+                    MIGRATION_9_10,
                 )
                     .build()
                     .also { instance = it }

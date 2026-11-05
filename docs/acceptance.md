@@ -1,4 +1,4 @@
-# 真机验收清单（v0.10.0）
+# 真机验收清单（v0.11.0）
 
 本清单用于「执行人不在开发现场」时也能照着做完验收。每项都写明**操作步骤、预期现象、失败判定**。
 所有结果请记录到文末的「验收记录表」；未实际执行的项不要填 PASS。
@@ -94,8 +94,9 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
 
 - 步骤：切到「智能」。
 - 预期：
-  - 「自动化」显示规则列表，可新增（低 RSSI / 断开 / 绑定丢失）、启停、删除；
-  - 「最近触发」显示真实 `RuleEvent`，无记录时给出真实空文案；
+  - 「自动化」显示规则列表，可新增（低 RSSI / 断开 / 绑定丢失 / **指标阈值**）、启停、删除；
+  - 「推荐规则」入口按真实读数生成模板，点击即落库并出现在规则列表；
+  - 「最近触发」显示真实 `RuleEvent`（指标命中含触发值、阈值、单位），无记录时给出真实空文案；
   - 「场景」显示本机场景，带「仅本机」标识，可新建 / 编辑 / 删除 / 一键执行；
   - 首页不再出现规则入口，本页是唯一入口。
 - 失败判定：规则操作无效、重复入口、场景执行无反馈、空态缺失。
@@ -356,7 +357,7 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
 
 ---
 
-## 7. Room v1 → v2 → v3 → v4 → v5 → v6 → v7 → v8 → v9 迁移
+## 7. Room v1 → v2 → v3 → v4 → v5 → v6 → v7 → v8 → v9 → v10 迁移
 
 > 需要 v0.3.1 的 Debug APK 作为「旧版本」。若手头没有，可从 tag 构建：
 >
@@ -394,8 +395,8 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
   sqlite3 /tmp/device_dashboard.db \
     "SELECT mac, platform, externalId, syncState, substr(id,1,8), deviceType, deviceTypeName, deviceGroup, advertisedName, aliasDirty, createdAt FROM devices;"
   ```
-- 预期：`user_version = 8`；每条设备 `platform = android`、`externalId` 为规范化大写 MAC、`id` 非空 UUID、`syncState` 为 `pending`/`synced`；旧数据的 `deviceTypeName`、`deviceGroup`、`advertisedName` 为 NULL，`aliasDirty = 0`，`createdAt` 已用 `lastSeenTimestamp` 回填（不为 0）；`readings` 表存在且为空或仅含本次会话读数。
-- 失败判定：版本不是 8、旧字段为空、`externalId` 为小写或带空格、行数比升级前少、`aliasDirty` 或 `createdAt` 列缺失、`readings` 表或索引缺失。
+- 预期：`user_version = 10`；每条设备 `platform = android`、`externalId` 为规范化大写 MAC、`id` 非空 UUID、`syncState` 为 `pending`/`synced`；旧数据的 `deviceTypeName`、`deviceGroup`、`advertisedName` 为 NULL，`aliasDirty = 0`，`createdAt` 已用 `lastSeenTimestamp` 回填（不为 0）；`readings` 表存在且为空或仅含本次会话读数。
+- 失败判定：版本不是 10、旧字段为空、`externalId` 为小写或带空格、行数比升级前少、`aliasDirty` 或 `createdAt` 列缺失、`readings` 表或索引缺失。
 
 ### M4 v5 → v6 迁移不丢数据（可选复验）
 
@@ -435,6 +436,21 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
      ```
 - 预期：`user_version = 8`；每行 `createdAt >= 0` 且历史设备 `createdAt` 等于 `lastSeenTimestamp`；设备列表选择「添加时间」时顺序按 `createdAt` 倒序，切换其它排序后重启仍保持所选排序。
 - 失败判定：`createdAt` 缺失、全部为 0、升级崩溃。
+
+### M7 v9 → v10 指标规则迁移与旧规则仍生效（v0.11.0 新增）
+
+- 前置：v0.10.0 包（Room v9）中已有一条低 RSSI 规则（阈值 -70）与至少一台设备。
+- 步骤：
+  1. 覆盖安装 v0.11.0，打开「智能」确认旧规则仍在列表且显示「低于 -70 dBm」；
+  2. 导出数据库查询：
+     ```bash
+     sqlite3 /tmp/device_dashboard.db "PRAGMA user_version;"
+     sqlite3 /tmp/device_dashboard.db "SELECT id, type, threshold, metric, comparator, thresholdValue, consecutive FROM rules;"
+     ```
+  3. 让该设备信号低于 -70 dBm，确认「最近触发」新增低 RSSI 事件与通知；
+  4. 新增一条指标规则（如温度 > 30℃、连续 2 条），确认保存后出现在列表。
+- 预期：`user_version = 10`；旧规则 `type='LOW_RSSI'`、`threshold=-70` 不变，`metric` 为 NULL，`comparator='<'`、`thresholdValue=-70`、`consecutive=1`；旧规则仍能触发；指标规则可正常新增。
+- 失败判定：版本不是 10、旧规则消失或被改成 METRIC_THRESHOLD、旧规则不再触发、指标规则无法保存。
 
 ### 7.2 离线缓存与分组验收（v0.3.5 新增）
 
@@ -524,7 +540,9 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
   6. **离线降级**：停掉后端后重进详情并切换区间，图表回退本地数据并显示「离线：本地数据」；选择 30 天时显示「离线：仅本地 7 天数据」，数据集中在时间轴右侧（本地仅保留 7 天）。
   7. **空区间**：选择没有数据的指标/区间，显示「该区间暂无数据」，不出现假折线、不崩溃。
   8. **无指标**：新设备无任何读数时显示「连接设备后开始采集」，不发起 series 请求。
-- 失败判定：切换区间不重新查询、bucket 映射错误、缺口仍连线、X 轴等距、Y 轴不随数据变化、单位不更新、30 天离线提示缺失、空区间显示假数据或崩溃。
+  9. **点选（v0.11.0）**：点按或长按某桶，图表下方出现该桶详情：区间（本地时区）、最低/最高/平均/最新、真实条数；再次点同一桶保持选中；点空白区域取消并恢复「点按或长按图表查看该分桶详情」。Y 轴刻度不因选中改变，选中高亮只使用现有图表色。
+  10. **无障碍（v0.11.0）**：开启 TalkBack，聚焦图表播报「指标，区间，最低 X，最高 Y，共 N 个数据点」；点选后播报当前桶摘要（含最新值与条数）。
+- 失败判定：切换区间不重新查询、bucket 映射错误、缺口仍连线、X 轴等距、Y 轴不随数据变化、单位不更新、30 天离线提示缺失、空区间显示假数据或崩溃、点选详情缺时间/条数、点空白不取消、选中改变 Y 轴或引入新色值。
 - 说明：图表几何（空数据/单桶/等距/缺口/30 天 24 桶/异常值/Y 轴）由 `ReadingChartGeometryTest`、`ReadingRangeTest`、`ReadingSeriesBucketingTest` 覆盖；series 与 metrics 契约由 e2e 覆盖。
 
 ### 7.8 告警通知验收（v0.6.0 新增）
@@ -539,7 +557,8 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
   5. **开关关闭**：关闭「接收告警通知」，再次制造命中；通知栏无新增，但设备页规则事件仍增加；重新打开开关后新的命中可正常投递。
   6. **拒绝权限**：Android 13+ 拒绝 `POST_NOTIFICATIONS` 后，「我的」出现「系统通知权限未授予」与「去设置授予通知权限」；点击跳应用设置；扫描、连接、同步、图表均不受影响。
   7. **隐私**：通知正文与展开内容不含 token、账号、安装 ID 等敏感字段。
-- 失败判定：无渠道、拒绝权限后崩溃或其它功能被阻断、窗口内重复通知、恢复通知重复/缺失、关闭开关仍投递、点击通知进错设备。
+  8. **指标阈值通知（v0.11.0）**：新增「温度 > 30℃」规则并制造真实高温读数；通知正文含设备名、指标名、触发值+℃、比较符、阈值+℃ 与时间；低于阈值后出现一条「已恢复」。
+- 失败判定：无渠道、拒绝权限后崩溃或其它功能被阻断、窗口内重复通知、恢复通知重复/缺失、关闭开关仍投递、点击通知进错设备、指标通知缺单位或恢复重复。
 
 ### 7.9 读数 CSV 导出验收（v0.6.0 新增）
 
@@ -616,6 +635,38 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
 6. **重复执行**：在后台采集进行中执行「开始后台采集」，该动作失败「已在后台采集中，未重复执行」，不产生第二个采集会话。
 7. **升级迁移**：从 v0.7.0 覆盖安装，原有设备/规则/读数保留，新建场景可用（Room v8→v9）。
 - 失败判定：假动作被保存、场景被同步到云端、失败阻断后续动作、失败原因缺失、执行中可重复点击、升级丢数据。
+
+### 7.15 指标阈值规则触发与防抖验收（v0.11.0 新增）
+
+前置：设备已产生真实读数（温度/湿度/电量/心率/CO₂ 之一）；「智能」可新增指标规则。
+
+1. **新增**：「智能」→「新增规则」→ 选「指标阈值」；指标下拉只出现真实采集过的指标；选温度、`>`、30、连续 2 条，保存。
+2. **防抖**：制造一条 31℃ 读数，规则不触发；再连续来一条 31℃ 读数，「最近触发」出现 1 条事件，正文含「温度 31℃ > 阈值 30℃」。
+3. **清零**：制造 25℃ 读数后再来 31℃、31℃，第一条 25℃ 已清零连续计数，需再攒满 2 条才触发一次。
+4. **比较符**：分别创建「电量 < 20%」「心率 >= 120」，确认只在满足时触发，单位显示 `%`、`bpm`，不出现裸数字。
+5. **节流与恢复**：同一规则连续命中，1 分钟窗口内通知只有一条但事件仍记录；回到阈值内出现一条恢复通知，再次回到阈值内不重复。
+6. **通知关闭**：关闭「接收告警通知」后命中只记录事件、无通知；重新打开后新命中恢复投递，且不会补发未投递期间的恢复通知。
+- 失败判定：首条即触发（连续 2 条未生效）、不满足条件也触发、单位错误、事件未落库、节流失效、恢复重复或未触发也发恢复。
+
+### 7.16 推荐规则真实生效验收（v0.11.0 新增）
+
+前置：至少一台有真实读数的设备；「智能」页。
+
+1. **模板来源**：点「推荐规则」，弹出的条目只包含该设备真实出现过的指标（如只采过温度则只有温度模板），不出现 CO₂/心率等假模板。
+2. **一键添加**：点击「客厅温度计 · 温度 > 30℃」，立即关闭弹窗并提示已添加；规则列表出现该条，无需重启。
+3. **立即生效**：制造 31℃ 读数，「最近触发」新增命中事件并按节流投递通知。
+4. **去重**：再次打开「推荐规则」，已添加的同指标同条件模板不再出现；若所有指标都已建规则，显示「当前指标都已创建规则」。
+5. **真实空态**：使用从未采集过读数的新设备，打开「推荐规则」显示「连接到设备并采集到读数后可创建推荐规则」，不列任何假模板。
+- 失败判定：出现未采集过的指标模板、点击不落库、添加后规则列表不更新、需重启才生效、空态仍列模板。
+
+### 7.17 图表点选命中与无障碍验收（v0.11.0 新增）
+
+前置：详情页有至少两个桶的长周期数据。
+
+1. **最近桶**：点按第一个桶左半部分，详情显示第一个桶；点按第二个桶右半部分，切换为第二个桶。
+2. **空白取消**：点按两个桶之间明显空白处，详情恢复提示文案，选中高亮消失。
+3. **几何单测**：`ReadingChartGeometryTest` 覆盖最近桶、阈值内命中、空白不命中、空图；`ChartColorAuditTest` 保持通过（未引入新色值）。
+- 失败判定：命中的桶与点击位置不符、空白仍选中、选中改变 Y 轴、新增色值导致 `ChartColorAuditTest` 失败。
 
 ---
 

@@ -15,6 +15,7 @@ import com.platojobs.pkotlinapp.data.local.SceneWithActions
 import com.platojobs.pkotlinapp.domain.model.Device
 import com.platojobs.pkotlinapp.domain.model.DeviceRule
 import com.platojobs.pkotlinapp.domain.model.PLATFORM_ANDROID
+import com.platojobs.pkotlinapp.domain.model.RuleComparator
 import com.platojobs.pkotlinapp.domain.model.RuleEvent
 import com.platojobs.pkotlinapp.domain.model.RuleType
 import com.platojobs.pkotlinapp.domain.model.ScanLog
@@ -26,6 +27,7 @@ import com.platojobs.pkotlinapp.domain.repository.RuleEventRepository
 import com.platojobs.pkotlinapp.domain.repository.RuleRepository
 import com.platojobs.pkotlinapp.domain.repository.ScanLogRepository
 import com.platojobs.pkotlinapp.domain.repository.SceneRepository
+import com.platojobs.pkotlinapp.domain.rule.MetricThreshold
 import com.platojobs.pkotlinapp.domain.scene.Scene
 import com.platojobs.pkotlinapp.domain.scene.SceneAction
 import com.platojobs.pkotlinapp.domain.scene.SceneActionType
@@ -107,6 +109,25 @@ class RuleRepositoryImpl(
             enabled = true,
             createdAt = System.currentTimeMillis(),
             lastTriggeredTimestamp = 0L,
+        ),
+    )
+
+    override suspend fun addMetricRule(
+        metric: String,
+        comparator: RuleComparator,
+        thresholdValue: Double,
+        consecutive: Int,
+    ): Long = dao.insert(
+        RuleEntity(
+            type = RuleType.METRIC_THRESHOLD.name,
+            threshold = 0,
+            enabled = true,
+            createdAt = System.currentTimeMillis(),
+            lastTriggeredTimestamp = 0L,
+            metric = metric,
+            comparator = comparator.name,
+            thresholdValue = thresholdValue,
+            consecutive = MetricThreshold.sanitizeConsecutive(consecutive),
         ),
     )
 
@@ -262,6 +283,10 @@ private fun RuleEntity.toDomain() = DeviceRule(
     enabled = enabled,
     createdAt = createdAt,
     lastTriggeredTimestamp = lastTriggeredTimestamp,
+    metric = metric,
+    comparator = RuleComparator.parse(comparator),
+    thresholdValue = thresholdValue,
+    consecutive = MetricThreshold.sanitizeConsecutive(consecutive),
 )
 
 private fun RuleEventEntity.toDomain() = RuleEvent(
@@ -270,6 +295,10 @@ private fun RuleEventEntity.toDomain() = RuleEvent(
     mac = mac,
     message = message,
     timestamp = timestamp,
+    metric = metric,
+    value = value,
+    thresholdValue = thresholdValue,
+    unit = unit,
 )
 
 private fun RuleEvent.toEntity() = RuleEventEntity(
@@ -277,6 +306,10 @@ private fun RuleEvent.toEntity() = RuleEventEntity(
     mac = mac,
     message = message,
     timestamp = timestamp,
+    metric = metric,
+    value = value,
+    thresholdValue = thresholdValue,
+    unit = unit,
 )
 
 private fun ScanLogEntity.toDomain() = ScanLog(

@@ -7,13 +7,18 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.platojobs.pkotlinapp.PKotlinApplication
 import com.platojobs.pkotlinapp.domain.model.Device
 import com.platojobs.pkotlinapp.domain.model.DeviceRule
+import com.platojobs.pkotlinapp.domain.model.RuleComparator
 import com.platojobs.pkotlinapp.domain.model.RuleEvent
 import com.platojobs.pkotlinapp.domain.model.RuleType
+import com.platojobs.pkotlinapp.domain.model.displayName
 import com.platojobs.pkotlinapp.domain.repository.DeviceRepository
+import com.platojobs.pkotlinapp.domain.repository.ReadingRepository
 import com.platojobs.pkotlinapp.domain.repository.RuleEventRepository
 import com.platojobs.pkotlinapp.domain.repository.RuleRepository
 import com.platojobs.pkotlinapp.domain.repository.SceneRepository
 import com.platojobs.pkotlinapp.domain.rule.RuleEngine
+import com.platojobs.pkotlinapp.domain.rule.RuleTemplate
+import com.platojobs.pkotlinapp.domain.rule.RuleTemplates
 import com.platojobs.pkotlinapp.domain.scene.Scene
 import com.platojobs.pkotlinapp.domain.scene.SceneAction
 import com.platojobs.pkotlinapp.domain.scene.SceneExecutor
@@ -48,6 +53,7 @@ class IntelligenceViewModel(
     private val sceneExecutor: SceneExecutor,
     private val ruleEngine: RuleEngine,
     private val deviceRepository: DeviceRepository,
+    private val readingRepository: ReadingRepository,
 ) : ViewModel() {
 
     private val _loaded = MutableStateFlow(false)
@@ -106,6 +112,71 @@ class IntelligenceViewModel(
         viewModelScope.launch {
             runCatching { ruleRepository.addRule(type, threshold) }
                 .onSuccess { ruleEngine.refresh() }
+                .onFailure { _messages.tryEmit(it.message ?: "规则保存失败") }
+        }
+    }
+
+    data class RuleRecommendations(
+        val templates: List<RuleTemplate>,
+        val hasRealMetrics: Boolean,
+    )
+
+    fun addMetricRule(metric: String, comparator: RuleComparator, threshold: Double, consecutive: Int) {
+        viewModelScope.launch {
+            runCatching { ruleRepository.addMetricRule(metric, comparator, threshold, consecutive) }
+                .onSuccess { ruleEngine.refresh() }
+                .onFailure { _messages.tryEmit(it.message ?: "规则保存失败") }
+        }
+    }
+
+    /**
+     * 基于每台设备真实出现过的本地指标生成推荐模板；
+     * [hasRealMetrics] 用于区分「没采集过读数」与「指标都已有规则」两种空态。
+     */
+    suspend fun loadRecommendations(): RuleRecommendations {
+        val devices = uiState.value.devices
+        if (devices.isEmpty()) return RuleRecommendations(emptyList(), hasRealMetrics = false)
+        val existing = runCatching { ruleRepository.getRules() }.getOrDefault(emptyList())
+        var hasRealMetrics = false
+        val templates = devices.flatMap { device ->
+            val metrics = runCatching { readingRepository.localMetrics(device.mac) }
+                .getOrDefault(emptyList())
+                .map { it.metric }
+            if (metrics.isNotEmpty()) hasRealMetrics = true
+            RuleTemplates.generate(
+                deviceMac = device.mac,
+                deviceName = device.displayName()?.takeIf(String::isNotBlank) ?: device.mac,
+                realMetrics = metrics,
+                existingRules = existing,
+            )
+        }
+        return RuleRecommendations(templates, hasRealMetrics)
+    }
+
+    /** 手动新增指标规则时可选的指标：所有设备真实采集过的指标。 */
+    suspend fun availableMetrics(): List<String> =
+        uiState.value.devices
+            .flatMap { device ->
+                runCatching { readingRepository.localMetrics(device.mac) }
+                    .getOrDefault(emptyList())
+                    .map { it.metric }
+            }
+            .distinct()
+
+    fun addRecommendedRule(template: RuleTemplate) {
+        viewModelScope.launch {
+            runCatching {
+                ruleRepository.addMetricRule(
+                    metric = template.metric,
+                    comparator = template.comparator,
+                    thresholdValue = template.threshold,
+                    consecutive = template.consecutive,
+                )
+            }
+                .onSuccess {
+                    ruleEngine.refresh()
+                    _messages.tryEmit("推荐规则已添加，立即生效")
+                }
                 .onFailure { _messages.tryEmit(it.message ?: "规则保存失败") }
         }
     }
@@ -171,6 +242,7 @@ class IntelligenceViewModel(
                     sceneExecutor = container.sceneExecutor,
                     ruleEngine = container.ruleEngine,
                     deviceRepository = container.deviceRepository,
+                    readingRepository = container.readingRepository,
                 )
             }
         }

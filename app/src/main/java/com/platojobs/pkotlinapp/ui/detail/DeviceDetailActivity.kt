@@ -39,6 +39,7 @@ import com.platojobs.pkotlinapp.domain.reading.Reading
 import com.platojobs.pkotlinapp.domain.reading.ReadingMetrics
 import com.platojobs.pkotlinapp.domain.reading.ReadingRange
 import com.platojobs.pkotlinapp.domain.reading.ReadingSummary
+import com.platojobs.pkotlinapp.domain.rule.MetricThreshold
 import com.platojobs.pkotlinapp.ui.chart.ChartBucket
 import com.platojobs.pkotlinapp.ui.common.BlePermissions
 import com.platojobs.pkotlinapp.ui.common.FileSharing
@@ -50,6 +51,8 @@ import com.platojobs.pkotlinapp.ui.common.applyTopInset
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 
 class DeviceDetailActivity : AppCompatActivity() {
@@ -75,6 +78,7 @@ class DeviceDetailActivity : AppCompatActivity() {
     private var renderedRangeChips = false
     private var connectedForCollection = false
     private var settingCollectionSwitch = false
+    private var chartUnit: String = ""
 
     /** Android 13+：开启采集时申请通知权限；拒绝则降级为「无通知但继续采集」。 */
     private val notificationPermissionLauncher = registerForActivityResult(
@@ -157,6 +161,7 @@ class DeviceDetailActivity : AppCompatActivity() {
         binding.editProfileButton.setOnClickListener { showEditDeviceDialog() }
         binding.readingsPermissionButton.setOnClickListener { openAppSettings() }
         binding.readingsExportButton.setOnClickListener { viewModel.exportReadings() }
+        binding.readingsChart.setOnBucketSelectedListener { bucket -> renderChartSelection(bucket) }
         binding.collectionControls.collectionSwitch.setOnCheckedChangeListener { _, checked ->
             if (settingCollectionSwitch) return@setOnCheckedChangeListener
             viewModel.setBackgroundCollectionEnabled(checked)
@@ -441,16 +446,24 @@ class DeviceDetailActivity : AppCompatActivity() {
         val series = state.series
         val hasBuckets = hasMetrics && series != null && series.buckets.isNotEmpty()
         binding.readingsChart.visibility = if (hasBuckets) View.VISIBLE else View.GONE
+        binding.readingsChartSelection.visibility = if (hasBuckets) View.VISIBLE else View.GONE
+        if (!hasBuckets) {
+            binding.readingsChartSelection.setText(R.string.readings_chart_tap_hint)
+        }
         if (series != null) {
+            chartUnit = series.unit
             binding.readingsChart.setSeries(
                 series.buckets.map {
-                    ChartBucket(it.start, it.end, it.min, it.max, it.avg)
+                    ChartBucket(it.start, it.end, it.min, it.max, it.avg, it.count, it.last)
                 },
                 series.from,
                 series.to,
                 series.unit,
+                metricLabel(series.metric),
+                rangeLabel(state.selectedRange),
             )
         }
+        renderChartSelection(binding.readingsChart.currentSelection())
         binding.readingsSeriesEmptyHint.visibility =
             if (hasMetrics && !state.loadingSeries && !hasBuckets) View.VISIBLE else View.GONE
 
@@ -523,6 +536,45 @@ class DeviceDetailActivity : AppCompatActivity() {
         ReadingRange.DAY_7 -> getString(R.string.readings_range_7d)
         ReadingRange.DAY_30 -> getString(R.string.readings_range_30d)
     }
+
+    /** 点选回调：展示当前桶的区间（本地时区）、min/max/avg/last 与真实条数；空白取消。 */
+    private fun renderChartSelection(bucket: ChartBucket?) {
+        if (binding.readingsChart.visibility != View.VISIBLE) {
+            binding.readingsChartSelection.visibility = View.GONE
+            return
+        }
+        binding.readingsChartSelection.visibility = View.VISIBLE
+        if (bucket == null) {
+            binding.readingsChartSelection.setText(R.string.readings_chart_tap_hint)
+            return
+        }
+        val last = if (bucket.last.isFinite()) bucket.last else bucket.avg
+        val count = if (bucket.count > 0L) bucket.count.toString() else "—"
+        binding.readingsChartSelection.text = getString(
+            R.string.readings_chart_bucket_detail,
+            bucketTimeLabel(bucket.start, bucket.end),
+            formatChartValue(bucket.min),
+            formatChartValue(bucket.max),
+            formatChartValue(bucket.avg),
+            formatChartValue(last),
+            count,
+        )
+    }
+
+    private fun bucketTimeLabel(startMs: Long, endMs: Long): String {
+        val dateFormat = SimpleDateFormat(getString(R.string.time_format), Locale.getDefault())
+        val timeOnly = SimpleDateFormat(getString(R.string.time_format_time), Locale.getDefault())
+        val startText = dateFormat.format(Date(startMs))
+        val endText = if (dateFormat.format(Date(endMs)) == startText) {
+            timeOnly.format(Date(endMs))
+        } else {
+            dateFormat.format(Date(endMs))
+        }
+        return "$startText – $endText"
+    }
+
+    private fun formatChartValue(value: Double): String =
+        MetricThreshold.formatValue(value) + chartUnit
 
     /** 导出：进度显示真实条数；成功后走系统分享，失败给可重试提示。 */
     private fun renderExport(state: ExportState) {

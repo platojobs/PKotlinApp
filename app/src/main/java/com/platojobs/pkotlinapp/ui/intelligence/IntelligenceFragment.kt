@@ -27,8 +27,12 @@ import com.platojobs.pkotlinapp.databinding.DialogSceneEditBinding
 import com.platojobs.pkotlinapp.databinding.FragmentIntelligenceBinding
 import com.platojobs.pkotlinapp.databinding.ItemSceneEditActionBinding
 import com.platojobs.pkotlinapp.domain.model.Device
+import com.platojobs.pkotlinapp.domain.model.RuleComparator
 import com.platojobs.pkotlinapp.domain.model.RuleType
 import com.platojobs.pkotlinapp.domain.model.displayName
+import com.platojobs.pkotlinapp.domain.reading.ReadingMetrics
+import com.platojobs.pkotlinapp.domain.rule.MetricThreshold
+import com.platojobs.pkotlinapp.domain.rule.RuleTemplate
 import com.platojobs.pkotlinapp.domain.scene.SCENE_MUTE_MINUTES
 import com.platojobs.pkotlinapp.domain.scene.Scene
 import com.platojobs.pkotlinapp.domain.scene.SceneAction
@@ -110,6 +114,7 @@ class IntelligenceFragment : Fragment(R.layout.fragment_intelligence) {
         }
 
         binding.addRuleButton.setOnClickListener { showAddRuleDialog() }
+        binding.recommendRulesButton.setOnClickListener { showRecommendationsDialog() }
         binding.addSceneButton.setOnClickListener { showSceneDialog(null) }
 
         (activity as? MainActivity)?.attachHeaderScroll(binding.intelligenceScroll)
@@ -174,11 +179,43 @@ class IntelligenceFragment : Fragment(R.layout.fragment_intelligence) {
     }
 
     private fun showAddRuleDialog() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            // 只有真实采集过的指标才出现在下拉里；无读数时隐藏指标阈值选项。
+            buildAddRuleDialog(viewModel.availableMetrics())
+        }
+    }
+
+    private fun buildAddRuleDialog(metrics: List<String>) {
         val dialogBinding = DialogRuleAddBinding.inflate(layoutInflater)
+        dialogBinding.typeMetric.visibility = if (metrics.isEmpty()) View.GONE else View.VISIBLE
+
+        val metricLabels = metrics.map { metric ->
+            metricLabel(metric) + MetricThreshold.displayUnit(metric).let { unit ->
+                if (unit.isBlank()) "" else "（$unit）"
+            }
+        }
+        dialogBinding.metricSpinner.adapter = ArrayAdapter(
+            requireContext(),
+            android.R.layout.simple_spinner_dropdown_item,
+            metricLabels,
+        )
+
+        val comparators = listOf(
+            RuleComparator.GREATER,
+            RuleComparator.LESS,
+            RuleComparator.GREATER_OR_EQUAL,
+            RuleComparator.LESS_OR_EQUAL,
+        )
+        dialogBinding.comparatorSpinner.adapter = ArrayAdapter(
+            requireContext(),
+            android.R.layout.simple_spinner_dropdown_item,
+            comparators.map { comparatorLabel(it) },
+        )
 
         fun selectedType(): RuleType = when (dialogBinding.typeGroup.checkedRadioButtonId) {
             R.id.typeDisconnected -> RuleType.DISCONNECTED
             R.id.typeBondLost -> RuleType.BOND_LOST
+            R.id.typeMetric -> RuleType.METRIC_THRESHOLD
             else -> RuleType.LOW_RSSI
         }
 
@@ -186,11 +223,14 @@ class IntelligenceFragment : Fragment(R.layout.fragment_intelligence) {
             val type = selectedType()
             dialogBinding.thresholdLayout.visibility =
                 if (type == RuleType.LOW_RSSI) View.VISIBLE else View.GONE
+            dialogBinding.metricFields.visibility =
+                if (type == RuleType.METRIC_THRESHOLD) View.VISIBLE else View.GONE
             dialogBinding.typeDescription.setText(
                 when (type) {
                     RuleType.LOW_RSSI -> R.string.rule_desc_low_rssi
                     RuleType.DISCONNECTED -> R.string.rule_desc_disconnected
                     RuleType.BOND_LOST -> R.string.rule_desc_bond_lost
+                    RuleType.METRIC_THRESHOLD -> R.string.rule_metric_desc
                 },
             )
         }
@@ -207,26 +247,115 @@ class IntelligenceFragment : Fragment(R.layout.fragment_intelligence) {
 
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                val type = selectedType()
-                val threshold = if (type == RuleType.LOW_RSSI) {
-                    val value = dialogBinding.thresholdInput.text?.toString()?.toIntOrNull()
-                    if (value == null || value !in -100..0) {
-                        dialogBinding.thresholdLayout.error =
-                            getString(R.string.rule_threshold_error)
-                        return@setOnClickListener
+                when (val type = selectedType()) {
+                    RuleType.METRIC_THRESHOLD -> {
+                        val metric = metrics.getOrNull(dialogBinding.metricSpinner.selectedItemPosition)
+                            ?: return@setOnClickListener
+                        val threshold = dialogBinding.metricThresholdInput.text
+                            ?.toString()?.trim()?.toDoubleOrNull()
+                        if (threshold == null || !threshold.isFinite()) {
+                            dialogBinding.metricThresholdLayout.error =
+                                getString(R.string.rule_metric_threshold_error)
+                            return@setOnClickListener
+                        }
+                        val consecutive = dialogBinding.consecutiveInput.text?.toString()?.toIntOrNull()
+                        if (consecutive == null || consecutive !in 1..MetricThreshold.MAX_CONSECUTIVE) {
+                            dialogBinding.consecutiveLayout.error =
+                                getString(R.string.rule_metric_consecutive_error)
+                            return@setOnClickListener
+                        }
+                        dialogBinding.metricThresholdLayout.error = null
+                        dialogBinding.consecutiveLayout.error = null
+                        viewModel.addMetricRule(
+                            metric = metric,
+                            comparator = comparators[dialogBinding.comparatorSpinner.selectedItemPosition],
+                            threshold = threshold,
+                            consecutive = consecutive,
+                        )
                     }
-                    dialogBinding.thresholdLayout.error = null
-                    value
-                } else {
-                    0
+
+                    else -> {
+                        val threshold = if (type == RuleType.LOW_RSSI) {
+                            val value = dialogBinding.thresholdInput.text?.toString()?.toIntOrNull()
+                            if (value == null || value !in -100..0) {
+                                dialogBinding.thresholdLayout.error =
+                                    getString(R.string.rule_threshold_error)
+                                return@setOnClickListener
+                            }
+                            dialogBinding.thresholdLayout.error = null
+                            value
+                        } else {
+                            0
+                        }
+                        viewModel.addRule(type, threshold)
+                    }
                 }
-                viewModel.addRule(type, threshold)
                 dialog.dismiss()
                 requestNotificationIfNeeded()
             }
         }
         dialog.show()
     }
+
+    private fun showRecommendationsDialog() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            val result = viewModel.loadRecommendations()
+            if (result.templates.isEmpty()) {
+                MaterialAlertDialogBuilder(requireContext())
+                    .setTitle(R.string.intelligence_recommend_title)
+                    .setMessage(
+                        if (result.hasRealMetrics) {
+                            R.string.intelligence_recommend_none_left
+                        } else {
+                            R.string.intelligence_recommend_empty
+                        },
+                    )
+                    .setPositiveButton(R.string.intelligence_recommend_close, null)
+                    .show()
+                return@launch
+            }
+            val templates = result.templates
+            val labels = templates.map { templateLabel(it) }
+            MaterialAlertDialogBuilder(requireContext())
+                .setTitle(R.string.intelligence_recommend_title)
+                .setItems(labels.toTypedArray()) { _, which ->
+                    val template = templates.getOrNull(which) ?: return@setItems
+                    viewModel.addRecommendedRule(template)
+                }
+                .setNegativeButton(R.string.action_cancel, null)
+                .show()
+        }
+    }
+
+    private fun templateLabel(template: RuleTemplate): String = getString(
+        R.string.intelligence_recommend_entry,
+        template.deviceName,
+        metricLabel(template.metric),
+        template.comparator.symbol,
+        MetricThreshold.formatValue(template.threshold),
+        template.unit,
+    )
+
+    private fun metricLabel(metric: String): String = getString(
+        when (ReadingMetrics.normalize(metric)) {
+            ReadingMetrics.TEMPERATURE -> R.string.readings_metric_temperature
+            ReadingMetrics.HUMIDITY -> R.string.readings_metric_humidity
+            ReadingMetrics.BATTERY -> R.string.readings_metric_battery
+            ReadingMetrics.HEART_RATE -> R.string.readings_metric_heart_rate
+            ReadingMetrics.CO2 -> R.string.readings_metric_co2
+            ReadingMetrics.PRESSURE -> R.string.readings_metric_pressure
+            else -> R.string.readings_metric_other
+        },
+    )
+
+    private fun comparatorLabel(comparator: RuleComparator): String = getString(
+        when (comparator) {
+            RuleComparator.GREATER -> R.string.rule_comparator_greater
+            RuleComparator.LESS -> R.string.rule_comparator_less
+            RuleComparator.GREATER_OR_EQUAL -> R.string.rule_comparator_gte
+            RuleComparator.LESS_OR_EQUAL -> R.string.rule_comparator_lte
+        },
+    )
 
     private fun requestNotificationIfNeeded() {
         if (NotificationPermission.requiresRuntimePermission() &&

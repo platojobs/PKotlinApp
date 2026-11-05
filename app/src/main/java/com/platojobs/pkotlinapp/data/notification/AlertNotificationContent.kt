@@ -29,6 +29,26 @@ interface AlertContentBuilder {
         displayName: String,
         rssi: Int,
     ): AlertNotificationContent
+
+    /** 指标阈值告警；默认退化为 RSSI 版文案，具体实现由 [AndroidAlertContentBuilder] 覆盖。 */
+    fun metricTriggered(
+        rule: DeviceRule,
+        mac: String,
+        displayName: String,
+        metric: String,
+        value: Double,
+        unit: String,
+        timestamp: Long,
+    ): AlertNotificationContent = triggered(rule, mac, displayName, null, timestamp)
+
+    fun metricRecovered(
+        rule: DeviceRule,
+        mac: String,
+        displayName: String,
+        metric: String,
+        value: Double,
+        unit: String,
+    ): AlertNotificationContent = recovered(rule, mac, displayName, rule.threshold)
 }
 
 /** 同一设备同一规则使用稳定通知 id：新告警覆盖旧告警，而不是堆一屏。 */

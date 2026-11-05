@@ -39,6 +39,12 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/rule_bond_lost" />
+
+        <RadioButton
+            android:id="@+id/typeMetric"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/rule_metric_threshold" />
     </RadioGroup>
 
     <TextView
@@ -66,5 +72,71 @@
             android:maxLength="4"
             android:text="@string/rule_threshold_default" />
     </com.google.android.material.textfield.TextInputLayout>
+
+    <LinearLayout
+        android:id="@+id/metricFields"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/rule_metric_label"
+            android:textAppearance="@style/TextAppearance.App.Caption" />
+
+        <Spinner
+            android:id="@+id/metricSpinner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="48dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/rule_metric_comparator_label"
+            android:textAppearance="@style/TextAppearance.App.Caption" />
+
+        <Spinner
+            android:id="@+id/comparatorSpinner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="48dp" />
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/metricThresholdLayout"
+            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:hint="@string/rule_metric_threshold_hint">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/metricThresholdInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="numberDecimal|numberSigned" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/consecutiveLayout"
+            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:hint="@string/rule_metric_consecutive_hint">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/consecutiveInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="number"
+                android:maxLength="1"
+                android:text="@string/rule_consecutive_default" />
+        </com.google.android.material.textfield.TextInputLayout>
+    </LinearLayout>
 
 </LinearLayout>

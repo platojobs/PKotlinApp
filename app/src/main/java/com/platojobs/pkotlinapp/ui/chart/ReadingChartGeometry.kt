@@ -3,13 +3,15 @@ package com.platojobs.pkotlinapp.ui.chart
 import kotlin.math.max
 import kotlin.math.min
 
-/** 图表桶：与服务端 series 响应对应，已按 start 升序。 */
+/** 图表桶：与服务端 series 响应对应，已按 start 升序；[count]/[last] 用于点选详情。 */
 data class ChartBucket(
     val start: Long,
     val end: Long,
     val min: Double,
     val max: Double,
     val avg: Double,
+    val count: Long = 0L,
+    val last: Double = Double.NaN,
 )
 
 /**
@@ -125,5 +127,30 @@ object ReadingChartGeometry {
         if (xs.isNotEmpty()) segments += Segment(xs, ys)
 
         return Plot(plotted, segments, lo, hi)
+    }
+
+    /**
+     * 点选命中：取水平距离最近的桶；落在桶的 [xStart, xEnd] 内距离为 0。
+     * 超过 [tolerancePx] 视为点空白，返回 null（调用方据此取消选中）。
+     * 纯函数，不依赖 Android，便于单测最近桶 / 阈值内 / 空白三种情形。
+     */
+    fun hitTest(plot: Plot, x: Float, tolerancePx: Float): PlottedBucket? {
+        if (plot.isEmpty || tolerancePx < 0f) return null
+        var nearest: PlottedBucket? = null
+        var nearestDistance = Float.MAX_VALUE
+        plot.buckets.forEach { point ->
+            val left = min(point.xStart, point.xEnd)
+            val right = max(point.xStart, point.xEnd)
+            val distance = when {
+                x < left -> left - x
+                x > right -> x - right
+                else -> 0f
+            }
+            if (distance < nearestDistance) {
+                nearestDistance = distance
+                nearest = point
+            }
+        }
+        return nearest?.takeIf { nearestDistance <= tolerancePx }
     }
 }

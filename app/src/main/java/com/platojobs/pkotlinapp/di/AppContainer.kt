@@ -33,6 +33,7 @@ import com.platojobs.pkotlinapp.data.sync.SyncManager
 import com.platojobs.pkotlinapp.data.sync.SyncPrefs
 import com.platojobs.pkotlinapp.data.sync.SyncScheduler
 import com.platojobs.pkotlinapp.data.sync.SyncStatusStore
+import com.platojobs.pkotlinapp.domain.model.displayName
 import com.platojobs.pkotlinapp.domain.repository.DeviceInfoRepository
 import com.platojobs.pkotlinapp.domain.repository.DeviceRepository
 import com.platojobs.pkotlinapp.domain.repository.MarketRepository
@@ -141,6 +142,9 @@ class AppContainer(context: Context) {
             ioScope.launch {
                 readingRepository.record(deviceId, sample)
                 collectionSession.record(deviceId)
+                // 入库后立即评估指标阈值规则，保证后台采集也生效。
+                val displayName = deviceRepository.getDevice(deviceId)?.displayName().orEmpty()
+                ruleEngine.onReading(deviceId, displayName.ifBlank { deviceId }, sample)
             }
         }
     }

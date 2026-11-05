@@ -160,20 +160,21 @@ app/src/main/java/com/platojobs/pkotlinapp/
 
 ## 6. 数据层与多设备同步
 
-### Room 与迁移（当前 v6）
+### Room 与迁移（当前 v10）
 
-数据库 `device_dashboard.db` 当前版本 **6**，共 4 张表：
+数据库 `device_dashboard.db` 当前版本 **10**，共 4 张表：
 
 | 表 | 关键字段 |
 | --- | --- |
 | `devices` | `mac` 主键、`name`（用户别名）、`aliasDirty`（用户是否显式编辑过别名，默认 0）、`advertisedName`（广播名）、`lastRssi`、`lastSeenTimestamp`、`id`（客户端 UUID）、`platform`、`externalId`、`updatedAt`、`deletedAt`、`syncState(pending/synced)`、`deviceType/vendor/firmwareVersion/compatibility`（enrich 缓存）、`deviceTypeName`（catalog 展示名）、`deviceGroup`（云端分组，`NULL`=未上报/未知，`""`=已显式清空） |
-| `rules` | 自增 id、`type`、`threshold`、`enabled`、`createdAt`、`lastTriggeredTimestamp` |
-| `rule_events` | 规则触发记录 |
+| `rules` | 自增 id、`type`、`threshold`（RSSI 规则）、`enabled`、`createdAt`、`lastTriggeredTimestamp`；v10 新增 `metric`、`comparator`、`thresholdValue`、`consecutive`（指标规则；旧规则为 NULL/默认值） |
+| `rule_events` | 规则触发记录；v10 新增 `metric`、`value`、`thresholdValue`、`unit`，保存指标命中的触发值与阈值证据 |
 | `scan_logs` | 扫描日志 |
 
 - `MIGRATION_1_2` 使用 `ALTER TABLE ... ADD COLUMN` 扩展字段，再逐行回填客户端 UUID、`platform=android`、`externalId=规范化大写 MAC`、`updatedAt=lastSeenTimestamp`、`syncState=pending`，**不丢已有设备数据**。
-- `MIGRATION_2_3` 新增 4 个 enrich 可空列；`MIGRATION_3_4` 新增 `deviceTypeName` 与 `deviceGroup` 可空列；`MIGRATION_4_5` 新增 `advertisedName` 可空列，历史行保持 null，由展示层回退到别名/型号名；`MIGRATION_5_6` 新增 `aliasDirty INTEGER NOT NULL DEFAULT 0`，历史行默认 0。
-- 迁移后 schema 输出在 `app/schemas/com.platojobs.pkotlinapp.data.local.AppDatabase/6.json`。
+- `MIGRATION_2_3` 新增 4 个 enrich 可空列；`MIGRATION_3_4` 新增 `deviceTypeName` 与 `deviceGroup` 可空列；`MIGRATION_4_5` 新增 `advertisedName` 可空列，历史行保持 null，由展示层回退到别名/型号名；`MIGRATION_5_6` 新增 `aliasDirty INTEGER NOT NULL DEFAULT 0`，历史行默认 0；`MIGRATION_6_7` 新增 `readings`；`MIGRATION_7_8` 新增 `devices.createdAt`；`MIGRATION_8_9` 新增本机场景表。
+- `MIGRATION_9_10` 为 `rules` 增加 `metric/comparator/thresholdValue/consecutive`，为 `rule_events` 增加 `metric/value/thresholdValue/unit`。旧 RSSI 规则的 `type` 与 `threshold` **原样保留**（仍走 `rssi < threshold`），只回填 `comparator='<'` 与 `thresholdValue=threshold` 作为语义副本；其它旧规则保持默认值。`RuleMigrationTest` 用真实 SQLite 验证列、回填与旧规则字段不变。
+- 迁移后 schema 输出在 `app/schemas/com.platojobs.pkotlinapp.data.local.AppDatabase/10.json`。
 - 别名与广播名隔离：扫描只写 `advertisedName`，详情页编辑只写 `name`（alias），两者互不覆盖；列表/详情展示优先级为「用户别名 → 广播名 → catalog 型号名 → 未知设备」。
 - **别名清空语义**：`aliasDirty` 只在详情页保存且别名相对初始值发生变化时置 1（一旦置位保持），扫描路径永远不置位。置位后即使 `name` 为空，推送也会显式上报 `"alias":""`；未置位时不报空别名。服务端返回空别名时按「已清空」写回本地（`name=""`），展示层回退到广播名，旧别名不会被拉回复活。
 - `DeviceDao` 使用 `@Upsert insertOrUpdate`、`suspend getAllDevices`，并提供待同步查询、待同步计数、按 externalId 标记 synced 等同步专用方法。
@@ -463,6 +464,7 @@ Debug / Release 都可通过 `apiBaseUrl` 切换；发布前请传入正式域�
 
 - 指标 Chip 来源为服务端 `GET .../readings/metrics`，展示「指标名 · N 条」并按 `lastAt` 倒序；`unit` 取该指标最新一条读数。网络失败时才回退本地聚合，无指标时显示「连接设备后开始采集」，没有蓝牙连接权限时显示提示并提供「去应用设置」。
 - 区间 Chip：**1 小时 / 24 小时 / 7 天 / 30 天**，默认 24 小时；切换后立即重新查询并重绘。长周期使用自绘 `ReadingChartView`：按桶 `start` 的真实时间比例定位 X 轴，桶间缺口断线，每个桶画 avg 折线并用浅色带标出 min–max；几何计算全部在纯 Kotlin `ReadingChartGeometry`，不依赖 Android 运行时。
+- **图表点选（v0.11.0）**：点按或长按图表选中最近桶，图表下方展示该桶区间（本地时区）、min/max/avg/last 与真实条数；点空白取消并恢复提示。选中态只复用现有图表语义色（`chart_point` / `chart_line`），不改 Y 轴、不引入新色值（`ChartColorAuditTest` 继续守护）。整图 `contentDescription` 默认播报「指标，区间，最低 X，最高 Y，共 N 个数据点」，选中后更新为当前桶摘要。命中判定为纯函数 `ReadingChartGeometry.hitTest`（最近桶 / 阈值内命中 / 空白返回 null），单测覆盖。
 - 汇总行固定展示**最近 24 小时**的最小/最大/平均/最新，不随区间切换；单位与当前选中指标一致。「最近记录」展示最新 10 条（值 + 相对时间）。所有数值均来自真实 Room/远端数据，不放演示假数据。
 
 **区间与分桶（v0.5.0）**
@@ -540,6 +542,16 @@ Debug / Release 都可通过 `apiBaseUrl` 切换；发布前请传入正式域�
 - 结果：全部成功 toast「「场景名」执行成功（N 个动作）」；存在失败时在智能页弹窗逐条列出成功/失败与原因；部分成功与全部失败的口径见 `SceneRunResult.summary()`。
 - 真实执行：`SceneRuntimeImpl` 直接调用 `BleConnectionManager.connect`、`CollectionLauncher.start/stop`（前台服务 + `CollectionSession`）、`AppSettings.muteAlertsFor`（告警投递实时读取静音截止时间）与 `SyncScheduler.scheduleNow`。
 
+### 6.9 指标阈值规则与推荐模板（v0.11.0）
+
+- **指标阈值规则**：条件为「已有指标（`temperature` / `humidity` / `battery` / `heart_rate` / `co2` 等）+ 比较符（`>` / `<` / `>=` / `<=`）+ 阈值 + 连续 N 条（1–5，默认 1）」。规则与读数入库链路共用现有 `RuleEngine`：`BleConnectionManager` 每写入一条读数后调用 `onReading`，后台采集同样生效。
+- **防抖**：同一 `ruleId + mac` 维护连续计数；任一条读数不满足即清零并进入恢复分支，达到 N 条才触发。通知沿用既有节流窗口（同一 `ruleId + mac`），1 分钟冷却内重复命中只记录一次事件。
+- **恢复**：只有该规则此前确实触发过（`activeAlerts`）才调用 `onMetricRecovered`；`AlertNotifier` 再按「触发通知是否真的投递」过滤，关闭通知或权限缺失时不会补发恢复。
+- **命中记录**：指标事件带 `metric/value/thresholdValue/unit/timestamp/mac`，消息文案展示 `℃` / `%` / `bpm`（不显示裸数字），例如「客厅温度计 · 温度 31.2℃ > 阈值 30℃」。事件进「智能 → 最近触发」，与 RSSI/断开规则共用同一列表。
+- **推荐规则**：智能页新增「推荐规则」入口，按每台设备**真实出现过的本地指标**生成模板（温度 > 30℃、湿度 > 70%、电量 < 20%、心率 > 120、CO₂ > 1000 ppm），只列真实存在的指标；已存在同指标 + 比较符 + 阈值的规则不再重复推荐。点击条目即写入 Room、刷新规则列表并立即生效，不做只展示不落库的假入口。无任何真实读数时显示「连接到设备并采集到读数后可创建推荐规则」；有读数但模板都已创建时显示「当前指标都已创建规则」。
+- **手动新增**：新增规则弹窗增加「指标阈值」类型，指标下拉只列已采集到的真实指标；比较符四档、阈值支持小数、连续条数限定 1–5，校验失败给出明确错误。
+- **迁移**：Room v10（`MIGRATION_9_10`），旧规则 `type/threshold` 不变并回填指标字段副本，`RuleMigrationTest` + `RuleEngineTest` 覆盖「升级后旧规则仍能触发」。
+
 ---
 
 ## 7. 构建与运行
@@ -549,7 +561,7 @@ export JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk-21.jdk/Contents/Home
 
 ./gradlew assembleDebug        # Debug APK
 ./gradlew lintDebug            # Lint
-./gradlew testDebugUnitTest    # 单元测试：168 个（含配对码/导出分页/注销清理/前台服务会话与通知）
+./gradlew testDebugUnitTest    # 单元测试：211 个（含规则防抖/恢复/迁移、图表命中、推荐模板）
 ./gradlew assembleRelease      # 签名 Release APK
 ./gradlew bundleRelease        # 签名 Release AAB
 
@@ -874,6 +886,7 @@ CI：GitHub Actions 的 `e2e-postgres` job 与该次运行同一脚本，日志�
 
 ## 16. 版本记录
 
+- `v0.11.0`：与 iOS 对齐的「有厚度」功能，Android 以规则模板替代 CSV 入口。**指标阈值规则**：`rules` 支持指标 + 比较符（`>`/`<`/`>=`/`<=`）+ 阈值 + 连续 N 条（1–5，默认 1）防抖，接入现有 `RuleEngine` 与读数入库链路（含后台采集），恢复通知只在确实触发过且通知已投递时发一条，节流沿用 `ruleId + mac`；命中事件落库并携带 `metric/value/thresholdValue/unit`，展示 `℃`/`%`/`bpm`。Room v10（`MIGRATION_9_10`）旧规则 `type/threshold` 不变并回填指标字段，旧规则升级后仍触发。**图表点选**：点按/长按选中最近桶，展示区间（本地时区）、min/max/avg/last/条数，点空白取消，不改 Y 轴、只用现有语义色；整图与选中态更新 `contentDescription`；命中几何为纯函数并补单测。**推荐规则**：智能页按设备真实出现过的指标生成模板（温度>30℃/湿度>70%/电量<20%/心率>120/CO₂>1000），一键写入 Room 立即生效；无读数显示真实空态。单测 211 全绿、`lintDebug` 0 issue、`assembleDebug`、fixture 与真 Postgres e2e 全绿，tag `v0.11.0`。
 - `v0.10.0`：跟随后端新增契约并升级真存储联调。`GET /sync/changes` 游标早于最老保留行时返回 `410 RESYNC_REQUIRED`（`cursor=0` 永不 410）；客户端收到后清空游标、只用 `cursor=0` 全量重拉一次，`pending` 设备/读数不丢弃并重新上传，服务端墓碑不覆盖更新的本地 pending；「我的」展示「云端变更记录已过期，已重新全量同步」，该分支与 401（重登）、503 `TIMEOUT`（指数退避）独立。`/auth/anonymous` 与 claim 返回 `expiresAt`（180 天 TTL），「我的」只读展示会话到期日；错误码映射补齐 `RESYNC_REQUIRED`/`TIMEOUT`/`IDEMPOTENCY_CONFLICT`；readings/changes/export 的 limit 在客户端收敛到 500/500/5000。新增 `scripts/e2e-postgres.sh` 与 `:app:e2ePostgres`，用 `stack-for-e2e.sh` + `seed-for-e2e.sh` 起真 Postgres，覆盖登录/push/changes/410（SQL 改 server_ts + cleanup）/series/metrics/export/注销 401；CI 新增并行 `e2e-postgres` job。单测新增 410/503/错误码/limit/expiresAt 用例；`testDebugUnitTest`、`lintDebug` 0 issue、`assembleDebug`、两套 e2e 全绿，tag `v0.10.0`。
 - `v0.9.0`：首次使用路径 + 冷启动性能 + 上架材料。新增 `OnboardingActivity` 三步首启引导（蓝牙/通知/位置的真实用途，可跳过，状态持久化在 `AppSettings.onboardingCompleted`，中途返回不写），权限改为「先说明后申请」（最后一步「继续」才弹系统框，扫描/连接补授权先弹 `PermissionRationale`），拒绝后展示逐项授权状态、「仅本机可用」能力边界与「打开应用设置」入口，返回自动刷新；仅缺通知不算仅本机。首页无设备时只保留「还没有设备」+「开始扫描」一套文案，删除重复空态串，网络不可用只由顶部横幅说明；修复首页三态容器层级缺陷（根布局被整体 `GONE`）。冷启动移除 `awaitInitialSync()`/`syncLoading`，首帧只出应用壳 + 骨架、首页下一帧挂载，同步/清理/调度在首帧后投递 IO，同环境实测 TotalTime 中位数 1098.5 ms → 818 ms（20 次，见 §12）。新增 `docs/store-listing.md`、`docs/privacy-policy.md`、`docs/data-safety.md`；按设计规范第 8 节统一术语并在 §13.1 列表，新增 `TerminologyAuditTest` 检查 9 条高频文案。新增 `OnboardingPolicyTest`、`TerminologyAuditTest`，`AppSettingsTest` 补 `onboardingCompleted`；单测 182 全绿，`assembleDebug`、`lintDebug` 0 issue。
 - `v0.8.0`：设计令牌与信息架构升级。新增 `colors.xml` / `values-night/colors.xml` / `dimens.xml` / 10 级 `TextAppearance` / `res/color` 状态选择器与 `Widget.App.Card`（1dp 描边、零阴影、12dp 圆角），删除布局与代码中的硬编码色值与字号，`windowBackground`/系统栏跟随语义色；自绘大标题 96→56（12dp 阈值、200ms 插值）、行高 56/72/88、页边距 16；统一浅色 6% / 深色 8% 按压遮罩，按钮只变色、卡片按下 0.98；读数/阈值/计数改用 `tnum` 等宽数字；`ChartColorAuditTest` 扩展为同时禁止硬编码字号。底部导航按米家重组为**首页 / 智能 / 产品 / 市场 / 我的**：首页改为设备卡片网格 + 分组分段 + 今日告警摘要 + 快捷场景；新增智能页承载自动化规则与场景；原「设备」Tab 与其规则入口删除。场景为仅本机的有序动作组合（连接/断开设备、开始/停止后台采集、静音告警 10/30/60 分钟、刷新同步），Room v9（`MIGRATION_8_9`）、`SceneExecutor` 顺序执行且失败不阻断、逐动作反馈与汇总；首页展示前 3 个场景。五模块统一骨架（延迟 300ms）/真实空态/可重试错误块。新增场景执行器、持久化、v8→v9 迁移与汇总口径单测；`assembleDebug`、`testDebugUnitTest`、`lintDebug` 全绿。

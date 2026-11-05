@@ -6,6 +6,19 @@
 
 ---
 
+## v0.11.0
+
+**主题：指标阈值规则与防抖 / 图表点选 / 基于真实指标的推荐规则**
+
+- 指标阈值规则：新增 `RuleType.METRIC_THRESHOLD`，条件为「指标 + 比较符（`>`/`<`/`>=`/`<=`）+ 阈值 + 连续 N 条（1–5，默认 1）」。规则沿用现有 `RuleEngine`，读数写入 Room 后立即评估（`BleConnectionManager` 回调，含后台采集），不另建规则链路。
+- 防抖与节流：同一 `ruleId + mac` 维护连续满足计数，任一条不满足即清零；达到 N 条才触发。通知沿用既有 1/5/30 分钟节流窗口（键仍为 `ruleId + mac`），冷却内重复命中只记录一次事件、不刷通知。
+- 恢复语义：只有该规则此前确实触发过（引擎 `activeAlerts`）才发恢复；`AlertNotifier` 再叠加「触发通知确实投递过」（`AlertThrottle` 的 pending 恢复状态），关闭通知或权限缺失时不补发。
+- 命中记录：`rule_events` 新增 `metric/value/thresholdValue/unit`；文案展示 `℃` / `%` / `bpm`，如「客厅温度计 · 温度 31.2℃ > 阈值 30℃」；「智能 → 最近触发」直接展示，均带设备 MAC 与触发时间。
+- 图表点选：点按/长按选中最近桶，图表下方展示该桶 `start–end`（本地时区）、min/max/avg/last 与真实条数；点空白取消并恢复提示；选中态用现有 `chart_point` / `chart_line` 语义色，不改 Y 轴、不新增色值。整图 `contentDescription` 默认播报「指标，区间，最低 X，最高 Y，共 N 个数据点」，选中后更新为当前桶摘要。命中几何抽成纯函数 `ReadingChartGeometry.hitTest`，新增「最近桶 / 阈值内 / 空白不命中 / 空图」单测。
+- 推荐规则：智能页新增「推荐规则」入口，仅根据每台设备真实出现过的本地指标生成模板（温度 > 30℃、湿度 > 70%、电量 < 20%、心率 > 120、CO₂ > 1000 ppm），同指标同比较符同阈值已有规则时不重复推荐。点击即写入 Room 并刷新列表，立即生效；无读数显示「连接到设备并采集到读数后可创建推荐规则」，有读数但均已建规则显示「当前指标都已创建规则」。新增规则弹窗支持手动选择「指标阈值」，指标下拉只列真实指标。
+- 迁移：Room v10（`MIGRATION_9_10`）。`rules` 增加 `metric/comparator/thresholdValue/consecutive`，`rule_events` 增加 `metric/value/thresholdValue/unit`；旧 RSSI 规则 `type` 与 `threshold` 原样保留，只回填 `comparator='<'` 与 `thresholdValue=threshold` 作为语义副本。`RuleMigrationTest` 用真实 SQLite 验证迁移，`RuleEngineTest` 覆盖「升级后旧规则仍能触发」。
+- 测试：单测 211 全绿（新增规则引擎防抖/恢复/冷却、模板生成、迁移、图表命中）；`lintDebug` 0 issue、`assembleDebug`、fixture e2e、真 Postgres e2e 全绿；tag `v0.11.0`。
+
 ## v0.10.0
 
 **主题：后端新增契约跟进（410 全量重同步 / 会话到期 / 上限与错误码）/ 真 Postgres 契约联调**

@@ -95,6 +95,30 @@
     <string name="rule_enabled_desc">规则已启用</string>
     <string name="rule_disabled_desc">规则已停用</string>
     <string name="rule_threshold_default" translatable="false">-70</string>
+    <string name="rule_metric_threshold">指标阈值</string>
+    <string name="rule_metric_title">%1$s %2$s %3$s</string>
+    <string name="rule_metric_consecutive">连续 %1$d 条满足 · %2$s</string>
+    <string name="rule_add_metric_title">新增指标阈值规则</string>
+    <string name="rule_metric_label">指标</string>
+    <string name="rule_metric_comparator_label">比较符</string>
+    <string name="rule_metric_threshold_hint">阈值</string>
+    <string name="rule_metric_threshold_error">请输入有效数值</string>
+    <string name="rule_metric_consecutive_hint">连续满足条数（1–5）</string>
+    <string name="rule_metric_consecutive_error">请输入 1 到 5 之间的整数</string>
+    <string name="rule_consecutive_default" translatable="false">1</string>
+    <string name="rule_comparator_greater">%1$s 超过</string>
+    <string name="rule_comparator_less">%1$s 低于</string>
+    <string name="rule_comparator_gte">%1$s 达到或超过</string>
+    <string name="rule_comparator_lte">%1$s 达到或低于</string>
+    <string name="rule_metric_desc">读数连续满足条件时记录事件并提醒</string>
+    <string name="rule_metric_no_metrics">暂无真实读数指标，先连接设备采集读数</string>
+    <string name="intelligence_rules_recommend">推荐规则</string>
+    <string name="intelligence_recommend_title">推荐规则</string>
+    <string name="intelligence_recommend_entry">%1$s · %2$s %3$s %4$s%5$s</string>
+    <string name="intelligence_recommend_added">已添加规则：%1$s</string>
+    <string name="intelligence_recommend_empty">连接到设备并采集到读数后可创建推荐规则</string>
+    <string name="intelligence_recommend_none_left">当前指标都已创建规则</string>
+    <string name="intelligence_recommend_close">知道了</string>
     <string name="list_meta_line">%1$s · %2$s</string>
 
     <string name="events_empty">暂无规则触发记录</string>
@@ -250,6 +274,7 @@
     <string name="rule_event_low_rssi">%1$s 信号 %2$d dBm，低于阈值 %3$d dBm</string>
     <string name="rule_event_disconnected">%1$s 已断开连接</string>
     <string name="rule_event_bond_lost">%1$s 绑定信息丢失，请重新配对</string>
+    <string name="rule_event_metric_threshold">%1$s · %2$s %3$s %4$s 阈值 %5$s</string>
 
     <string name="product_service_item">%1$s（%2$s）</string>
     <string name="product_characteristics_item">特征：%1$s</string>
@@ -272,6 +297,11 @@
     <string name="readings_summary_line">最近 24 小时汇总：最小 %1$s · 最大 %2$s · 平均 %3$s · 最新 %4$s</string>
     <string name="readings_recent_title">最近记录</string>
     <string name="readings_chart_desc">区间内 %1$d 个分桶的折线图</string>
+    <string name="readings_chart_a11y_summary">%1$s，%2$s，最低 %3$s，最高 %4$s，共 %5$d 个数据点</string>
+    <string name="readings_chart_a11y_bucket">%1$s，%2$s，最低 %3$s，最高 %4$s，平均 %5$s，最新 %6$s，共 %7$s 个数据点</string>
+    <string name="readings_chart_bucket_detail">%1$s · 最低 %2$s · 最高 %3$s · 平均 %4$s · 最新 %5$s · %6$s 条</string>
+    <string name="readings_chart_tap_hint">点按或长按图表查看该分桶详情</string>
+    <string name="time_format_time">HH:mm</string>
     <string name="readings_metric_temperature">温度</string>
     <string name="readings_metric_humidity">湿度</string>
     <string name="readings_metric_battery">电量</string>
@@ -288,6 +318,9 @@
     <string name="alert_notify_triggered_bond_lost">%1$s · 绑定信息丢失，请重新配对 · %2$s</string>
     <string name="alert_notify_recovered_title">告警已恢复</string>
     <string name="alert_notify_recovered_rssi">%1$s · 信号强度 %2$d dBm 已回到阈值 %3$d dBm 内 · %4$s</string>
+    <string name="alert_notify_triggered_metric">%1$s · %2$s超出阈值 %3$s%4$s · %5$s</string>
+    <string name="alert_notify_metric_hit">%1$s · %2$s %3$s %4$s 阈值 %5$s · %6$s</string>
+    <string name="alert_notify_metric_recovered">%1$s · %2$s 已回到阈值内（当前 %3$s）· %4$s</string>
 
     <string name="profile_alerts_title">告警通知</string>
     <string name="profile_alerts_switch">接收告警通知</string>

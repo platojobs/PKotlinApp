@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/root"
+    tools:ignore="TooManyViews"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical">
@@ -515,6 +517,16 @@
                         android:layout_width="match_parent"
                         android:layout_height="160dp"
                         android:layout_marginTop="8dp"
+                        android:visibility="gone" />
+
+                    <TextView
+                        android:id="@+id/readingsChartSelection"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="@string/readings_chart_tap_hint"
+                        android:textAppearance="@style/TextAppearance.App.Caption"
+                        android:textColor="@color/text_secondary"
                         android:visibility="gone" />
 
                     <TextView

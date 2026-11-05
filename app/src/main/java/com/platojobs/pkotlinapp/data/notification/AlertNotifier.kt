@@ -40,5 +40,32 @@ class AlertNotifier(
         poster.post(contentBuilder.recovered(rule, mac, displayName, rssi))
     }
 
+    override suspend fun onMetricTriggered(
+        rule: DeviceRule,
+        mac: String,
+        displayName: String,
+        metric: String,
+        value: Double,
+        unit: String,
+        timestamp: Long,
+    ) {
+        if (!isEnabled() || !canNotify()) return
+        if (!throttle.allowTrigger(keyOf(rule, mac))) return
+        poster.post(contentBuilder.metricTriggered(rule, mac, displayName, metric, value, unit, timestamp))
+    }
+
+    override suspend fun onMetricRecovered(
+        rule: DeviceRule,
+        mac: String,
+        displayName: String,
+        metric: String,
+        value: Double,
+        unit: String,
+    ) {
+        if (!isEnabled() || !canNotify()) return
+        if (!throttle.allowRecovery(keyOf(rule, mac))) return
+        poster.post(contentBuilder.metricRecovered(rule, mac, displayName, metric, value, unit))
+    }
+
     private fun keyOf(rule: DeviceRule, mac: String): String = "${rule.id}:$mac"
 }

@@ -70,10 +70,16 @@ data class ReadingEntity(
 data class RuleEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val type: String,
+    /** RSSI 规则的整数阈值；旧规则迁移后仍按该列生效。 */
     val threshold: Int,
     val enabled: Boolean,
     val createdAt: Long,
     val lastTriggeredTimestamp: Long,
+    // 指标阈值规则字段；旧数据保持 null / 默认值，仍走 RSSI 分支。
+    val metric: String? = null,
+    @ColumnInfo(defaultValue = "'>'") val comparator: String = ">",
+    @ColumnInfo(defaultValue = "0") val thresholdValue: Double = 0.0,
+    @ColumnInfo(defaultValue = "1") val consecutive: Int = 1,
 )
 
 @Entity(tableName = "rule_events")
@@ -83,6 +89,11 @@ data class RuleEventEntity(
     val mac: String,
     val message: String,
     val timestamp: Long,
+    // 指标规则的命中证据：触发值、阈值、单位；旧事件保持 null。
+    val metric: String? = null,
+    val value: Double? = null,
+    val thresholdValue: Double? = null,
+    val unit: String? = null,
 )
 
 /**

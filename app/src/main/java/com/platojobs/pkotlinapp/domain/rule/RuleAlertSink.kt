@@ -22,4 +22,28 @@ interface RuleAlertSink {
         displayName: String,
         rssi: Int,
     )
+
+    /**
+     * 指标阈值规则触发。默认不投递，既有实现方（如测试替身）无需改动；
+     * [AlertNotifier] 覆盖该实现并负责真实通知与节流。
+     */
+    suspend fun onMetricTriggered(
+        rule: DeviceRule,
+        mac: String,
+        displayName: String,
+        metric: String,
+        value: Double,
+        unit: String,
+        timestamp: Long,
+    ) = Unit
+
+    /** 指标回到阈值内；同样只在确实触发过之后由引擎调用。 */
+    suspend fun onMetricRecovered(
+        rule: DeviceRule,
+        mac: String,
+        displayName: String,
+        metric: String,
+        value: Double,
+        unit: String,
+    ) = Unit
 }

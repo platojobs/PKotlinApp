@@ -5,6 +5,7 @@ import com.platojobs.pkotlinapp.domain.model.DeviceInfo
 import com.platojobs.pkotlinapp.domain.model.DeviceRule
 import com.platojobs.pkotlinapp.domain.model.MarketItem
 import com.platojobs.pkotlinapp.domain.model.ProductModel
+import com.platojobs.pkotlinapp.domain.model.RuleComparator
 import com.platojobs.pkotlinapp.domain.model.RuleEvent
 import com.platojobs.pkotlinapp.domain.model.RuleType
 import com.platojobs.pkotlinapp.domain.model.ScanLog
@@ -36,6 +37,14 @@ interface RuleRepository {
     suspend fun getRules(): List<DeviceRule>
 
     suspend fun addRule(type: RuleType, threshold: Int): Long
+
+    /** 新增指标阈值规则（指标 + 比较符 + 阈值 + 连续 N 条）。 */
+    suspend fun addMetricRule(
+        metric: String,
+        comparator: RuleComparator,
+        thresholdValue: Double,
+        consecutive: Int,
+    ): Long
 
     suspend fun setEnabled(id: Long, enabled: Boolean)
 

@@ -12,10 +12,25 @@ import com.platojobs.pkotlinapp.databinding.ItemSceneRowBinding
 import com.platojobs.pkotlinapp.domain.model.DeviceRule
 import com.platojobs.pkotlinapp.domain.model.RuleEvent
 import com.platojobs.pkotlinapp.domain.model.RuleType
+import com.platojobs.pkotlinapp.domain.reading.ReadingMetrics
+import com.platojobs.pkotlinapp.domain.rule.MetricThreshold
 import com.platojobs.pkotlinapp.domain.scene.Scene
 import com.platojobs.pkotlinapp.ui.common.TimeFormat
 import com.platojobs.pkotlinapp.ui.home.SceneProgress
 import com.platojobs.pkotlinapp.ui.home.sceneActionLabel
+
+private fun metricLabel(context: android.content.Context, metric: String?): String =
+    context.getString(
+        when (ReadingMetrics.normalize(metric.orEmpty())) {
+            ReadingMetrics.TEMPERATURE -> R.string.readings_metric_temperature
+            ReadingMetrics.HUMIDITY -> R.string.readings_metric_humidity
+            ReadingMetrics.BATTERY -> R.string.readings_metric_battery
+            ReadingMetrics.HEART_RATE -> R.string.readings_metric_heart_rate
+            ReadingMetrics.CO2 -> R.string.readings_metric_co2
+            ReadingMetrics.PRESSURE -> R.string.readings_metric_pressure
+            else -> R.string.readings_metric_other
+        },
+    )
 
 class RuleAdapter(
     private val onToggle: (DeviceRule, Boolean) -> Unit,
@@ -39,23 +54,35 @@ class RuleAdapter(
 
         fun bind(rule: DeviceRule) {
             val context = binding.root.context
-            binding.ruleTitle.text = context.getString(
-                when (rule.type) {
-                    RuleType.LOW_RSSI -> R.string.rule_low_rssi
-                    RuleType.DISCONNECTED -> R.string.rule_disconnected
-                    RuleType.BOND_LOST -> R.string.rule_bond_lost
-                },
-            )
-            val thresholdText = if (rule.type == RuleType.LOW_RSSI) {
-                context.getString(R.string.rule_threshold_value, rule.threshold)
-            } else {
-                context.getString(R.string.rule_threshold_not_applicable)
-            }
             val enabledText = context.getString(
                 if (rule.enabled) R.string.rule_enabled_desc else R.string.rule_disabled_desc,
             )
-            binding.ruleDetail.text =
+            binding.ruleTitle.text = when (rule.type) {
+                RuleType.LOW_RSSI -> context.getString(R.string.rule_low_rssi)
+                RuleType.DISCONNECTED -> context.getString(R.string.rule_disconnected)
+                RuleType.BOND_LOST -> context.getString(R.string.rule_bond_lost)
+                RuleType.METRIC_THRESHOLD -> context.getString(
+                    R.string.rule_metric_title,
+                    metricLabel(context, rule.metric),
+                    rule.comparator.symbol,
+                    MetricThreshold.formatValue(rule.thresholdValue) +
+                        MetricThreshold.displayUnit(rule.metric.orEmpty()),
+                )
+            }
+            binding.ruleDetail.text = if (rule.type == RuleType.METRIC_THRESHOLD) {
+                context.getString(
+                    R.string.rule_metric_consecutive,
+                    rule.consecutive,
+                    enabledText,
+                )
+            } else {
+                val thresholdText = if (rule.type == RuleType.LOW_RSSI) {
+                    context.getString(R.string.rule_threshold_value, rule.threshold)
+                } else {
+                    context.getString(R.string.rule_threshold_not_applicable)
+                }
                 context.getString(R.string.list_meta_line, thresholdText, enabledText)
+            }
 
             binding.ruleSwitch.setOnCheckedChangeListener(null)
             binding.ruleSwitch.isChecked = rule.enabled

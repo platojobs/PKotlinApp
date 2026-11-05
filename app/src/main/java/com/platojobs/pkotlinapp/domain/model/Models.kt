@@ -4,6 +4,29 @@ enum class RuleType {
     LOW_RSSI,
     DISCONNECTED,
     BOND_LOST,
+    /** 指标读数阈值规则：指标 + 比较符 + 阈值 + 连续 N 条满足。 */
+    METRIC_THRESHOLD,
+}
+
+/** 指标阈值比较符；[symbol] 用于展示与存储，[matches] 为纯判定。 */
+enum class RuleComparator(val symbol: String) {
+    GREATER(">"),
+    LESS("<"),
+    GREATER_OR_EQUAL(">="),
+    LESS_OR_EQUAL("<="),
+    ;
+
+    fun matches(value: Double, threshold: Double): Boolean = when (this) {
+        GREATER -> value > threshold
+        LESS -> value < threshold
+        GREATER_OR_EQUAL -> value >= threshold
+        LESS_OR_EQUAL -> value <= threshold
+    }
+
+    companion object {
+        fun parse(raw: String?): RuleComparator =
+            entries.firstOrNull { it.name == raw || it.symbol == raw } ?: GREATER
+    }
 }
 
 enum class SyncState {
@@ -177,18 +200,32 @@ data class MarketItem(
 data class DeviceRule(
     val id: Long,
     val type: RuleType,
+    /** RSSI 规则的整数阈值；指标规则请使用 [thresholdValue]。 */
     val threshold: Int,
     val enabled: Boolean,
     val createdAt: Long,
     val lastTriggeredTimestamp: Long,
-)
+    /** 指标规则的目标指标（[com.platojobs.pkotlinapp.domain.reading.ReadingMetrics] 归一化值）。 */
+    val metric: String? = null,
+    val comparator: RuleComparator = RuleComparator.GREATER,
+    val thresholdValue: Double = 0.0,
+    /** 连续满足的读数条数（1–5），用于防抖。 */
+    val consecutive: Int = 1,
+) {
+    val isMetricRule: Boolean get() = type == RuleType.METRIC_THRESHOLD
+}
 
+/** 一条真实命中的规则事件；指标规则额外携带触发值、阈值与单位。 */
 data class RuleEvent(
     val id: Long,
     val ruleType: RuleType,
     val mac: String,
     val message: String,
     val timestamp: Long,
+    val metric: String? = null,
+    val value: Double? = null,
+    val thresholdValue: Double? = null,
+    val unit: String? = null,
 )
 
 data class ScanLog(

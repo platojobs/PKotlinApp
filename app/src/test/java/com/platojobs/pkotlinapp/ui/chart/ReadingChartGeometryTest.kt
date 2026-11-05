@@ -168,4 +168,47 @@ class ReadingChartGeometryTest {
         assertTrue(plot(emptyList(), start, start).isEmpty)
         assertTrue(plot(emptyList(), start, start - hour).isEmpty)
     }
+
+    @Test
+    fun `hit test picks the nearest bucket`() {
+        val buckets = listOf(
+            ChartBucket(start, start + hour, 20.0, 22.0, 21.0),
+            ChartBucket(start + hour, start + 2 * hour, 24.0, 26.0, 25.0),
+        )
+        val plot = plot(buckets, start, start + 2 * hour)
+
+        // 两个桶各占 300px；点在第二个桶内部 → 第二个桶。
+        val hit = ReadingChartGeometry.hitTest(plot, x = 320f, tolerancePx = 16f)
+        assertEquals(start + hour, hit?.bucket?.start)
+
+        // 点在两桶交界附近但仍在第一个桶内 → 第一个桶。
+        val first = ReadingChartGeometry.hitTest(plot, x = 290f, tolerancePx = 16f)
+        assertEquals(start, first?.bucket?.start)
+    }
+
+    @Test
+    fun `hit test accepts taps just outside a bucket within tolerance`() {
+        val bucket = ChartBucket(start, start + hour, 20.0, 22.0, 21.0)
+        val plot = plot(listOf(bucket), start, start + hour)
+
+        // 单桶铺满 0..600px；点右侧 610px、阈值 16px → 仍命中。
+        assertTrue(ReadingChartGeometry.hitTest(plot, 610f, 16f) != null)
+        // 阈值 5px → 距离 10px，不命中。
+        assertTrue(ReadingChartGeometry.hitTest(plot, 610f, 5f) == null)
+    }
+
+    @Test
+    fun `hit test on blank area returns null`() {
+        val buckets = listOf(
+            ChartBucket(start, start + hour, 20.0, 22.0, 21.0),
+        )
+        // 桶只占 0..150px，右侧 500px 是空白。
+        val plot = plot(buckets, start, start + 4 * hour)
+        assertTrue(ReadingChartGeometry.hitTest(plot, 500f, 16f) == null)
+    }
+
+    @Test
+    fun `hit test on an empty plot returns null`() {
+        assertTrue(ReadingChartGeometry.hitTest(plot(emptyList(), start, start + hour), 10f, 16f) == null)
+    }
 }

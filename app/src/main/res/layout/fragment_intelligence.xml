@@ -20,6 +20,7 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:baselineAligned="false"
                 android:gravity="center_vertical"
                 android:orientation="horizontal"
                 android:paddingStart="@dimen/page_margin"
@@ -48,13 +49,29 @@
                         android:textAppearance="@style/TextAppearance.App.Caption" />
                 </LinearLayout>
 
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/addRuleButton"
-                    style="@style/Widget.App.Button.Text"
+                <LinearLayout
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:minWidth="0dp"
-                    android:text="@string/intelligence_rules_add" />
+                    android:baselineAligned="false"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/recommendRulesButton"
+                        style="@style/Widget.App.Button.Text"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:minWidth="0dp"
+                        android:text="@string/intelligence_rules_recommend" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/addRuleButton"
+                        style="@style/Widget.App.Button.Text"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:minWidth="0dp"
+                        android:text="@string/intelligence_rules_add" />
+                </LinearLayout>
             </LinearLayout>
 
             <androidx.recyclerview.widget.RecyclerView
@@ -106,6 +123,7 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:baselineAligned="false"
                 android:gravity="center_vertical"
                 android:orientation="horizontal"
                 android:paddingStart="@dimen/page_margin"

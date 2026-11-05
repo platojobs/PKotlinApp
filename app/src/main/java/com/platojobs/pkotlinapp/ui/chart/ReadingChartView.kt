@@ -7,6 +7,8 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.util.AttributeSet
 import android.util.TypedValue
+import android.view.GestureDetector
+import android.view.MotionEvent
 import android.view.View
 import androidx.core.content.ContextCompat
 import com.platojobs.pkotlinapp.R
@@ -19,6 +21,7 @@ import java.util.Locale
  * - 按桶 `start` 的真实时间比例定位 X 轴；
  * - 缺口处折线断开，不跨越空桶连线；
  * - 每个桶画 avg 折线，并用浅色区间带标出 min–max；
+ * - 点击/长按选中桶，高亮并回调详情；点空白取消选中；
  * - 几何计算委托给 [ReadingChartGeometry]，空数据/单桶/缺口均安全。
  */
 class ReadingChartView @JvmOverloads constructor(
@@ -32,6 +35,7 @@ class ReadingChartView @JvmOverloads constructor(
     private val bandPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val pointPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val selectionPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val linePath = Path()
     private val timeFormatter = SimpleDateFormat("HH:mm", Locale.getDefault())
@@ -41,6 +45,28 @@ class ReadingChartView @JvmOverloads constructor(
     private var from: Long = 0L
     private var to: Long = 0L
     private var unit: String = ""
+    private var metricLabel: String = ""
+    private var rangeLabel: String = ""
+    private var selectedStart: Long? = null
+    private var onBucketSelected: ((ChartBucket?) -> Unit)? = null
+
+    private val gestureDetector = GestureDetector(
+        context,
+        object : GestureDetector.SimpleOnGestureListener() {
+            override fun onDown(e: MotionEvent): Boolean = true
+
+            override fun onSingleTapUp(e: MotionEvent): Boolean {
+                performClick()
+                selectAt(e.x)
+                return true
+            }
+
+            override fun onLongPress(e: MotionEvent) {
+                performClick()
+                selectAt(e.x)
+            }
+        },
+    )
 
     init {
         gridPaint.color = ContextCompat.getColor(context, R.color.chart_grid)
@@ -52,8 +78,12 @@ class ReadingChartView @JvmOverloads constructor(
         linePaint.strokeWidth = 2.dp
         linePaint.strokeCap = Paint.Cap.ROUND
         pointPaint.color = ContextCompat.getColor(context, R.color.chart_line_2)
+        selectionPaint.color = ContextCompat.getColor(context, R.color.chart_point)
+        selectionPaint.style = Paint.Style.STROKE
+        selectionPaint.strokeWidth = 2.dp
         labelPaint.color = ContextCompat.getColor(context, R.color.text_secondary)
         labelPaint.textSize = resources.getDimension(R.dimen.chart_label_text_size)
+        isClickable = true
         updateContentDescription()
     }
 
@@ -62,13 +92,53 @@ class ReadingChartView @JvmOverloads constructor(
         fromMillis: Long,
         toMillis: Long,
         unitLabel: String,
+        metricLabelText: String = "",
+        rangeLabelText: String = "",
     ) {
         buckets = values
         from = fromMillis
         to = toMillis
         unit = unitLabel
+        metricLabel = metricLabelText
+        rangeLabel = rangeLabelText
+        val selected = selectedStart?.let { start -> buckets.firstOrNull { it.start == start } }
+        if (selected == null) {
+            selectedStart = null
+            onBucketSelected?.invoke(null)
+        }
         updateContentDescription()
         invalidate()
+    }
+
+    fun setOnBucketSelectedListener(listener: ((ChartBucket?) -> Unit)?) {
+        onBucketSelected = listener
+    }
+
+    fun currentSelection(): ChartBucket? = selectedStart?.let { start ->
+        buckets.firstOrNull { it.start == start }
+    }
+
+    override fun performClick(): Boolean {
+        super.performClick()
+        return true
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    override fun onTouchEvent(event: MotionEvent): Boolean =
+        gestureDetector.onTouchEvent(event) || super.onTouchEvent(event)
+
+    private fun selectAt(x: Float) {
+        val left = paddingLeft + LABEL_WIDTH_DP.dp
+        val top = paddingTop + 6.dp
+        val right = width - paddingRight - 6.dp
+        val bottom = height - paddingBottom - LABEL_HEIGHT_DP.dp
+        if (right <= left || bottom <= top) return
+        val plot = ReadingChartGeometry.plot(buckets, from, to, left, top, right, bottom)
+        val hit = ReadingChartGeometry.hitTest(plot, x, HIT_TOLERANCE_DP.dp)
+        selectedStart = hit?.bucket?.start
+        updateContentDescription()
+        invalidate()
+        onBucketSelected?.invoke(hit?.bucket)
     }
 
     @SuppressLint("DrawAllocation")
@@ -144,6 +214,17 @@ class ReadingChartView @JvmOverloads constructor(
         plot.buckets.forEach { point ->
             canvas.drawCircle(point.xStart, point.yAvg, POINT_RADIUS_DP.dp, pointPaint)
         }
+
+        // 选中桶：竖线 + 描边 + 放大的点，全部复用现有图表语义色。
+        val selected = selectedStart?.let { start ->
+            plot.buckets.firstOrNull { it.bucket.start == start }
+        }
+        if (selected != null) {
+            val highlightRight = selected.xEnd.coerceAtLeast(selected.xStart + 1f)
+            canvas.drawLine(selected.xStart, top, selected.xStart, bottom, linePaint)
+            canvas.drawRect(selected.xStart, top, highlightRight, bottom, selectionPaint)
+            canvas.drawCircle(selected.xStart, selected.yAvg, SELECTED_POINT_RADIUS_DP.dp, pointPaint)
+        }
     }
 
     private fun formatValue(value: Double): String =
@@ -154,7 +235,66 @@ class ReadingChartView @JvmOverloads constructor(
         }
 
     private fun updateContentDescription() {
-        contentDescription = context.getString(R.string.readings_chart_desc, buckets.size)
+        if (buckets.isEmpty()) {
+            contentDescription = context.getString(R.string.readings_chart_desc, 0)
+            return
+        }
+        val selected = selectedStart?.let { start -> buckets.firstOrNull { it.start == start } }
+        contentDescription = if (selected != null) {
+            bucketDescription(selected)
+        } else {
+            summaryDescription()
+        }
+    }
+
+    private fun summaryDescription(): String {
+        val finite = buckets.filter { it.min.isFinite() && it.max.isFinite() }
+        val low = finite.minOfOrNull { it.min } ?: Double.NaN
+        val high = finite.maxOfOrNull { it.max } ?: Double.NaN
+        val points = buckets.sumOf { if (it.count > 0L) it.count else 1L }
+        return context.getString(
+            R.string.readings_chart_a11y_summary,
+            metricLabel,
+            rangeLabel,
+            formatValue(low) + unit,
+            formatValue(high) + unit,
+            points,
+        )
+    }
+
+    private fun bucketDescription(bucket: ChartBucket): String {
+        val last = if (bucket.last.isFinite()) bucket.last else bucket.avg
+        val time = timeLabel(bucket.start, bucket.end)
+        val count = if (bucket.count > 0L) bucket.count.toString() else UNKNOWN_COUNT
+        return context.getString(
+            R.string.readings_chart_a11y_bucket,
+            metricLabel,
+            time,
+            formatValue(bucket.min) + unit,
+            formatValue(bucket.max) + unit,
+            formatValue(bucket.avg) + unit,
+            formatValue(last) + unit,
+            count,
+        )
+    }
+
+    /** 本地时区展示；同一天省略重复日期。 */
+    private fun timeLabel(startMs: Long, endMs: Long): String {
+        val dateFormat = SimpleDateFormat(
+            context.getString(R.string.time_format),
+            Locale.getDefault(),
+        )
+        val timeOnly = SimpleDateFormat(
+            context.getString(R.string.time_format_time),
+            Locale.getDefault(),
+        )
+        val startText = dateFormat.format(Date(startMs))
+        val endText = if (dateFormat.format(Date(endMs)) == startText) {
+            timeOnly.format(Date(endMs))
+        } else {
+            dateFormat.format(Date(endMs))
+        }
+        return "$startText – $endText"
     }
 
     private val Int.dp: Float
@@ -172,5 +312,8 @@ class ReadingChartView @JvmOverloads constructor(
         const val LABEL_HEIGHT_DP = 16
         const val GRID_LINES = 3
         const val POINT_RADIUS_DP = 3
+        const val SELECTED_POINT_RADIUS_DP = 5
+        const val HIT_TOLERANCE_DP = 16
+        const val UNKNOWN_COUNT = "—"
     }
 }

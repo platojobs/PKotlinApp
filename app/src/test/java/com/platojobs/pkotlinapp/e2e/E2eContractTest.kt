@@ -20,6 +20,7 @@ import com.platojobs.pkotlinapp.domain.sync.SyncRecord
 import com.squareup.moshi.Types
 import kotlinx.coroutines.runBlocking
 import okhttp3.Headers
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -826,6 +827,201 @@ class E2eContractTest {
         println("[E2E] SUMMARY: readings contract cases passed")
     }
 
+    /**
+     * 账号契约（openapi 0.6.0）：配对码生成/重新生成使旧码失效、claim 换同一 userId 的新 token、
+     * 404 统一文案、不透明游标分页导出、注销后全部 token 401。
+     */
+    @Test
+    fun `account contract against local go backend`() {
+        val user = captureStep("account: anonymous login") {
+            val result = post("/auth/anonymous")
+            assertEquals(201, result.code)
+            val body = parseMap(result.body)
+            UserSession(
+                userId = body["userId"] as? String ?: error("missing userId"),
+                token = body["token"] as? String ?: error("missing token"),
+            )
+        }
+
+        val pairingCode = captureStep("account: create pairing code with server expiresAt") {
+            val result = post("/auth/pairing-code", "{}", user.token)
+            assertEquals(201, result.code)
+            val body = parseMap(result.body)
+            val code = body["code"] as? String ?: error("missing code")
+            val expiresAt = body["expiresAt"] as? String ?: error("missing expiresAt")
+            // 服务端字符集剔除 0/O/1/I；客户端输入框用同一规则做过滤。
+            assertTrue("unexpected code: $code", Regex("^[A-HJ-NP-Z2-9]{8}$").matches(code))
+            val expiresMs = Rfc3339.parse(expiresAt) ?: error("bad expiresAt: $expiresAt")
+            val ttl = expiresMs - System.currentTimeMillis()
+            // 契约写死 10 分钟；允许 1 分钟的时钟/取整误差。
+            assertTrue("ttl=$ttl", ttl in 9 * 60_000L..11 * 60_000L)
+            code
+        }
+
+        val regeneratedCode = captureStep("account: regenerate returns a different code") {
+            val result = post("/auth/pairing-code", "{}", user.token)
+            assertEquals(201, result.code)
+            val body = parseMap(result.body)
+            val code = body["code"] as? String ?: error("missing code")
+            assertTrue("unexpected code: $code", Regex("^[A-HJ-NP-Z2-9]{8}$").matches(code))
+            assertTrue(code != pairingCode)
+            code
+        }
+
+        step("account: previous code is rejected with 404 NOT_FOUND") {
+            val result = post("/auth/pairing-code/claim", claimBody(pairingCode))
+            assertEquals(404, result.code)
+            val error = parseMap(result.body)["error"] as Map<*, *>
+            assertEquals("NOT_FOUND", error["code"])
+            // 过期/已用/格式错误/不存在统一文案，客户端不需要区分原因。
+            assertEquals("配对码无效或已过期", error["message"])
+        }
+
+        val claimed = captureStep("account: claim returns same userId with a new token") {
+            val result = post("/auth/pairing-code/claim", claimBody(regeneratedCode))
+            assertEquals(200, result.code)
+            val body = parseMap(result.body)
+            assertEquals(user.userId, body["userId"])
+            val token = body["token"] as? String ?: error("missing token")
+            assertTrue(token.isNotBlank())
+            assertTrue("token should change", token != user.token)
+            UserSession(user.userId, token)
+        }
+
+        step("account: claimed + original token both stay valid") {
+            assertEquals(200, get("/sync/changes?cursor=0", claimed.token).code)
+            assertEquals(200, get("/sync/changes?cursor=0", user.token).code)
+        }
+
+        step("account: claimed code is single-use") {
+            val result = post("/auth/pairing-code/claim", claimBody(regeneratedCode))
+            assertEquals(404, result.code)
+        }
+
+        step("account: unknown code shares the same 404 message") {
+            val result = post("/auth/pairing-code/claim", claimBody("ZZZZZZZZ"))
+            assertEquals(404, result.code)
+            val error = parseMap(result.body)["error"] as Map<*, *>
+            assertEquals("NOT_FOUND", error["code"])
+        }
+
+        step("account: export requires a token") {
+            assertUnauthorized(get("/me/export"))
+        }
+
+        val exportExternalId = "AA:BB:CC:00:00:03"
+        val exportBase = System.currentTimeMillis() - 300_000
+        val exportReadings = (0 until 5).map { index ->
+            PushReadingDto(
+                id = UUID.randomUUID().toString(),
+                platform = "android",
+                externalId = exportExternalId,
+                metric = "temperature",
+                value = 20.0 + index,
+                unit = "°C",
+                recordedAt = Rfc3339.format(exportBase + index * 30_000L),
+            )
+        }
+        step("account: seed data for export") {
+            val result = push(
+                pushRequestAdapter.toJson(
+                    SyncPushRequest(
+                        clientId = "e2e-account-client",
+                        devices = listOf(
+                            PushDeviceDto(
+                                id = UUID.randomUUID().toString(),
+                                platform = "android",
+                                externalId = exportExternalId,
+                                mac = exportExternalId.lowercase(),
+                                alias = Reported("导出设备"),
+                                updatedAt = Rfc3339.format(exportBase),
+                            ),
+                        ),
+                        readings = exportReadings,
+                    ),
+                ),
+                claimed.token,
+                "e2e-export-seed-${UUID.randomUUID()}",
+            )
+            assertEquals(200, result.code)
+            val response = pushResponseAdapter.fromJson(result.body) ?: error("empty body")
+            assertEquals(5, response.appliedReadings)
+        }
+
+        step("account: export loops over opaque cursor until hasMore=false") {
+            var cursor: String? = null
+            var pages = 0
+            val collected = mutableListOf<Map<*, *>>()
+            var devices = emptyList<Any?>()
+            while (true) {
+                val result = getWithQuery(
+                    "/me/export",
+                    token = claimed.token,
+                    query = buildList {
+                        add("limit" to "2")
+                        cursor?.let { add("cursor" to it) }
+                    },
+                )
+                assertEquals(200, result.code)
+                val page = parseMap(result.body)
+                val userInfo = page["user"] as? Map<*, *> ?: error("missing user")
+                assertEquals(claimed.userId, userInfo["id"])
+                pages += 1
+                assertTrue("too many pages", pages <= 10)
+                // 客户端不解析 cursor：只保证它非空、逐页变化且可原样回传。
+                val next = page["nextCursor"] as? String
+                val hasMore = page["hasMore"] as? Boolean ?: false
+                @Suppress("UNCHECKED_CAST")
+                (page["readings"] as? List<Map<String, Any?>>)
+                    ?.let { collected += it.map { row -> row as Map<*, *> } }
+                @Suppress("UNCHECKED_CAST")
+                (page["devices"] as? List<Map<String, Any?>>)
+                    ?.let { devices = it }
+                if (!hasMore) {
+                    assertEquals("", next)
+                    break
+                }
+                assertTrue("nextCursor must not be blank", !next.isNullOrBlank())
+                assertTrue("cursor must advance", next != cursor)
+                cursor = next
+            }
+            assertEquals(5, collected.size)
+            assertEquals(5, collected.map { it["id"] }.toSet().size)
+            // 服务端按 recordedAt 升序分页，跨页合并后仍必须单调递增。
+            val times = collected.map { Rfc3339.parse(it["recordedAt"] as String) ?: 0L }
+            assertEquals(times.sorted(), times)
+            assertEquals(exportReadings.map { it.id }.toSet(), collected.map { it["id"] }.toSet())
+            assertTrue(pages >= 2)
+            assertTrue(devices.isNotEmpty())
+        }
+
+        step("account: export via production Retrofit mapping") {
+            val page = runBlocking {
+                syncApi.exportMyData("Bearer ${claimed.token}", cursor = null, limit = 2)
+            }
+            assertEquals(claimed.userId, page.user?.get("id"))
+            assertEquals(2, page.readings.orEmpty().size)
+            assertEquals(true, page.hasMore)
+            assertNotNull(page.nextCursor)
+        }
+
+        step("account: delete returns 204 and revokes every token of the account") {
+            val deleted = delete("/me", claimed.token)
+            assertEquals(204, deleted.code)
+            assertTrue(deleted.body.isEmpty())
+
+            assertUnauthorized(get("/sync/changes?cursor=0", claimed.token))
+            // claim 换出的 token 与原 token 属于同一账号：注销后一起失效。
+            assertUnauthorized(get("/sync/changes?cursor=0", user.token))
+            // 幂等语义：重复注销返回 401，而不是 404。
+            assertEquals(401, delete("/me", user.token).code)
+        }
+
+        println("[E2E] SUMMARY: account contract cases passed")
+    }
+
+    private fun claimBody(code: String): String = """{"code":"$code"}"""
+
     private data class UserSession(val userId: String, val token: String)
 
     private data class HttpResult(
@@ -850,11 +1046,21 @@ class E2eContractTest {
     private fun get(path: String, token: String? = null): HttpResult =
         execute("GET", path, body = null, token = token)
 
+    /** 带查询参数的 GET：cursor 是不透明串，必须交给 HttpUrl 做 URL 编码，不能字符串拼接。 */
+    private fun getWithQuery(
+        path: String,
+        token: String? = null,
+        query: List<Pair<String, String>> = emptyList(),
+    ): HttpResult = execute("GET", path, body = null, token = token, query = query)
+
     private fun post(
         path: String,
         body: String = "{}",
         token: String? = null,
     ): HttpResult = execute("POST", path, body = body, token = token)
+
+    private fun delete(path: String, token: String): HttpResult =
+        execute("DELETE", path, body = null, token = token)
 
     private fun push(body: String, token: String, idempotencyKey: String): HttpResult =
         execute(
@@ -871,12 +1077,16 @@ class E2eContractTest {
         body: String?,
         token: String?,
         idempotencyKey: String? = null,
+        query: List<Pair<String, String>> = emptyList(),
     ): HttpResult {
-        val builder = Request.Builder().url(apiBase + path)
-        if (method == "GET") {
-            builder.get()
-        } else {
-            builder.post(
+        val url = (apiBase + path).toHttpUrl().newBuilder().apply {
+            query.forEach { (name, value) -> addQueryParameter(name, value) }
+        }.build()
+        val builder = Request.Builder().url(url)
+        when (method) {
+            "GET" -> builder.get()
+            "DELETE" -> builder.delete()
+            else -> builder.post(
                 (body ?: "").toRequestBody("application/json; charset=utf-8".toMediaType()),
             )
         }

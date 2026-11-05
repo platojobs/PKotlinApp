@@ -1,9 +1,9 @@
-# 真机验收清单（v0.6.0）
+# 真机验收清单（v0.7.0）
 
 本清单用于「执行人不在开发现场」时也能照着做完验收。每项都写明**操作步骤、预期现象、失败判定**。
 所有结果请记录到文末的「验收记录表」；未实际执行的项不要填 PASS。
 
-- 适用版本：`versionName = 0.6.0`（`versionCode = 14`）
+- 适用版本：`versionName = 0.7.0`（`versionCode = 15`）
 - 应用包名：`com.platojobs.pkotlinapp`
 - 主界面：`com.platojobs.pkotlinapp.ui.MainActivity`
 - 设备详情：`com.platojobs.pkotlinapp.ui.detail.DeviceDetailActivity`
@@ -521,6 +521,38 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
   4. **回归**：浅色与深色下导出、告警通知按钮、搜索框均可用；无文字不可见。
 - 失败判定：存在硬编码颜色（白底白字/黑底黑字）、切换主题不生效、图表元素在深色不可辨。
 
+### 7.11 账号迁移与注销验收（v0.7.0 新增）
+
+前置：PJGoIoT v0.7.0+（openapi 0.6.0）已启动；准备**两台** Android 设备（旧机 A 与新机 B），两台都安装本版本。
+
+- 步骤与预期：
+  1. **生成配对码**：A「我的」→「迁移到新设备」→「生成配对码」；出现 8 位大写码，字符只含 `A-H/J-N/P-Z/2-9`（不会出现 `0/O/1/I`）；倒计时从服务端的 `expiresAt` 开始递减（对照服务端时间，与本地时钟无关）。
+  2. **复制**：点「复制」，剪贴板内容为 8 位码，粘贴可原样得到。
+  3. **重新生成**：点「重新生成」先弹确认并提示「旧码立即失效」；确认后出现新码。用 B 输入**旧码** → 提示「码无效或已过期」。
+  4. **接管**：B「我的」→「从旧设备接管」输入新码。输入框只能输入 8 位、自动大写、输入 `0/O/1/I` 时被过滤、不足 8 位时按钮不可用。提交后提示接管成功并展示 userId；A 上原有数据（设备、读数）在 B 上保留且随后续同步上传到同一账号（服务端按该 userId 可查到）。
+  5. **错误处理**：输入过期或已用的码 → 只显示「码无效或已过期」，不出现具体原因；1 分钟内连续错误输入触发限流 → 出现「尝试过于频繁，请稍后再试」，若服务端返回 `Retry-After` 则显示剩余秒数；飞行模式下提交 → 出现网络可重试提示。
+  6. **导出我的数据**：A/B 任一「我的」→「导出我的数据」；进度显示「已拉 N 条 / 第 M 页」且 M 随分页递增；`adb shell run-as com.platojobs.pkotlinapp ls cache/exports` 出现 `account_export_<userId>_<UTC>.json`；系统分享面板可打开，JSON 内 `user/devices/readings` 齐全、`readings` 按 `recordedAt` 升序且无重复 id。
+  7. **导出失败重试**：停后端后导出 → 出现明确失败提示与「重试」；恢复后端后重试成功。
+  8. **注销**：确认对话框必须出现「设备与读数将永久删除且不可恢复」；确认后提示注销成功并回到匿名初始状态（「我的」同步卡片回到初始、设备/读数列表清空）。
+  9. **注销后校验**：`GET /api/v1/sync/changes`（旧 token）返回 401；`adb shell run-as com.platojobs.pkotlinapp ls databases` 业务表为空（可 `sqlite3` 检查 `readings`/`devices` 行数，或重启后确认无数据）；再次注销（原 token 已失效）返回 401。
+- 失败判定：倒计时用本地时间瞎算、旧码仍可接管、接管后本地数据被清空或仍标记 synced（导致数据不重传）、404 暴露具体原因、429 不显示冷却、导出解析/拼接 cursor 导致漏页、注销后本地仍有业务数据或 token、401/网络错误静默。
+
+### 7.12 后台采集（前台服务）验收（v0.7.0 新增）
+
+前置：至少一台可连接并持续 notify 的 BLE 设备；分别在 **Android 12（API 31/32）**、**Android 13（API 33）**、**Android 14+（API 34/35/36）** 各跑一遍（差异见下）。
+
+- 步骤与预期：
+  1. **启动**：连接设备成功 → 详情页出现「后台采集」开关，默认关闭；打开后通知栏出现常驻通知，渠道为 **「数据采集」**（`adb shell dumpsys notification --noredact | grep reading_collection`），标题「正在后台采集」，正文含设备名与「已采集 N 条」，N 随 notify 递增。
+  2. **通知动作**：点「停止」→ 服务停止、通知消失、开关自动回到关闭；从最近任务划掉 App 后通知不应长期残留（重新打开「我的」显示未采集）。
+  3. **点击通知**：点击通知正文 → 进入该设备详情页。
+  4. **持久化**：开关打开后返回列表再进详情、或杀进程后重启 App，开关状态保持（「我的」显示当前是否在后台采集中，含设备名与条数）。
+  5. **停止条件**：手动关闭开关 / 断开连接 / 返回退出详情 / 设备进入 `KeyMissing`，四类操作后服务与通知均停止；切到另一台设备并连接时，服务切换到新设备而不是同时采集两台。
+  6. **Android 14+ 权限**：检查 `adb shell dumpsys package com.platojobs.pkotlinapp | grep FOREGROUND_SERVICE_CONNECTED_DEVICE` 已授予；手动撤销该权限（`adb shell appops`/设置页）后再打开开关 → 不崩溃，开关回滚并提示启动失败。
+  7. **Android 13+ 通知权限**：首次打开开关时请求 `POST_NOTIFICATIONS`。拒绝 → 采集仍启动（「我的」状态显示采集中），界面提示「通知不可见」；允许 → 通知正常常驻。
+  8. **Android 12 启动限制**：确认只在详情页（界面可见）点击开关时启动服务；从后台/广播路径不会静默启动（无 `ForegroundServiceStartNotAllowedException`，`logcat | grep BackgroundService` 无相关报错）。
+  9. **Android 12 及以下通知渠道**：API 26+ 才有渠道，API 24/25（如可测）不因 `NotificationChannel` 崩溃，通知仍可展示。
+- 失败判定：进程被杀即丢通知且状态未持久化、断开后服务/通知残留、Android 12+ 后台启动触发系统异常、Android 14+ 缺权限时崩溃、拒绝通知权限导致功能不可用或崩溃。
+
 ---
 
 ## 8. Release 包安装与 R8 生效验证
@@ -547,7 +579,7 @@ adb install -r app/build/outputs/apk/release/app-release.apk
 adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versionCode"
 ```
 
-预期：安装成功；版本 `0.6.0 / 14`；能启动；五模块可进入；BLE 扫描/连接可用。
+预期：安装成功；版本 `0.7.0 / 15`；能启动；五模块可进入；BLE 扫描/连接可用。
 失败判定：`INSTALL_FAILED_NO_MATCHING_ABIS`、安装后闪退（多为 R8 裁剪过度或签名问题）。
 
 ### L3 签名验证
@@ -633,6 +665,17 @@ apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk
 | D1 | 列表搜索/排序/分组 |  |  |  |
 | D2 | 两种空状态 |  |  |  |
 | K1 | 深色图表与控件 |  |  |  |
+| Q1 | 配对码生成/倒计时/复制 |  |  |  |
+| Q2 | 重新生成使旧码失效 |  |  |  |
+| Q3 | 接管保留本地数据并重传 |  |  |  |
+| Q4 | 404/429/网络错误文案 |  |  |  |
+| Q5 | 账号导出分页与分享 |  |  |  |
+| Q6 | 注销清理云端与本机 |  |  |  |
+| F1 | 后台采集通知与条数 |  |  |  |
+| F2 | 停止条件与开关持久化 |  |  |  |
+| F3 | Android 14+ CONNECTED_DEVICE 权限 |  |  |  |
+| F4 | Android 13+ 拒绝通知权限降级 |  |  |  |
+| F5 | Android 12 启动限制 |  |  |  |
 | L1 | Release 构建 |  |  |  |
 | L2 | Release 安装 |  |  |  |
 | L3 | 签名验证 |  |  |  |

@@ -46,4 +46,18 @@ class AppSettingsTest {
         val reopened = AppSettings(context)
         assertEquals(DeviceSortMode.RSSI, reopened.deviceSortMode)
     }
+
+    @Test
+    fun `后台采集开关默认关闭且可持久化`() {
+        val settings = AppSettings(context)
+        assertFalse(settings.backgroundCollectionEnabled)
+
+        settings.backgroundCollectionEnabled = true
+
+        val reopened = AppSettings(context)
+        assertTrue(reopened.backgroundCollectionEnabled)
+
+        reopened.backgroundCollectionEnabled = false
+        assertFalse(AppSettings(context).backgroundCollectionEnabled)
+    }
 }

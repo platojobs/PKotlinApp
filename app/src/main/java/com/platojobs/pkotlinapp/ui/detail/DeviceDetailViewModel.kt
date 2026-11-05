@@ -7,6 +7,9 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.platojobs.pkotlinapp.PKotlinApplication
 import com.platojobs.pkotlinapp.data.ble.BleConnectionManager
 import com.platojobs.pkotlinapp.data.ble.BleConnectionState
+import com.platojobs.pkotlinapp.data.collection.CollectionSession
+import com.platojobs.pkotlinapp.data.collection.CollectionStatus
+import com.platojobs.pkotlinapp.data.prefs.AppSettings
 import com.platojobs.pkotlinapp.data.sync.SyncScheduler
 import com.platojobs.pkotlinapp.domain.export.ExportTooManyRowsException
 import com.platojobs.pkotlinapp.domain.export.ReadingCsv
@@ -96,11 +99,24 @@ class DeviceDetailViewModel(
     private val readingRepository: ReadingRepository,
     private val readingRemote: ReadingRemote,
     private val exportDir: File,
+    private val settings: AppSettings,
+    private val collectionSession: CollectionSession,
     private val now: () -> Long = System::currentTimeMillis,
 ) : ViewModel() {
 
     val connectionState: StateFlow<BleConnectionState> = bleConnectionManager.state
     val rssi: StateFlow<Int?> = bleConnectionManager.rssi
+
+    /** 后台采集开关（持久化）；采集状态来自全局会话。 */
+    private val _backgroundCollection = MutableStateFlow(settings.backgroundCollectionEnabled)
+    val backgroundCollection: StateFlow<Boolean> = _backgroundCollection.asStateFlow()
+    val collectionStatus: StateFlow<CollectionStatus> = collectionSession.status
+
+    /** 记录用户选择；真正启停前台服务由 Activity 在连接态下执行。 */
+    fun setBackgroundCollectionEnabled(enabled: Boolean) {
+        settings.backgroundCollectionEnabled = enabled
+        _backgroundCollection.value = enabled
+    }
 
     private val _info = MutableStateFlow<InfoState>(InfoState.Idle)
     val info: StateFlow<InfoState> = _info.asStateFlow()
@@ -481,6 +497,8 @@ class DeviceDetailViewModel(
                     readingRepository = container.readingRepository,
                     readingRemote = container.readingRemote,
                     exportDir = File(app.cacheDir, "exports"),
+                    settings = container.settings,
+                    collectionSession = container.collectionSession,
                 )
             }
         }

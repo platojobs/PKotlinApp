@@ -6,6 +6,21 @@
 
 ---
 
+## v0.7.0
+
+**主题：账号迁移与注销 / 后台采集（对齐 PJGoIoT v0.7.0，openapi 0.6.0）**
+
+- 跨设备接管（配对码）：「我的」新增「迁移到新设备」，调用 `POST /api/v1/auth/pairing-code`（Bearer），展示 8 位码并以服务端 `expiresAt` 每秒刷新倒计时（不自行推算 10 分钟）；支持复制到剪贴板；「重新生成」确认后调用同一接口，新码使旧码立即失效并在界面提示。新增「从旧设备接管」：输入 8 位码 → `POST /auth/pairing-code/claim` → 用 `{userId, token}` 替换本机 token，保留本地设备与读数并把 `devices`/`readings` 的 `sync_state` 全量重置为 `pending`、清空游标与同步状态，使新账号接管本机数据。输入框自动大写、过滤 `0/O/1/I` 等易混字符并截断 8 位，不足 8 位不可提交。错误处理：404 统一「码无效或已过期」，429「尝试过于频繁，请稍后再试」并显示 `Retry-After` 冷却秒数，网络错误可重试，401 提示重新登录。
+- 账号导出与注销：`GET /api/v1/me/export` 按 `hasMore`/`nextCursor` 循环拉全（cursor 只透传、不解析；空游标或重复游标即停止），多页 `devices` 按 `id`/`externalId` 去重、`readings` 顺序拼接，缩进 JSON 写 `cacheDir/exports/` 后经 `FileProvider` + `ACTION_SEND` 分享；界面显示真实「已拉 N 条 / 第 M 页」，失败可重试。注销账号二次确认写明「设备与读数将永久删除且不可恢复」，确认后 `DELETE /api/v1/me`；204 后依次清 token（`EncryptedSharedPreferences` 整块清空）、游标、同步状态与 `Room.clearAllTables()`，回到匿名初始态并提示；401 与网络错误分别处理，不静默。
+- 后台采集（前台服务）：详情页连接成功后出现「后台采集」开关，开启即以 `foregroundServiceType=connectedDevice` 的前台服务维持采集；通知渠道「数据采集」（`reading_collection`），常驻标题「正在后台采集」、正文「设备名 · 已采集 N 条」、带「停止」动作，点击进详情；`ongoing` + `onlyAlertOnce`。manifest 声明 `FOREGROUND_SERVICE` 与 `FOREGROUND_SERVICE_CONNECTED_DEVICE`；Android 14+ 缺权限时启动失败回滚开关并提示，Android 13+ 拒绝通知权限仍可采集（提示通知不可见）。只在界面操作时启动，符合 Android 12+ 启动限制；断开/退出/切换设备自动停止服务与通知；开关状态持久化，「我的」展示当前采集状态。
+- 测试：新增 `PairingCodeFormatTest`、`AccountExportPagerTest`、`AccountExportJsonTest`、`AccountServiceTest`、`CollectionSessionTest`、`CollectionNotificationFactoryTest`（Robolectric 断言通知标题/正文/渠道/停止动作/点击意图），`AppSettingsTest` 补后台采集持久化；单测 139 → 168。e2e 新增 `account contract`（配对码字符集与 10 分钟 TTL、重新生成使旧码 404、claim 同 userId 新 token 且旧 token 仍有效、单次使用、未知码统一文案、导出需要鉴权、不透明游标分 2 页拉全并按 `recordedAt` 升序、Retrofit 生产映射、注销 204 后全部 token 401 且重复注销 401）。
+- 文档：README 新增 §6.6「账号迁移与注销」、§6.7「后台采集」；验收清单升级 v0.7.0 并新增 §7.11/§7.12（含 Android 12/13/14 前台服务与通知权限差异）。
+- Room 无 schema 变更（仍为 v8）；`ReadingDao.markAllPending()` 仅为新增查询，不涉及迁移。
+
+版本：`versionCode = 15`、`versionName = 0.7.0`。
+
+---
+
 ## v0.6.0
 
 **主题：告警通知 / CSV 导出 / 设备列表检索 / 深色模式**

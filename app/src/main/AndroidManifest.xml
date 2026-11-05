@@ -5,6 +5,8 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Android 13+ 告警通知运行时权限；拒绝不影响其它功能。 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
 
     <!-- Android 12 以下：蓝牙为普通权限，扫描需要定位权限 -->
     <uses-permission
@@ -53,7 +55,13 @@
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
 
-        <!-- 只暴露 cacheDir/exports 下的 CSV，供系统分享读取。 -->
+        <!-- 后台采集前台服务：仅由界面触发，连接断开时自动停止。 -->
+        <service
+            android:name=".data.collection.ReadingCollectionService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
+
+        <!-- 只暴露 cacheDir/exports 下的导出文件（CSV/JSON），供系统分享读取。 -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

@@ -59,6 +59,8 @@
 - 权限自检：读取真实的蓝牙扫描/连接/定位授权状态，并跳转系统应用设置。
 - 扫描日志：Room 本地记录（扫描会话中每个设备首次出现写一条），可清空。
 - 版本与关于：读取 `BuildConfig` 的真实版本号与构建类型。
+- 账号：**迁移到新设备**（8 位配对码 + 服务端真实过期倒计时）、**从旧设备接管**（用配对码换同一 `userId` 的 token 并重新标记本机数据待上传）、**导出我的数据**（按不透明 cursor 分页 JSON）、**注销账号**（二次确认后硬删除云端与本机数据）。
+- 后台采集：显示当前是否正在前台服务中采集（设备名 + 已采集条数）。
 - 简单设置：主题（跟随系统 / 浅色 / 深色），写入 SharedPreferences 并即时生效。
 
 ---
@@ -508,6 +510,25 @@ Debug / Release 都可通过 `apiBaseUrl` 切换；发布前请传入正式域�
 
 **限制**：模拟器无法验证真实 BLE notify 投递与厂商固件字节格式；解析规则已用单测覆盖，但真实心率带/温湿度计/NUS 设备需按 [§7.6](docs/acceptance.md#76-设备读数readings验收v040-新增) 真机验收。
 
+### 6.6 账号迁移与注销（v0.7.0）
+
+对齐 PJGoIoT openapi 0.6.0。
+
+- **迁移到新设备**：`POST /auth/pairing-code`（需 Bearer）返回 8 位码与 `expiresAt`。客户端只以服务端 `expiresAt` 驱动倒计时（每秒刷新），**不自行推算 10 分钟**；到 0 显示「已过期，请重新生成」。支持复制到剪贴板；「重新生成」会调用同一接口，**新码立即使旧码失效**，界面先弹确认并提示这一点。
+- **从旧设备接管**：输入 8 位码 → `POST /auth/pairing-code/claim`（无需鉴权）→ 用返回的 `{userId, token}` 替换本机 token。接管成功后**保留本地设备与读数**，把 Room 中 `sync_state` 全量重置为 `pending`（`deviceDao.markAllPending()` + `readingDao.markAllPending()`），清空同步游标并重置同步状态，让新账号拿到本机已有数据。
+- **输入约束**：`PairingCodeFormat` 统一 `ALPHABET = ABCDEFGHJKLMNPQRSTUVWXYZ23456789`（剔除易混的 `0/O/1/I`），输入自动大写、过滤非法字符、截断到 8 位；不足 8 位时「接管」按钮不可用，不做「任意输入」的模糊校验。
+- **错误处理**：`404` 统一文案「码无效或已过期」，**不区分**过期/已用/不存在/格式错误；`429` 显示「尝试过于频繁，请稍后再试」并在可取得 `Retry-After` 时展示剩余冷却秒数；网络错误给可重试提示；`401` 提示重新登录。
+- **导出我的数据**：`GET /me/export` 按 `hasMore` / `nextCursor` 循环拉全，**cursor 只透传、不解析**（`AccountExportPager` 仅在 `hasMore=false`、空游标或游标重复时停止）；多页 `devices` 按 `id`/`externalId` 去重，`readings` 顺序拼接；结果为带缩进的 JSON，写 `cacheDir/exports/account_export_<userId>_<UTC时间>.json`，经 `FileProvider` + `ACTION_SEND` 分享。导出期间显示真实「已拉 N 条 / 第 M 页」，失败可重试。
+- **注销账号**：二次确认对话框写明「设备与读数将永久删除且不可恢复」；确认后 `DELETE /api/v1/me`（成功 204）。成功后依次清 token（`EncryptedSharedPreferences` 整块清空）、游标、同步状态、`Room.clearAllTables()`，回到初始匿名状态并提示；`401` 与网络错误分别提示，**不静默失败**。
+
+### 6.7 后台采集（前台服务，v0.7.0）
+
+- 设备详情连接成功后显示「后台采集」开关；开启后由**前台服务**保持 BLE notify 采集，状态在 `CollectionSession`（`StateFlow`），通知常驻。
+- 通知渠道 **「数据采集」**（`reading_collection`，ID `2001`），标题「正在后台采集」，正文「设备名 · 已采集 N 条」，带「停止」动作；点击通知进入该设备详情。通知为 `ongoing` + `onlyAlertOnce`，不会重复打扰。
+- **权限与 manifest**：manifest 声明 `FOREGROUND_SERVICE` 与 `FOREGROUND_SERVICE_CONNECTED_DEVICE`，服务 `foregroundServiceType="connectedDevice"`；Android 14+（API 34+）必须有 `CONNECTED_DEVICE` 类型权限，否则启动失败并回滚开关 + 提示，不崩溃。Android 13+ 需要 `POST_NOTIFICATIONS`：**拒绝通知权限不阻断采集**，只在界面上提示「通知不可见」。
+- **启动限制**：Android 12+ 禁止从后台静默启动前台服务，本功能只从用户点击开关（界面可见时）触发；开关状态写入 `AppSettings.backgroundCollectionEnabled`，重启后保持。
+- **停止**：手动关闭开关、断开连接、退出详情页、连接变为 `Idle/Disconnected/KeyMissing`、或切换到另一台设备时，服务与通知都会被正确停止/清理。
+
 ---
 
 ## 7. 构建与运行
@@ -517,7 +538,7 @@ export JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk-21.jdk/Contents/Home
 
 ./gradlew assembleDebug        # Debug APK
 ./gradlew lintDebug            # Lint
-./gradlew testDebugUnitTest    # 单元测试：96 个（含读数解析/同步/迁移/区间分桶/缺口几何/黄金字节表）
+./gradlew testDebugUnitTest    # 单元测试：168 个（含配对码/导出分页/注销清理/前台服务会话与通知）
 ./gradlew assembleRelease      # 签名 Release APK
 ./gradlew bundleRelease        # 签名 Release AAB
 
@@ -639,7 +660,7 @@ release {
 
 其他限制：
 
-- **同步契约已在 fixture 后端验证**：`scripts/e2e-contract.sh` 跑通匿名登录、push、changes、幂等重放、LWW 冲突、401、跨用户 404；生产存储、正式域名与真机 WorkManager 仍需后续验证。本地没有 Go 服务时同步会失败并降级，不影响本地功能。
+- **同步契约已在 fixture 后端验证**：`scripts/e2e-contract.sh` 跑通匿名登录、push、changes、幂等重放、LWW 冲突、401、跨用户 404，以及配对码生成/重新生成失效/claim/404 文案/导出分页/注销后 token 失效；生产存储、正式域名与真机 WorkManager 仍需后续验证。本地没有 Go 服务时同步会失败并降级，不影响本地功能。
 - 匿名 token 使用 `EncryptedSharedPreferences`（Keystore 包装）；该 API 已被 AndroidX 标记为 deprecated，但当前功能可用，后续可平滑替换为自实现 Keystore 封装。
 - 未实现真实 OTA、GATT 服务发现与写入，仅展示型号库中的 GATT 元数据。
 - 产品 / 市场 / 设备详情依赖同一可配置 Base URL，本地后端未启动时显示真实错误空状态。
@@ -648,6 +669,7 @@ release {
 
 ## 11. 版本记录
 
+- `v0.7.0`：账号迁移与注销 + 后台采集。「我的」新增**迁移到新设备**（`POST /auth/pairing-code`，8 位码 + 服务端 `expiresAt` 真实倒计时、复制、重新生成使旧码立即失效）与**从旧设备接管**（`POST /auth/pairing-code/claim` 换同 `userId` 新 token，保留本地设备/读数并全量重置 `pending` 后重新上传）；输入框按 `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` 自动大写/过滤/截断 8 位；404 统一「码无效或已过期」，429 显示剩余冷却秒数。新增**导出我的数据**（`GET /me/export` 按 `hasMore`/`nextCursor` 循环，cursor 只透传不解析，`devices` 去重、`readings` 拼接，写 `cacheDir/exports/` 后经 FileProvider 分享，显示真实进度与可重试）与**注销账号**（二次确认写明「设备与读数将永久删除且不可恢复」，`DELETE /me` 成功后清 token/游标/同步状态/`clearAllTables()`，401 与网络错误分别提示）。新增**后台采集**前台服务：连接后开关控制，`foregroundServiceType=connectedDevice` + `FOREGROUND_SERVICE_CONNECTED_DEVICE`（Android 14+），通知渠道「数据采集」常驻（设备名 + 已采集条数 + 停止动作），Android 13+ 拒绝通知权限不阻断采集，断开/退出自动停止，开关持久化。单测 168（配对码/导出分页/注销顺序/服务会话/通知构建/Robolectric），e2e 新增账号契约 12 项；lint 0 issue。Room 无 schema 变更（仍为 v8）。
 - `v0.6.0`：四项真实可用功能。**告警通知**：独立渠道「设备告警」、Android 13+ `POST_NOTIFICATIONS` 动态申请与「我的」拒绝提示、真实开关、1/5/30 分钟节流（SharedPreferences 持久化）、信号恢复通知只发一次、点击通知进设备详情、正文不含敏感信息。**CSV 导出**：详情按当前设备+指标+区间导出，≤7 天读 Room、>7 天服务端 cursor 分页（上限 5 万条），UTF-8 BOM / `recordedAt,metric,value,unit` / ISO8601 UTC / RFC 4180 转义，写 `cacheDir/exports/` 并用 `FileProvider` + `ACTION_SEND` 分享，真实进度与可重试错误。**设备列表**：别名/广播名/型号/MAC 即时搜索、四种排序持久化、真实分组 Chip（含未分组）、无设备与筛选无结果两种空状态。**深色模式**：`values-night/colors.xml` + 图表颜色全部走主题资源，`ChartColorAuditTest` 防硬编码回归。Room v8 新增 `devices.createdAt`（`MIGRATION_7_8`）；单测 139，lint 0 issue。
 - `v0.5.0`：详情页数据区升级为产品级长周期图表。新增区间切换（1 小时 / 24 小时 / 7 天 / 30 天，默认 24 小时）与 `1m/1h/1d` 分桶映射、500 桶自动降级；接入 `GET .../readings/series`（UTC RFC3339 网格）与 `GET .../readings/metrics`（count/lastAt/unit，倒序）。图表按桶 `start` 的真实时间比例定位，空桶不返回时折线断开不连线，每个桶画 avg 折线 + min–max 区间带，Y 轴与单位自适应；网络失败回退本地分桶，30 天提示「离线：仅本地 7 天数据」。指标 Chip 改为服务端真值并展示「指标名 · N 条」，24h 汇总固定窗口、单位随指标。单测 96 个（新增区间映射/分桶/缺口几何/Y 轴/离线降级/指标排序），e2e 新增 series/metrics/空区间/非法 bucket 4 项。
 - `v0.4.1`：与 iOS 统一读数解析口径：NUS 改为按 `\n` 逐行解析（整包 ≤256 字节、单行 ≤64 字符，单行失败只丢该行）；温度 2 字节优先 sint16 × 0.01℃、否则回退 IEEE-754 half，4 字节走 float32，范围统一 −50..150℃；心率 uint16 明确小端；电池 0% 视为合法。清理逻辑修正为只删除 `syncState = 'synced'` 且超过 7 天的记录，pending 无论多旧都保留。新增黄金字节表单测（总单测 79 个），lint 0 issue。

@@ -58,6 +58,13 @@ class AppSettings(context: Context) {
             prefs.edit { putString(KEY_DEVICE_SORT, value.name) }
         }
 
+    /** 后台采集开关：连接设备后是否用前台服务保持 notify 采集。 */
+    var backgroundCollectionEnabled: Boolean
+        get() = prefs.getBoolean(KEY_BACKGROUND_COLLECTION, false)
+        set(value) {
+            prefs.edit { putBoolean(KEY_BACKGROUND_COLLECTION, value) }
+        }
+
     fun applyTheme() {
         AppCompatDelegate.setDefaultNightMode(
             when (themeMode) {
@@ -77,5 +84,6 @@ class AppSettings(context: Context) {
         private const val KEY_ALERTS_ENABLED = "alerts_enabled"
         private const val KEY_ALERT_THROTTLE_MINUTES = "alert_throttle_minutes"
         private const val KEY_DEVICE_SORT = "device_sort_mode"
+        private const val KEY_BACKGROUND_COLLECTION = "background_collection_enabled"
     }
 }

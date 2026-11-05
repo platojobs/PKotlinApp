@@ -285,4 +285,68 @@
     <string name="devices_filter_empty_hint">换个关键词，或清除筛选条件后再试。</string>
     <string name="devices_filter_clear">清除筛选</string>
     <string name="devices_empty_scan_action">去扫描</string>
+
+    <!-- 账号迁移（配对码） -->
+    <string name="account_migration_title">迁移到新设备</string>
+    <string name="account_migration_desc">在旧设备生成 8 位配对码，10 分钟内有效；在新设备输入该码即可接管同一账号。</string>
+    <string name="account_pairing_generate">生成配对码</string>
+    <string name="account_pairing_regenerate">重新生成</string>
+    <string name="account_pairing_copy">复制</string>
+    <string name="account_pairing_copied">配对码已复制</string>
+    <string name="account_pairing_expires_in">%1$d 分钟 %2$d 秒后失效</string>
+    <string name="account_pairing_expired">配对码已过期，请重新生成</string>
+    <string name="account_pairing_unknown_expiry">有效期来自服务端，暂无法解析</string>
+    <string name="account_pairing_regenerated">已生成新码，旧码立即失效</string>
+    <string name="account_pairing_regenerate_title">重新生成配对码？</string>
+    <string name="account_pairing_regenerate_message">生成新码后，之前展示的配对码会立即失效。</string>
+    <string name="account_pairing_generate_failed">生成失败：%1$s</string>
+
+    <string name="account_claim_title">从旧设备接管</string>
+    <string name="account_claim_desc">输入旧设备上的 8 位配对码。接管后本机已有设备与读数会重新上传到该账号。</string>
+    <string name="account_claim_hint">8 位配对码</string>
+    <string name="account_claim_button">接管账号</string>
+    <string name="account_claim_format_error">请输入完整的 8 位配对码</string>
+    <string name="account_claim_invalid">码无效或已过期</string>
+    <string name="account_claim_rate_limited">尝试过于频繁，请稍后再试</string>
+    <string name="account_claim_rate_limited_seconds">尝试过于频繁，请 %1$d 秒后再试</string>
+    <string name="account_claim_success">接管成功，本机数据已重新排队上传（账号 %1$s）</string>
+
+    <!-- 账号导出与注销 -->
+    <string name="account_export_title">导出我的数据</string>
+    <string name="account_export_desc">从服务端拉取全部账号数据（设备与读数），生成 JSON 文件后通过系统分享导出。</string>
+    <string name="account_export_button">导出账号数据</string>
+    <string name="account_export_progress">正在拉取：第 %1$d 页 · 已 %2$d 条</string>
+    <string name="account_export_ready">导出完成：%1$d 条读数，共 %2$d 页</string>
+    <string name="account_export_share">分享文件</string>
+    <string name="account_export_chooser">分享账号导出文件</string>
+    <string name="account_export_failed">导出失败：%1$s</string>
+    <string name="account_export_retry">重试导出</string>
+
+    <string name="account_delete_title">注销账号</string>
+    <string name="account_delete_desc">永久删除服务端账号及全部设备与读数，并清空本机数据。</string>
+    <string name="account_delete_button">注销账号</string>
+    <string name="account_delete_confirm_title">确认注销账号？</string>
+    <string name="account_delete_confirm_message">设备与读数将永久删除且不可恢复。此操作无法撤销。</string>
+    <string name="account_delete_confirm_ok">永久删除</string>
+    <string name="account_delete_success">账号已注销，本机数据已清空，已回到初始匿名状态</string>
+    <string name="account_delete_failure">注销失败：%1$s</string>
+    <string name="account_error_network">网络不可用，请检查网络后重试</string>
+    <string name="account_error_generic">服务暂时不可用，请稍后重试</string>
+
+    <!-- 后台采集 -->
+    <string name="profile_collection_title">后台采集</string>
+    <string name="profile_collection_active">后台采集中：%1$s · 已采集 %2$d 条</string>
+    <string name="profile_collection_inactive">当前未在后台采集</string>
+    <string name="profile_collection_stop">停止采集</string>
+    <string name="profile_collection_desc">连接设备后在设备详情开启；由前台服务保持 notify 采集，断开自动停止。</string>
+    <string name="collection_channel_name">数据采集</string>
+    <string name="collection_channel_description">连接设备后保持后台读数采集</string>
+    <string name="collection_notification_title">正在后台采集</string>
+    <string name="collection_notification_text">%1$s · 已采集 %2$d 条</string>
+    <string name="collection_notification_stop">停止采集</string>
+    <string name="detail_collection_switch">后台采集</string>
+    <string name="detail_collection_desc">连接后保持 notify 采集；断开或退出时自动停止</string>
+    <string name="collection_start_failed">无法启动后台采集，请检查蓝牙与前台服务权限</string>
+    <string name="collection_notification_denied">通知权限未授予，采集仍在运行，但通知不会显示</string>
+    <string name="collection_requires_connection">请先连接设备再开启后台采集</string>
 </resources>

@@ -170,6 +170,10 @@ interface ReadingDao {
     @Query("UPDATE readings SET syncState = 'synced' WHERE id IN (:ids)")
     suspend fun markSynced(ids: List<String>)
 
+    /** 接管/迁移到新账号后，把本机读数全部重新排队上传。 */
+    @Query("UPDATE readings SET syncState = 'pending'")
+    suspend fun markAllPending()
+
     /** 本地只保留 7 天；pending 记录无论多旧都必须保留，避免离线数据被清掉。 */
     @Query("DELETE FROM readings WHERE recordedAt < :cutoff AND syncState = 'synced'")
     suspend fun deleteOlderThan(cutoff: Long)

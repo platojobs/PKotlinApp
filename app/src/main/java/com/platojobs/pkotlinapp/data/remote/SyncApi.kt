@@ -5,6 +5,7 @@ import com.squareup.moshi.JsonReader
 import com.squareup.moshi.JsonWriter
 import java.lang.reflect.Type
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.POST
@@ -234,6 +235,37 @@ data class SyncChangesResponse(
     val hasMore: Boolean? = null,
 )
 
+// ---- openapi 0.6.0：配对码 / 账号导出 / 注销 ----
+
+/** POST /auth/pairing-code 的返回；code 仅在本响应出现一次。 */
+data class PairingCodeResponse(
+    val code: String? = null,
+    /** RFC3339，签发后 10 分钟（服务端真值，客户端不自行推算）。 */
+    val expiresAt: String? = null,
+)
+
+data class PairingClaimRequest(val code: String)
+
+/** POST /auth/pairing-code/claim 的返回：同一 userId 的新 token。 */
+data class PairingClaimResponse(
+    val userId: String? = null,
+    val token: String? = null,
+)
+
+/**
+ * GET /me/export 的一页。
+ * user/devices/readings 保留服务端原始结构（Map），导出时原样合并写盘，
+ * cursor 是不透明串，客户端只透传、不解析。
+ */
+data class ExportPageResponse(
+    val user: Map<String, Any?>? = null,
+    val devices: List<Map<String, Any?>>? = null,
+    val readings: List<Map<String, Any?>>? = null,
+    val exportedAt: String? = null,
+    val nextCursor: String? = null,
+    val hasMore: Boolean? = null,
+)
+
 interface SyncApi {
 
     /** 匿名登录请求体按契约可为空；installId 通过 clientId 放入 push 请求。 */
@@ -293,4 +325,28 @@ interface SyncApi {
         @Path("platform") platform: String,
         @Path("externalId") externalId: String,
     ): ReadingMetricsResponse
+
+    /** 生成一次性配对码；需 Bearer。旧码会被新码立即作废。 */
+    @POST("api/v1/auth/pairing-code")
+    suspend fun createPairingCode(
+        @Header("Authorization") authorization: String,
+    ): PairingCodeResponse
+
+    /** 用配对码换取同一账号的新 token；无需鉴权。 */
+    @POST("api/v1/auth/pairing-code/claim")
+    suspend fun claimPairingCode(@Body body: PairingClaimRequest): PairingClaimResponse
+
+    /** 账号全量导出；cursor 为不透明串，仅透传。 */
+    @GET("api/v1/me/export")
+    suspend fun exportMyData(
+        @Header("Authorization") authorization: String,
+        @Query("cursor") cursor: String?,
+        @Query("limit") limit: Int,
+    ): ExportPageResponse
+
+    /** 硬删除当前账号及全部数据；成功返回 204。 */
+    @DELETE("api/v1/me")
+    suspend fun deleteMyAccount(
+        @Header("Authorization") authorization: String,
+    )
 }

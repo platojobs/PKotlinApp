@@ -1,5 +1,6 @@
 package com.platojobs.pkotlinapp.ui.detail
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothDevice
 import android.content.BroadcastReceiver
@@ -13,10 +14,10 @@ import android.provider.Settings
 import android.view.View
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import androidx.core.content.FileProvider
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -24,9 +25,10 @@ import com.google.android.material.chip.Chip
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.snackbar.Snackbar
 import com.platojobs.pkotlinapp.PKotlinApplication
-import com.platojobs.pkotlinapp.BuildConfig
 import com.platojobs.pkotlinapp.R
 import com.platojobs.pkotlinapp.data.ble.BleConnectionState
+import com.platojobs.pkotlinapp.data.collection.CollectionLauncher
+import com.platojobs.pkotlinapp.data.collection.CollectionStatus
 import com.platojobs.pkotlinapp.databinding.ActivityDeviceDetailBinding
 import com.platojobs.pkotlinapp.databinding.DialogDeviceEditBinding
 import com.platojobs.pkotlinapp.databinding.ItemReadingBinding
@@ -39,6 +41,8 @@ import com.platojobs.pkotlinapp.domain.reading.ReadingRange
 import com.platojobs.pkotlinapp.domain.reading.ReadingSummary
 import com.platojobs.pkotlinapp.ui.chart.ChartBucket
 import com.platojobs.pkotlinapp.ui.common.BlePermissions
+import com.platojobs.pkotlinapp.ui.common.FileSharing
+import com.platojobs.pkotlinapp.ui.common.NotificationPermission
 import com.platojobs.pkotlinapp.ui.common.applyBottomInset
 import com.platojobs.pkotlinapp.ui.common.applyHorizontalInsets
 import com.platojobs.pkotlinapp.ui.common.TimeFormat
@@ -69,6 +73,22 @@ class DeviceDetailActivity : AppCompatActivity() {
     private var receiverRegistered = false
     private var renderedMetricSignatures: List<String> = emptyList()
     private var renderedRangeChips = false
+    private var connectedForCollection = false
+    private var settingCollectionSwitch = false
+
+    /** Android 13+：开启采集时申请通知权限；拒绝则降级为「无通知但继续采集」。 */
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (!granted) {
+            Snackbar.make(
+                binding.root,
+                R.string.collection_notification_denied,
+                Snackbar.LENGTH_LONG,
+            ).show()
+        }
+        startCollection()
+    }
 
     /**
      * Android 16 新增的受保护系统广播：
@@ -137,9 +157,19 @@ class DeviceDetailActivity : AppCompatActivity() {
         binding.editProfileButton.setOnClickListener { showEditDeviceDialog() }
         binding.readingsPermissionButton.setOnClickListener { openAppSettings() }
         binding.readingsExportButton.setOnClickListener { viewModel.exportReadings() }
+        binding.collectionControls.collectionSwitch.setOnCheckedChangeListener { _, checked ->
+            if (settingCollectionSwitch) return@setOnCheckedChangeListener
+            viewModel.setBackgroundCollectionEnabled(checked)
+            if (checked) {
+                requestNotificationThenStartCollection()
+            } else {
+                CollectionLauncher.stop(this)
+            }
+        }
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
+                CollectionLauncher.stop(this@DeviceDetailActivity)
                 viewModel.disconnect()
                 isEnabled = false
                 finish()
@@ -165,6 +195,9 @@ class DeviceDetailActivity : AppCompatActivity() {
                 }
                 launch {
                     viewModel.export.collect { state -> renderExport(state) }
+                }
+                launch {
+                    viewModel.collectionStatus.collect { status -> renderCollectionStatus(status) }
                 }
             }
         }
@@ -213,6 +246,74 @@ class DeviceDetailActivity : AppCompatActivity() {
         binding.disconnectButton.visibility =
             if (connected || connecting) View.VISIBLE else View.GONE
         binding.keyMissingCard.visibility = if (keyMissing) View.VISIBLE else View.GONE
+
+        // 后台采集开关只在连接态可见；连接成功时若开关已持久化为开启，自动恢复服务。
+        renderCollectionSwitch(connected)
+        if (connected && !connectedForCollection) {
+            connectedForCollection = true
+            if (viewModel.backgroundCollection.value) requestNotificationThenStartCollection()
+        }
+        if (!connected) {
+            CollectionLauncher.stop(this)
+        }
+        connectedForCollection = connected
+    }
+
+    private fun renderCollectionSwitch(connected: Boolean) {
+        binding.collectionControls.collectionSwitch.visibility = if (connected) View.VISIBLE else View.GONE
+        binding.collectionControls.collectionHint.visibility = if (connected) View.VISIBLE else View.GONE
+        settingCollectionSwitch = true
+        binding.collectionControls.collectionSwitch.isChecked = viewModel.backgroundCollection.value
+        settingCollectionSwitch = false
+    }
+
+    private fun renderCollectionStatus(status: CollectionStatus) {
+        binding.collectionControls.collectionHint.text = if (status.active) {
+            getString(R.string.profile_collection_active, status.deviceName, status.count)
+        } else {
+            getString(R.string.detail_collection_desc)
+        }
+    }
+
+    /** Android 13+ 先申请通知权限；拒绝后仍启动服务（前台服务可运行，只是通知不可见）。 */
+    private fun requestNotificationThenStartCollection() {
+        if (NotificationPermission.requiresRuntimePermission()) {
+            if (!NotificationPermission.isGranted(this)) {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                return
+            }
+        }
+        startCollection()
+    }
+
+    private fun startCollection() {
+        if (isFinishing || isDestroyed) return
+        if (!connectedForCollection) {
+            Snackbar.make(
+                binding.root,
+                R.string.collection_requires_connection,
+                Snackbar.LENGTH_LONG,
+            ).show()
+            return
+        }
+        val result = CollectionLauncher.start(this, mac, deviceName)
+        if (!result.started) {
+            viewModel.setBackgroundCollectionEnabled(false)
+            settingCollectionSwitch = true
+            binding.collectionControls.collectionSwitch.isChecked = false
+            settingCollectionSwitch = false
+            Snackbar.make(
+                binding.root,
+                R.string.collection_start_failed,
+                Snackbar.LENGTH_LONG,
+            ).show()
+        } else if (!result.notificationsGranted) {
+            Snackbar.make(
+                binding.root,
+                R.string.collection_notification_denied,
+                Snackbar.LENGTH_LONG,
+            ).show()
+        }
     }
 
     private fun renderRssi(value: Int?) {
@@ -478,18 +579,11 @@ class DeviceDetailActivity : AppCompatActivity() {
     }
 
     private fun shareCsv(file: File) {
-        val uri = FileProvider.getUriForFile(
-            this,
-            "${BuildConfig.APPLICATION_ID}.fileprovider",
-            file,
-        )
-        val intent = Intent(Intent.ACTION_SEND).apply {
-            type = "text/csv"
-            putExtra(Intent.EXTRA_STREAM, uri)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        startActivity(
-            Intent.createChooser(intent, getString(R.string.detail_export_share_title)),
+        FileSharing.share(
+            activity = this,
+            file = file,
+            mimeType = "text/csv",
+            chooserTitle = getString(R.string.detail_export_share_title),
         )
     }
 

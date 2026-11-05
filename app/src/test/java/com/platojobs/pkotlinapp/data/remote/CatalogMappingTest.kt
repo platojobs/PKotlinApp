@@ -80,6 +80,20 @@ class CatalogMappingTest {
             platform: String,
             externalId: String,
         ): ReadingMetricsResponse = ReadingMetricsResponse()
+
+        override suspend fun createPairingCode(authorization: String): PairingCodeResponse =
+            PairingCodeResponse()
+
+        override suspend fun claimPairingCode(body: PairingClaimRequest): PairingClaimResponse =
+            PairingClaimResponse()
+
+        override suspend fun exportMyData(
+            authorization: String,
+            cursor: String?,
+            limit: Int,
+        ): ExportPageResponse = ExportPageResponse()
+
+        override suspend fun deleteMyAccount(authorization: String) = Unit
     }
 
     private class FakeApi(

@@ -30,8 +30,9 @@ class SecureTokenStore(context: Context) : TokenStore {
         prefs.edit { putString(KEY_TOKEN, token) }
     }
 
+    /** 注销账号时整体清空 EncryptedSharedPreferences（含 token 与其它鉴权字段）。 */
     override fun clear() {
-        prefs.edit { remove(KEY_TOKEN) }
+        prefs.edit { clear() }
     }
 
     private companion object {

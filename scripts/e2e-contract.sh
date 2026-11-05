@@ -107,4 +107,4 @@ if [[ "$STATUS" -ne 0 ]]; then
     fail "契约联调用例未通过（exit=$STATUS）"
 fi
 
-echo "[E2E] 通过：fixture @ ${BASE_URL}，匿名登录 / push / changes / 幂等重放 / LWW 冲突 / 401 / 跨用户 404 全部通过"
+echo "[E2E] 通过：fixture @ ${BASE_URL}，匿名登录 / push / changes / 幂等重放 / LWW 冲突 / 401 / 跨用户 404 / 配对码 / 导出分页 / 注销 全部通过"

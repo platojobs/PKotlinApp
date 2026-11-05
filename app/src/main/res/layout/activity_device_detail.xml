@@ -108,6 +108,12 @@
                             android:visibility="gone" />
                     </LinearLayout>
 
+                    <include
+                        android:id="@+id/collectionControls"
+                        layout="@layout/detail_collection_controls"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content" />
+
                 </LinearLayout>
 
             </com.google.android.material.card.MaterialCardView>

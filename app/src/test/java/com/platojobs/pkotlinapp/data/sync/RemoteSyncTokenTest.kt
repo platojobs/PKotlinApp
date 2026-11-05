@@ -1,6 +1,10 @@
 package com.platojobs.pkotlinapp.data.sync
 
 import com.platojobs.pkotlinapp.data.remote.AnonymousLoginResponse
+import com.platojobs.pkotlinapp.data.remote.ExportPageResponse
+import com.platojobs.pkotlinapp.data.remote.PairingClaimRequest
+import com.platojobs.pkotlinapp.data.remote.PairingClaimResponse
+import com.platojobs.pkotlinapp.data.remote.PairingCodeResponse
 import com.platojobs.pkotlinapp.data.remote.ReadingMetricsResponse
 import com.platojobs.pkotlinapp.data.remote.ReadingPageResponse
 import com.platojobs.pkotlinapp.data.remote.ReadingSeriesResponse
@@ -98,6 +102,20 @@ class RemoteSyncTokenTest {
             platform: String,
             externalId: String,
         ): ReadingMetricsResponse = ReadingMetricsResponse()
+
+        override suspend fun createPairingCode(authorization: String): PairingCodeResponse =
+            PairingCodeResponse()
+
+        override suspend fun claimPairingCode(body: PairingClaimRequest): PairingClaimResponse =
+            PairingClaimResponse()
+
+        override suspend fun exportMyData(
+            authorization: String,
+            cursor: String?,
+            limit: Int,
+        ): ExportPageResponse = ExportPageResponse()
+
+        override suspend fun deleteMyAccount(authorization: String) = Unit
     }
 
     private fun httpError(code: Int) = HttpException(

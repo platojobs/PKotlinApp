@@ -220,6 +220,10 @@ class ReadingRepositoryTest {
             }
         }
 
+        override suspend fun markAllPending() {
+            stored.replaceAll { it.copy(syncState = Reading.SYNC_STATE_PENDING) }
+        }
+
         override suspend fun deleteOlderThan(cutoff: Long) {
             lastCutoff = cutoff
             // 与 Room 查询语义保持一致：仅删除已同步且超过保留期的记录。

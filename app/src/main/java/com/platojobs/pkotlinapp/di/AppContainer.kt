@@ -1,8 +1,11 @@
 package com.platojobs.pkotlinapp.di
 
 import android.content.Context
+import com.platojobs.pkotlinapp.data.account.AccountService
+import com.platojobs.pkotlinapp.data.account.RemoteAccountDataSource
 import com.platojobs.pkotlinapp.data.ble.BleConnectionManager
 import com.platojobs.pkotlinapp.data.ble.BleScanner
+import com.platojobs.pkotlinapp.data.collection.CollectionSession
 import com.platojobs.pkotlinapp.data.local.AppDatabase
 import com.platojobs.pkotlinapp.data.notification.AlertNotifier
 import com.platojobs.pkotlinapp.data.notification.AlertStatePrefs
@@ -45,6 +48,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import java.io.File
 
 class AppContainer(context: Context) {
 
@@ -115,12 +119,33 @@ class AppContainer(context: Context) {
 
     val bleScanner: BleScanner by lazy { BleScanner(appContext) }
 
+    /** 后台采集会话：前台服务与「我的」状态共用同一事实源。 */
+    val collectionSession: CollectionSession = CollectionSession()
+
     val bleConnectionManager: BleConnectionManager by lazy {
         BleConnectionManager(appContext) { deviceId, sample ->
             ioScope.launch {
                 readingRepository.record(deviceId, sample)
+                collectionSession.record(deviceId)
             }
         }
+    }
+
+    /** 账号迁移 / 导出 / 注销；远端失败时本地数据不会被清理。 */
+    val accountService: AccountService by lazy {
+        AccountService(
+            remote = RemoteAccountDataSource(api = syncApi, tokenStore = secureTokenStore),
+            tokenStore = secureTokenStore,
+            cursorStore = syncPrefs,
+            resetSyncStatus = { syncStatusStore.resetForRelogin() },
+            markAllPending = {
+                database.deviceDao().markAllPending()
+                database.readingDao().markAllPending()
+            },
+            wipeLocalData = { database.clearAllTables() },
+            exportDir = File(appContext.cacheDir, "exports"),
+            moshi = ApiClient.moshi(),
+        )
     }
 
     val settings: AppSettings by lazy { AppSettings(appContext) }

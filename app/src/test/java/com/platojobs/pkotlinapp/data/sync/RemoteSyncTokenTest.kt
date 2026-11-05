@@ -11,6 +11,7 @@ import com.platojobs.pkotlinapp.data.remote.ReadingSeriesResponse
 import com.platojobs.pkotlinapp.data.remote.ReadingSummaryResponse
 import com.platojobs.pkotlinapp.data.remote.SyncApi
 import com.platojobs.pkotlinapp.data.remote.SyncChangesResponse
+import com.platojobs.pkotlinapp.data.remote.SyncDeviceDto
 import com.platojobs.pkotlinapp.data.remote.SyncPushRequest
 import com.platojobs.pkotlinapp.data.remote.SyncPushResponse
 import com.platojobs.pkotlinapp.domain.sync.AuthExpiredException
@@ -134,6 +135,89 @@ class RemoteSyncTokenTest {
         ): ExportPageResponse = ExportPageResponse()
 
         override suspend fun deleteMyAccount(authorization: String) = Unit
+
+        override suspend fun households(
+            authorization: String,
+        ): com.platojobs.pkotlinapp.data.remote.HouseholdListResponse =
+            com.platojobs.pkotlinapp.data.remote.HouseholdListResponse()
+
+        override suspend fun createHousehold(
+            authorization: String,
+            body: com.platojobs.pkotlinapp.data.remote.HouseholdCreateRequest,
+        ): com.platojobs.pkotlinapp.data.remote.HouseholdDto =
+            com.platojobs.pkotlinapp.data.remote.HouseholdDto()
+
+        override suspend fun household(
+            authorization: String,
+            id: String,
+        ): com.platojobs.pkotlinapp.data.remote.HouseholdDto =
+            com.platojobs.pkotlinapp.data.remote.HouseholdDto()
+
+        override suspend fun patchHousehold(
+            authorization: String,
+            id: String,
+            body: com.platojobs.pkotlinapp.data.remote.HouseholdPatchRequest,
+        ): com.platojobs.pkotlinapp.data.remote.HouseholdDto =
+            com.platojobs.pkotlinapp.data.remote.HouseholdDto()
+
+        override suspend fun deleteHousehold(authorization: String, id: String) = Unit
+
+        override suspend fun myDevices(
+            authorization: String,
+        ): com.platojobs.pkotlinapp.data.remote.MyDevicesResponse =
+            com.platojobs.pkotlinapp.data.remote.MyDevicesResponse()
+
+        override suspend fun patchMyDevice(
+            authorization: String,
+            platform: String,
+            externalId: String,
+            body: com.platojobs.pkotlinapp.data.remote.DeviceMetaPatchRequest,
+        ): SyncDeviceDto = SyncDeviceDto()
+
+        override suspend fun householdMembers(
+            authorization: String,
+            id: String,
+        ): com.platojobs.pkotlinapp.data.remote.HouseholdMemberListResponse =
+            com.platojobs.pkotlinapp.data.remote.HouseholdMemberListResponse()
+
+        override suspend fun createHouseholdInvitation(
+            authorization: String,
+            id: String,
+        ): com.platojobs.pkotlinapp.data.remote.HouseholdInvitationDto =
+            com.platojobs.pkotlinapp.data.remote.HouseholdInvitationDto()
+
+        override suspend fun claimHouseholdInvitation(
+            authorization: String,
+            body: com.platojobs.pkotlinapp.data.remote.HouseholdInvitationClaimRequest,
+        ): com.platojobs.pkotlinapp.data.remote.HouseholdDto =
+            com.platojobs.pkotlinapp.data.remote.HouseholdDto()
+
+        override suspend fun householdRooms(
+            authorization: String,
+            id: String,
+        ): com.platojobs.pkotlinapp.data.remote.HouseholdRoomListResponse =
+            com.platojobs.pkotlinapp.data.remote.HouseholdRoomListResponse()
+
+        override suspend fun createHouseholdRoom(
+            authorization: String,
+            id: String,
+            body: com.platojobs.pkotlinapp.data.remote.HouseholdRoomCreateRequest,
+        ): com.platojobs.pkotlinapp.data.remote.HouseholdRoomDto =
+            com.platojobs.pkotlinapp.data.remote.HouseholdRoomDto()
+
+        override suspend fun patchHouseholdRoom(
+            authorization: String,
+            id: String,
+            roomId: String,
+            body: com.platojobs.pkotlinapp.data.remote.HouseholdRoomPatchRequest,
+        ): com.platojobs.pkotlinapp.data.remote.HouseholdRoomDto =
+            com.platojobs.pkotlinapp.data.remote.HouseholdRoomDto()
+
+        override suspend fun deleteHouseholdRoom(
+            authorization: String,
+            id: String,
+            roomId: String,
+        ) = Unit
     }
 
     private fun httpError(code: Int, body: String = "") = HttpException(

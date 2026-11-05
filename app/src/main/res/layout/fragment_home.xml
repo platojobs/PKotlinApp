@@ -12,6 +12,24 @@
         android:layout_height="match_parent"
         android:orientation="vertical">
 
+        <HorizontalScrollView
+            android:id="@+id/householdScroll"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:clipToPadding="false"
+            android:paddingStart="@dimen/page_margin"
+            android:paddingTop="@dimen/space_8"
+            android:paddingEnd="@dimen/page_margin"
+            android:scrollbars="none"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:id="@+id/householdChips"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal" />
+        </HorizontalScrollView>
+
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

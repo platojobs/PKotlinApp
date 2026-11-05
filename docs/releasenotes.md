@@ -6,6 +6,19 @@
 
 ---
 
+## v0.14.0
+
+**主题：家庭接上后端，房间归属家庭并支持成员共享**
+
+- 数据模型：Room v12（`MIGRATION_11_12`）新增 `households(id, remoteId 唯一, name, isPersonal, role, memberCount, deviceCount, sortOrder, createdAt)`；`rooms` 增加可空 `remoteId`、`householdId`；`devices` 增加可空 `householdId`、`remoteRoomId`、`pendingRoomPatch`、`pendingRoomLocalId`、`pendingHouseholdRemoteId`、`shared`。`HouseholdMigrationTest` 用真实 SQLite 验证 v11 → v12 后本机房间与设备归属原样保留。
+- 映射取舍：设备房间归属用反规范化 `devices.remoteRoomId`（配合本机 `roomId`），而不是独立映射表；归属是设备上的单一可选属性，服务端 PATCH 按设备粒度，映射表会制造第二份真值且需要额外级联清理。
+- 拉取与切换：`HouseholdSyncer` 挂到 `SyncManager` 冷启动 / 手动同步 / 重登；`GET /households` 落库并持久化当前家庭，失效回落个人家庭；切换家庭只拉该家庭房间与设备，其他家庭缓存不受影响。
+- 迁移合并：首次接入按规范化名称（trim/小写/合并空白）认领服务端同名房间并保留本机 `id`（设备归属不丢）；匹配不到的按本地 `sortOrder` 逐条上传；剩余服务端房间插入本机；只有已映射却被服务端删除的房间才在本机移除。策略幂等，`planRoomMerge` 单测覆盖认领/上传/插入/移除与大小写空白去重。
+- 上报：设备房间归属只走 `PATCH /my/devices/{platform}/{externalId}`（三态 roomId/householdId），不进 `POST /sync/push`，避免与 LWW 冲突；本地乐观更新 + `pendingRoomPatch`，网络失败下次重试，4xx 清 pending 并回读服务端撤销。
+- 共享设备：成员设备以 `shared:<platform>:<externalId>` 只读展示真实别名与房间，不参与 push / 改房间，不再返回时自动清理。
+- UI：我的页家庭管理（当前家庭与角色、成员列表、创建家庭、8 位邀请码 + 服务端 `expiresAt` 倒计时 + 复制 + 过期重新生成、加入家庭复用配对码规范化与 404/429 文案）；首页仅在家庭数 > 1 时显示横向家庭 Chip；服务端房间为权威来源，未上传房间与离线显示「未同步」；403/404/429/离线降级为可读提示，不弹原始错误码、不整页报错。
+- 测试与 CI：新增 `HouseholdMigrationTest`、`HouseholdRulesTest`；fixture 与真 Postgres e2e 均覆盖「创建家庭 → 8 位一次性邀请码 → 第二账号领取 → 成员看到 owner 设备真实房间 → member 改房间 403 → 跨家庭 404」；单测 235 全绿，`lintDebug` 0 issue，`assembleDebug`、两套 e2e 全绿；tag `v0.14.0`。
+
 ## v0.13.0
 
 **主题：本机房间与首页分区（对齐米家「家庭 / 房间」结构）**

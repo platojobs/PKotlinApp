@@ -136,6 +136,36 @@ class DeviceAliasPersistenceTest {
             }
         }
 
+        override suspend fun queueRoomAssignment(
+            mac: String,
+            roomId: Long?,
+            remoteRoomId: String?,
+            pendingLocalId: Long?,
+            householdRemoteId: String?,
+        ) = Unit
+
+        override suspend fun pendingRoomPatches(): List<DeviceEntity> = emptyList()
+
+        override suspend fun finishRoomPatch(mac: String) = Unit
+
+        override suspend fun applyServerMeta(
+            mac: String,
+            householdId: Long?,
+            remoteRoomId: String?,
+            roomId: Long?,
+        ) = Unit
+
+        override suspend fun sharedDevicesForHousehold(householdId: Long): List<DeviceEntity> =
+            emptyList()
+
+        override suspend fun deleteByMacs(macs: List<String>) = Unit
+
+        override suspend fun deleteShared() = Unit
+
+        override suspend fun clearHouseholdAssignments(householdId: Long) = Unit
+
+        override suspend fun clearHouseholdLinks() = Unit
+
         override suspend fun tombstone(mac: String, timestamp: Long) {
             rows[mac]?.let {
                 rows[mac] = it.copy(

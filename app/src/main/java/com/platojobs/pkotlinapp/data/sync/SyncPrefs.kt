@@ -30,10 +30,18 @@ class SyncPrefs(context: Context) : SyncCursorStore {
             return generated
         }
 
+    /** 当前家庭的服务端 UUID；null 表示尚未选择（首次同步后自动落到个人家庭）。 */
+    var currentHouseholdRemoteId: String?
+        get() = prefs.getString(KEY_CURRENT_HOUSEHOLD, null)
+        set(value) {
+            prefs.edit { putString(KEY_CURRENT_HOUSEHOLD, value) }
+        }
+
     private companion object {
         const val PREFS_NAME = "sync_state"
         const val KEY_CURSOR = "cursor"
         const val KEY_INSTALL_ID = "install_id"
+        const val KEY_CURRENT_HOUSEHOLD = "current_household"
     }
 }
 

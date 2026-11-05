@@ -48,9 +48,70 @@ interface DeviceDao {
     @Query("UPDATE devices SET roomId = :roomId WHERE mac = :mac")
     suspend fun assignRoom(mac: String, roomId: Long?)
 
+    /**
+     * 房间归属变更：立即更新本地展示，并标记待上报。
+     * [pendingLocalId] 为空表示清空房间（PATCH roomId=""）；[householdRemoteId] 随请求上报。
+     */
+    @Query(
+        "UPDATE devices SET roomId = :roomId, remoteRoomId = :remoteRoomId, " +
+            "pendingRoomPatch = 1, pendingRoomLocalId = :pendingLocalId, " +
+            "pendingHouseholdRemoteId = :householdRemoteId WHERE mac = :mac",
+    )
+    suspend fun queueRoomAssignment(
+        mac: String,
+        roomId: Long?,
+        remoteRoomId: String?,
+        pendingLocalId: Long?,
+        householdRemoteId: String?,
+    )
+
+    @Query(
+        "SELECT * FROM devices WHERE pendingRoomPatch = 1 AND deletedAt IS NULL " +
+            "ORDER BY lastSeenTimestamp ASC",
+    )
+    suspend fun pendingRoomPatches(): List<DeviceEntity>
+
+    @Query(
+        "UPDATE devices SET pendingRoomPatch = 0, pendingRoomLocalId = NULL, " +
+            "pendingHouseholdRemoteId = NULL WHERE mac = :mac",
+    )
+    suspend fun finishRoomPatch(mac: String)
+
+    /** 服务端设备快照：待上报的房间变更优先，不能被拉取覆盖；本机 pending 设备也不能被误标已同步。 */
+    @Query(
+        "UPDATE devices SET householdId = :householdId, remoteRoomId = :remoteRoomId, " +
+            "roomId = CASE WHEN pendingRoomPatch = 1 THEN roomId ELSE :roomId END, " +
+            "syncState = CASE WHEN syncState = 'pending' THEN syncState ELSE 'synced' END " +
+            "WHERE mac = :mac",
+    )
+    suspend fun applyServerMeta(mac: String, householdId: Long?, remoteRoomId: String?, roomId: Long?)
+
+    @Query("SELECT * FROM devices WHERE shared = 1 AND householdId = :householdId")
+    suspend fun sharedDevicesForHousehold(householdId: Long): List<DeviceEntity>
+
+    @Query("DELETE FROM devices WHERE mac IN (:macs)")
+    suspend fun deleteByMacs(macs: List<String>)
+
     /** 删除房间前把房间内设备回到未分配，避免悬空 roomId。 */
     @Query("UPDATE devices SET roomId = NULL WHERE roomId = :roomId")
     suspend fun clearRoomAssignments(roomId: Long)
+
+    @Query("DELETE FROM devices WHERE shared = 1")
+    suspend fun deleteShared()
+
+    /** 家庭被移除/退出后，清除该家庭下的设备归属，避免悬空 house/房间引用。 */
+    @Query(
+        "UPDATE devices SET householdId = NULL, roomId = NULL, remoteRoomId = NULL " +
+            "WHERE householdId = :householdId",
+    )
+    suspend fun clearHouseholdAssignments(householdId: Long)
+
+    /** 重新登录 / 切换账号时清空家庭与远端房间缓存，本机房间保留并等待重新合并。 */
+    @Query(
+        "UPDATE devices SET householdId = NULL, remoteRoomId = NULL, pendingRoomPatch = 0, " +
+            "pendingRoomLocalId = NULL, pendingHouseholdRemoteId = NULL",
+    )
+    suspend fun clearHouseholdLinks()
 
     @Query("SELECT * FROM devices WHERE syncState = 'pending' ORDER BY updatedAt ASC LIMIT :limit")
     suspend fun pendingDevices(limit: Int): List<DeviceEntity>
@@ -97,7 +158,7 @@ interface DeviceDao {
     suspend fun deleteByExternalId(externalId: String)
 }
 
-/** 本地房间 DAO：房间与设备归属仅存本机。 */
+/** 本地房间 DAO：remoteId 为空表示仅存本机、尚未同步。 */
 @Dao
 interface RoomDao {
 
@@ -107,14 +168,87 @@ interface RoomDao {
     @Query("SELECT * FROM rooms ORDER BY sortOrder ASC, createdAt ASC, id ASC")
     suspend fun getRooms(): List<RoomEntity>
 
+    @Query("SELECT * FROM rooms WHERE householdId = :householdId OR householdId IS NULL " +
+        "ORDER BY sortOrder ASC, createdAt ASC, id ASC")
+    suspend fun getRoomsForHousehold(householdId: Long): List<RoomEntity>
+
+    @Query("SELECT * FROM rooms WHERE id = :id LIMIT 1")
+    suspend fun find(id: Long): RoomEntity?
+
+    @Query("SELECT * FROM rooms WHERE remoteId = :remoteId LIMIT 1")
+    suspend fun findByRemoteId(remoteId: String): RoomEntity?
+
     @Insert
     suspend fun insert(room: RoomEntity): Long
 
     @Query("UPDATE rooms SET name = :name WHERE id = :id")
     suspend fun rename(id: Long, name: String)
 
+    @Query(
+        "UPDATE rooms SET remoteId = :remoteId, householdId = :householdId, " +
+            "sortOrder = :sortOrder WHERE id = :id",
+    )
+    suspend fun linkRemote(id: Long, remoteId: String, householdId: Long, sortOrder: Int)
+
+    /** 服务端仍是权威名称与顺序时更新本地缓存，但保留本地 id 以维持设备归属。 */
+    @Query("UPDATE rooms SET name = :name, sortOrder = :sortOrder WHERE id = :id")
+    suspend fun updateFromServer(id: Long, name: String, sortOrder: Int)
+
+    /** v12 迁移后的旧房间还没有家庭归属，首次同步归入当前家庭。 */
+    @Query("UPDATE rooms SET householdId = :householdId WHERE householdId IS NULL")
+    suspend fun adoptOrphanRooms(householdId: Long)
+
     @Query("DELETE FROM rooms WHERE id = :id")
     suspend fun delete(id: Long)
+
+    @Query("DELETE FROM rooms WHERE householdId = :householdId")
+    suspend fun deleteForHousehold(householdId: Long)
+
+    /** 重新登录后清空远端映射，本机房间保留并等待重新上传。 */
+    @Query("UPDATE rooms SET remoteId = NULL, householdId = NULL")
+    suspend fun clearRemoteLinks()
+}
+
+/** 本地家庭 DAO。 */
+@Dao
+interface HouseholdDao {
+
+    @Query("SELECT * FROM households ORDER BY isPersonal DESC, sortOrder ASC, id ASC")
+    fun observeHouseholds(): Flow<List<HouseholdEntity>>
+
+    @Query("SELECT * FROM households ORDER BY isPersonal DESC, sortOrder ASC, id ASC")
+    suspend fun getAll(): List<HouseholdEntity>
+
+    @Query("SELECT * FROM households WHERE remoteId = :remoteId LIMIT 1")
+    suspend fun findByRemoteId(remoteId: String): HouseholdEntity?
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insert(household: HouseholdEntity): Long
+
+    @Query(
+        "UPDATE households SET name = :name, isPersonal = :isPersonal, role = :role, " +
+            "memberCount = :memberCount, deviceCount = :deviceCount, " +
+            "sortOrder = :sortOrder, createdAt = :createdAt WHERE id = :id",
+    )
+    suspend fun update(
+        id: Long,
+        name: String,
+        isPersonal: Boolean,
+        role: String,
+        memberCount: Int,
+        deviceCount: Int,
+        sortOrder: Int,
+        createdAt: Long,
+    )
+
+    @Query("DELETE FROM households WHERE remoteId NOT IN (:remoteIds)")
+    suspend fun deleteMissing(remoteIds: List<String>)
+
+    @Query("DELETE FROM households WHERE id = :id")
+    suspend fun delete(id: Long)
+
+    @Query("DELETE FROM households")
+    suspend fun clear()
 }
 
 /** 指标聚合行：离线时替代服务端 `/readings/metrics` 的本地兜底。 */

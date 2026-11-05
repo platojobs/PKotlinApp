@@ -69,6 +69,13 @@ class DeviceRepositoryImpl(
                 group = device.group ?: existing?.group,
                 // 房间归属只由 assignRoom 修改；扫描/编辑设备时保留原值。
                 roomId = existing?.roomId ?: device.roomId,
+                householdId = device.householdId ?: existing?.householdId,
+                remoteRoomId = device.remoteRoomId ?: existing?.remoteRoomId,
+                pendingRoomPatch = device.pendingRoomPatch || existing?.pendingRoomPatch == true,
+                pendingRoomLocalId = existing?.pendingRoomLocalId ?: device.pendingRoomLocalId,
+                pendingHouseholdRemoteId =
+                    existing?.pendingHouseholdRemoteId ?: device.pendingHouseholdRemoteId,
+                shared = existing?.shared ?: device.shared,
                 deviceType = device.deviceType ?: existing?.deviceType,
                 deviceTypeName = device.deviceTypeName ?: existing?.deviceTypeName,
                 vendor = device.vendor ?: existing?.vendor,
@@ -263,6 +270,10 @@ private fun DeviceEntity.toDomain() = Device(
     aliasDirty = aliasDirty,
     createdAt = createdAt,
     roomId = roomId,
+    householdId = householdId,
+    remoteRoomId = remoteRoomId,
+    shared = shared,
+    pendingRoomPatch = pendingRoomPatch,
 )
 
 private fun Device.toEntity() = DeviceEntity(
@@ -286,6 +297,12 @@ private fun Device.toEntity() = DeviceEntity(
     aliasDirty = aliasDirty,
     createdAt = createdAt,
     roomId = roomId,
+    householdId = householdId,
+    remoteRoomId = remoteRoomId,
+    pendingRoomPatch = pendingRoomPatch,
+    pendingRoomLocalId = pendingRoomLocalId,
+    pendingHouseholdRemoteId = pendingHouseholdRemoteId,
+    shared = shared,
 )
 
 private fun RuleEntity.toDomain() = DeviceRule(
@@ -374,4 +391,6 @@ private fun RoomEntity.toDomain() = Room(
     name = name,
     sortOrder = sortOrder,
     createdAt = createdAt,
+    remoteId = remoteId,
+    householdId = householdId,
 )

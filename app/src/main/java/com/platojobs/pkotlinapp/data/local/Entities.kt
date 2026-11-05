@@ -33,17 +33,50 @@ data class DeviceEntity(
     @ColumnInfo(defaultValue = "0") val aliasDirty: Boolean = false,
     // 首次添加时间（只写一次），供「按添加时间」排序；历史数据迁移时回填 lastSeenTimestamp。
     @ColumnInfo(defaultValue = "0") val createdAt: Long = 0,
-    // 本地房间归属；null 表示未分配。仅本机维护，不参与云端同步。
+    // 本地房间归属；null 表示未分配。
     val roomId: Long? = null,
+    // 设备所属家庭（households.id）；null 表示旧数据，首次家庭同步后回填。
+    val householdId: Long? = null,
+    // 服务端房间 UUID；与本地 roomId 并存，避免多一次映射表 join。
+    val remoteRoomId: String? = null,
+    // 房间变更待上报：1 表示下次同步需要 PATCH /my/devices。
+    @ColumnInfo(defaultValue = "0") val pendingRoomPatch: Boolean = false,
+    // 待上报的目标本地房间 id；null 且 pendingRoomPatch=1 表示清空房间归属。
+    val pendingRoomLocalId: Long? = null,
+    // 待上报的家庭 UUID；null 表示不带 householdId 字段。
+    val pendingHouseholdRemoteId: String? = null,
+    // 是否为其他家庭成员共享的设备（只读，不参与 push）。
+    @ColumnInfo(defaultValue = "0") val shared: Boolean = false,
 )
 
-/** 本地房间：仅本机维护，不参与云端同步。 */
+/** 本地家庭：remoteId 为服务端 UUID；id 为本地自增，供房间/设备外键引用。 */
+@Entity(
+    tableName = "households",
+    indices = [Index(value = ["remoteId"], unique = true)],
+)
+data class HouseholdEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val remoteId: String,
+    val name: String,
+    @ColumnInfo(defaultValue = "0") val isPersonal: Boolean,
+    val role: String,
+    @ColumnInfo(defaultValue = "0") val memberCount: Int,
+    @ColumnInfo(defaultValue = "0") val deviceCount: Int,
+    @ColumnInfo(defaultValue = "0") val sortOrder: Int,
+    @ColumnInfo(defaultValue = "0") val createdAt: Long,
+)
+
+/** 本地房间：remoteId 为空表示仅存本机、尚未同步。 */
 @Entity(tableName = "rooms")
 data class RoomEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val name: String,
     @ColumnInfo(defaultValue = "0") val sortOrder: Int,
     val createdAt: Long,
+    // 服务端房间 UUID；null 表示本机新建、尚未上传。
+    val remoteId: String? = null,
+    // 所属家庭（households.id）；null 表示 v12 迁移前的旧房间，首次家庭同步时归入当前家庭。
+    val householdId: Long? = null,
 )
 
 /**

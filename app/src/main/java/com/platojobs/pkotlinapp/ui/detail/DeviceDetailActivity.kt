@@ -14,6 +14,7 @@ import android.provider.Settings
 import android.view.View
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -212,6 +213,12 @@ class DeviceDetailActivity : AppCompatActivity() {
                 launch {
                     combine(viewModel.rooms, viewModel.roomId) { rooms, roomId -> rooms to roomId }
                         .collect { (rooms, roomId) -> renderRoom(rooms, roomId) }
+                }
+                launch {
+                    // 403/离线等房间操作失败统一转成可读提示。
+                    viewModel.roomMessages.collect { message ->
+                        Toast.makeText(this@DeviceDetailActivity, message, Toast.LENGTH_SHORT).show()
+                    }
                 }
             }
         }

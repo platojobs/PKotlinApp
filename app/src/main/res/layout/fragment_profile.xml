@@ -516,6 +516,12 @@
         </com.google.android.material.card.MaterialCardView>
 
         <include
+            android:id="@+id/householdSection"
+            layout="@layout/fragment_profile_household"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" />
+
+        <include
             android:id="@+id/accountSection"
             layout="@layout/fragment_profile_account"
             android:layout_width="match_parent"

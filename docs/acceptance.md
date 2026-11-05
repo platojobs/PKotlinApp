@@ -1,9 +1,9 @@
-# 真机验收清单（v0.11.0）
+# 真机验收清单（v0.14.0）
 
 本清单用于「执行人不在开发现场」时也能照着做完验收。每项都写明**操作步骤、预期现象、失败判定**。
 所有结果请记录到文末的「验收记录表」；未实际执行的项不要填 PASS。
 
-- 适用版本：`versionName = 0.10.0`（`versionCode = 18`）
+- 适用版本：`versionName = 0.14.0`（`versionCode = 22`）
 - 应用包名：`com.platojobs.pkotlinapp`
 - 主界面：`com.platojobs.pkotlinapp.ui.MainActivity`
 - 设备详情：`com.platojobs.pkotlinapp.ui.detail.DeviceDetailActivity`
@@ -467,6 +467,21 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
 - 预期：`user_version = 11`；设备数量与 `deviceGroup` 不变，`roomId` 全为 `NULL`；`rooms` 表存在且新建后排序从 0 递增；旧设备升级后无需重新扫描。
 - 失败判定：版本不是 11、设备丢失、`deviceGroup` 被清空、`roomId` 非空或 `rooms` 表缺失。
 
+### M9 v11 → v12 家庭迁移（v0.14.0 新增）
+
+- 前置：v0.13.0 包（Room v11）中已有两个本机房间（如「客厅」「卧室」），客厅内至少一台设备。
+- 步骤：
+  1. 覆盖安装 v0.14.0（先不联网），打开首页确认两个房间与设备归属仍在；
+  2. 导出数据库查询：
+     ```bash
+     sqlite3 /tmp/device_dashboard.db "PRAGMA user_version;"
+     sqlite3 /tmp/device_dashboard.db "SELECT id, name, sortOrder, remoteId, householdId FROM rooms;"
+     sqlite3 /tmp/device_dashboard.db "SELECT mac, roomId, householdId, remoteRoomId, pendingRoomPatch, shared FROM devices;"
+     ```
+  3. 恢复网络并登录/同步，再次查看首页与本机数据。
+- 预期：`user_version = 12`；两个房间仍在，`remoteId/householdId` 迁移后为 `NULL`，设备 `roomId` 指向原房间；联网合并后同名服务端房间被认领、其余房间被上传获得 `remoteId`，设备归属不变；`households` 出现至少一条记录。
+- 失败判定：版本不是 12、房间或设备归属丢失、联网后本机房间被静默删除、`households` 为空。
+
 ### 7.2 离线缓存与分组验收（v0.3.5 新增）
 
 前置：后端可用、目标 BLE 设备已在「设备」列表；准备一台**已注册型号**和一台**未注册型号**（后者可人为把 `deviceType` 写成不存在的键）。
@@ -710,6 +725,28 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
 9. **删除后落点**：`sqlite3 /tmp/device_dashboard.db "SELECT mac, roomId FROM devices;"` 确认原房间内设备 `roomId` 为 `NULL`。
 - 失败判定：房间增删改不同步首页；删除房间后设备消失或仍指向已删房间；未分配未固定最后；搜索仍按房间分段或折叠隐藏结果；空态文案与真实数据不符。
 
+### 7.20 家庭、邀请码、成员共享与权限降级验收（v0.14.0 新增）
+
+前置：后端 PJGoIoT v0.12.0 及以上可用；准备两个可独立登录的客户端（手机 A = 家庭 owner，手机 B = 待加入的 member），两台手机都能访问同一后端。
+
+1. **当前家庭与成员**：手机 A「我的」→ 家庭区显示当前家庭名与角色「所有者」，成员列表含 owner；点击同步后成员数与设备数为服务端真值。
+2. **创建家庭**：点「创建家庭」输入名称并确认，提示「已创建家庭：X」，家庭区立即切换为当前家庭。
+3. **邀请码**：点「生成邀请码」，显示 8 位一次性码 + 服务端倒计时（分/秒递减）；点「复制」提示已复制；等待倒计时归零后显示「邀请码已过期，请重新生成」，可再次生成新码。
+4. **加入家庭**：手机 B「加入家庭」输入小写/带分隔符的邀请码，输入框自动大写并截断 8 位；错误码提示「邀请码无效或已过期」，连续错误提示「尝试次数过多，请稍后再试」；正确码提示「已加入家庭：X」。
+5. **首页切换**：手机 B 加入后拥有两个家庭，首页搜索框上方出现横向家庭 Chip（可见，非长按隐藏）；点击切换后设备与房间随家庭变化；手机 A 只有一个家庭时确认不显示切换控件。
+6. **成员设备与房间**：手机 B 切到 owner 家庭后能看到 A 的设备，显示真实别名与所属房间；长按该设备提示「家庭成员共享的设备仅可查看，不能修改房间」，详情页改房间同样被拒绝。
+7. **权限降级**：手机 B 作为 member 新建/重命名房间时提示「你没有修改该家庭或房间的权限」，列表保持可用，不弹原始 403 码、不整页报错；被移除家庭后访问提示「家庭或房间不存在，可能已被移除」。
+8. **房间来源与未同步**：新建房间后若上传失败（可临时断网），房间头显示「未同步」；恢复网络后同步成功，标记消失且服务端房间保留。
+9. **离线**：断网进入「我的」与首页，家庭区显示「未同步：当前显示本机缓存，联网后自动更新」，本机房间与设备仍可见，不白屏、不丢数据；恢复网络自动同步。
+10. **落库检查**：
+    ```bash
+    sqlite3 /tmp/device_dashboard.db "SELECT remoteId, name, isPersonal, role, memberCount FROM households;"
+    sqlite3 /tmp/device_dashboard.db "SELECT id, name, remoteId, householdId FROM rooms;"
+    sqlite3 /tmp/device_dashboard.db "SELECT mac, roomId, householdId, remoteRoomId, pendingRoomPatch, shared FROM devices;"
+    ```
+    预期：`households.remoteId` 唯一且当前家庭已持久化；远端房间有 `remoteId`，未上传房间为空；共享设备 `shared=1`，待上报设备 `pendingRoomPatch=1`，成功后归零。
+- 失败判定：邀请码非 8 位或倒计时不来自服务端；加入家庭未复用配对码规范化；多家庭无切换入口或切换后数据不跟随；member 能改房间/看到原始错误码；离线白屏或本机房间被清空；共享设备可编辑。
+
 ## 8. Release 包安装与 R8 生效验证
 
 ### L1 构建
@@ -734,7 +771,7 @@ adb install -r app/build/outputs/apk/release/app-release.apk
 adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versionCode"
 ```
 
-预期：安装成功；版本 `0.10.0 / 18`；能启动；五模块可进入；BLE 扫描/连接可用。
+预期：安装成功；版本 `0.14.0 / 22`；能启动；五模块可进入；BLE 扫描/连接可用。
 失败判定：`INSTALL_FAILED_NO_MATCHING_ABIS`、安装后闪退（多为 R8 裁剪过度或签名问题）。
 
 ### L3 签名验证

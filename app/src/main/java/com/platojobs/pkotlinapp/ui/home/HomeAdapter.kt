@@ -41,6 +41,8 @@ sealed interface HomeItem {
         val deviceCount: Int,
         val collapsed: Boolean,
         val empty: Boolean,
+        /** 离线/尚未同步时标注「未同步」。 */
+        val unsynced: Boolean = false,
     ) : HomeItem
 
     /** 完全没有房间时的真实空态。 */
@@ -164,10 +166,15 @@ class HomeAdapter(
             binding.roomTitle.text = item.name
             binding.roomArrow.visibility = if (item.empty) View.INVISIBLE else View.VISIBLE
             binding.roomArrow.text = if (item.collapsed) "▸" else "▾"
-            binding.roomMeta.text = if (item.empty) {
+            val baseMeta = if (item.empty) {
                 context.getString(R.string.room_no_devices)
             } else {
                 context.getString(R.string.room_device_count, item.deviceCount)
+            }
+            binding.roomMeta.text = if (item.unsynced) {
+                context.getString(R.string.room_unsynced_meta, baseMeta)
+            } else {
+                baseMeta
             }
             binding.root.contentDescription = context.getString(
                 R.string.room_a11y_header,

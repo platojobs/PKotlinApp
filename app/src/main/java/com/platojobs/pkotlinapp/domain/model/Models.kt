@@ -70,17 +70,34 @@ data class Device(
     val aliasDirty: Boolean = false,
     /** 首次添加时间，只写一次；用于「按添加时间」排序。 */
     val createdAt: Long = lastSeenTimestamp,
-    /** 本地房间归属；null 表示未分配。仅本机维护，不参与云端同步。 */
+    /** 本地房间归属；null 表示未分配。 */
     val roomId: Long? = null,
-)
+    /** 设备所属家庭（households.id）；null 表示旧数据，首次家庭同步后回填。 */
+    val householdId: Long? = null,
+    /** 服务端房间 UUID；null 表示未分配或仅本地房间。 */
+    val remoteRoomId: String? = null,
+    /** 是否为其他家庭成员共享的设备：可见但只读，不参与本机 push。 */
+    val shared: Boolean = false,
+    /** 房间变更待上报：离线/失败时保留，下次同步重试。 */
+    val pendingRoomPatch: Boolean = false,
+    val pendingRoomLocalId: Long? = null,
+    val pendingHouseholdRemoteId: String? = null,
+) {
+    /** 共享设备不允许本机修改房间归属（服务端会对非 owner 返回 404）。 */
+    val canEditRoom: Boolean get() = !shared
+}
 
-/** 本机房间：用于首页分区，不参与云端同步。 */
+/** 本机房间：remoteId 为空表示仅存本机、尚未同步。 */
 data class Room(
     val id: Long,
     val name: String,
     val sortOrder: Int = 0,
     val createdAt: Long = 0,
-)
+    val remoteId: String? = null,
+    val householdId: Long? = null,
+) {
+    val synced: Boolean get() = remoteId != null
+}
 
 /**
  * 列表/详情展示优先级：用户别名 > 广播名 > catalog 型号展示名。

@@ -97,6 +97,40 @@ class RoomRepositoryTest {
 
         override suspend fun getRooms(): List<RoomEntity> = snapshot()
 
+        override suspend fun getRoomsForHousehold(householdId: Long): List<RoomEntity> =
+            snapshot().filter { it.householdId == null || it.householdId == householdId }
+
+        override suspend fun find(id: Long): RoomEntity? = rooms[id]
+
+        override suspend fun findByRemoteId(remoteId: String): RoomEntity? =
+            rooms.values.firstOrNull { it.remoteId == remoteId }
+
+        override suspend fun linkRemote(id: Long, remoteId: String, householdId: Long, sortOrder: Int) {
+            rooms[id]?.let {
+                rooms[id] = it.copy(remoteId = remoteId, householdId = householdId, sortOrder = sortOrder)
+            }
+        }
+
+        override suspend fun updateFromServer(id: Long, name: String, sortOrder: Int) {
+            rooms[id]?.let { rooms[id] = it.copy(name = name, sortOrder = sortOrder) }
+        }
+
+        override suspend fun adoptOrphanRooms(householdId: Long) {
+            rooms.values.filter { it.householdId == null }.forEach {
+                rooms[it.id] = it.copy(householdId = householdId)
+            }
+        }
+
+        override suspend fun deleteForHousehold(householdId: Long) {
+            rooms.values.filter { it.householdId == householdId }.forEach { rooms.remove(it.id) }
+        }
+
+        override suspend fun clearRemoteLinks() {
+            rooms.values.forEach {
+                rooms[it.id] = it.copy(remoteId = null, householdId = null)
+            }
+        }
+
         override suspend fun insert(room: RoomEntity): Long {
             val id = nextId++
             rooms[id] = room.copy(id = id)
@@ -147,6 +181,81 @@ class RoomRepositoryTest {
         override suspend fun clearRoomAssignments(roomId: Long) {
             rows.values.filter { it.roomId == roomId }.forEach {
                 rows[it.mac] = it.copy(roomId = null)
+            }
+        }
+
+        override suspend fun queueRoomAssignment(
+            mac: String,
+            roomId: Long?,
+            remoteRoomId: String?,
+            pendingLocalId: Long?,
+            householdRemoteId: String?,
+        ) {
+            rows[mac]?.let {
+                rows[mac] = it.copy(
+                    roomId = roomId,
+                    remoteRoomId = remoteRoomId,
+                    pendingRoomPatch = true,
+                    pendingRoomLocalId = pendingLocalId,
+                    pendingHouseholdRemoteId = householdRemoteId,
+                )
+            }
+        }
+
+        override suspend fun pendingRoomPatches(): List<DeviceEntity> =
+            rows.values.filter { it.pendingRoomPatch }
+
+        override suspend fun finishRoomPatch(mac: String) {
+            rows[mac]?.let {
+                rows[mac] = it.copy(
+                    pendingRoomPatch = false,
+                    pendingRoomLocalId = null,
+                    pendingHouseholdRemoteId = null,
+                )
+            }
+        }
+
+        override suspend fun applyServerMeta(
+            mac: String,
+            householdId: Long?,
+            remoteRoomId: String?,
+            roomId: Long?,
+        ) {
+            rows[mac]?.let {
+                rows[mac] = it.copy(
+                    householdId = householdId,
+                    remoteRoomId = remoteRoomId,
+                    roomId = if (it.pendingRoomPatch) it.roomId else roomId,
+                )
+            }
+        }
+
+        override suspend fun sharedDevicesForHousehold(householdId: Long): List<DeviceEntity> =
+            rows.values.filter { it.shared && it.householdId == householdId }
+
+        override suspend fun deleteByMacs(macs: List<String>) {
+            macs.forEach { rows.remove(it) }
+        }
+
+        override suspend fun deleteShared() {
+            rows.values.filter { it.shared }.forEach { rows.remove(it.mac) }
+        }
+
+        override suspend fun clearHouseholdAssignments(householdId: Long) {
+            rows.values.filter { it.householdId == householdId }.forEach {
+                rows[it.mac] = it.copy(householdId = null, roomId = null, remoteRoomId = null)
+            }
+        }
+
+        override suspend fun clearHouseholdLinks() {
+            rows.values.forEach {
+                rows[it.mac] = it.copy(
+                    householdId = null,
+                    remoteRoomId = null,
+                    pendingRoomPatch = false,
+                    pendingRoomLocalId = null,
+                    pendingHouseholdRemoteId = null,
+                )
             }
         }
 

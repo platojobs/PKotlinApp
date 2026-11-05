@@ -8,6 +8,7 @@ import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.Header
+import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
@@ -77,6 +78,82 @@ data class SyncDeviceDto(
     val vendor: String? = null,
     val firmwareVersion: String? = null,
     val compatibility: CompatibilityDto? = null,
+    // openapi 0.12.0 家庭归属；未归属时省略或为 null。
+    val householdId: String? = null,
+    val roomId: String? = null,
+)
+
+/** GET /my/devices 的返回：本人设备 + 家庭成员共享设备。 */
+data class MyDevicesResponse(
+    val items: List<SyncDeviceDto>? = null,
+)
+
+// ---- openapi 0.8.0：家庭 / 成员 / 邀请码 / 房间 ----
+
+data class HouseholdDto(
+    val id: String? = null,
+    val name: String? = null,
+    val ownerUserId: String? = null,
+    val role: String? = null,
+    val personal: Boolean? = null,
+    val memberCount: Int? = null,
+    val deviceCount: Int? = null,
+    val roomCount: Int? = null,
+    val createdAt: String? = null,
+)
+
+data class HouseholdListResponse(
+    val items: List<HouseholdDto>? = null,
+)
+
+data class HouseholdCreateRequest(val name: String)
+
+data class HouseholdPatchRequest(val name: String)
+
+data class HouseholdMemberDto(
+    val userId: String? = null,
+    val role: String? = null,
+    val kind: String? = null,
+    val joinedAt: String? = null,
+)
+
+data class HouseholdMemberListResponse(
+    val items: List<HouseholdMemberDto>? = null,
+)
+
+data class HouseholdInvitationDto(
+    val code: String? = null,
+    /** RFC3339；服务端签发后 10 分钟。 */
+    val expiresAt: String? = null,
+)
+
+data class HouseholdInvitationClaimRequest(val code: String)
+
+data class HouseholdRoomDto(
+    val id: String? = null,
+    val householdId: String? = null,
+    val name: String? = null,
+    val sortOrder: Int? = null,
+    val createdAt: String? = null,
+)
+
+data class HouseholdRoomListResponse(
+    val items: List<HouseholdRoomDto>? = null,
+)
+
+data class HouseholdRoomCreateRequest(val name: String, val sortOrder: Int)
+
+/** PATCH 房间：null 字段由 Moshi 省略，表示保持不变。 */
+data class HouseholdRoomPatchRequest(val name: String? = null, val sortOrder: Int? = null)
+
+/**
+ * PATCH /my/devices/{platform}/{externalId} 的三态请求。
+ * 字段为 null 表示缺失（保持不变）；`Reported("")` 表示清除；`Reported(值)` 表示覆盖。
+ */
+data class DeviceMetaPatchRequest(
+    val alias: Reported<String>? = null,
+    val roomId: Reported<String>? = null,
+    val householdId: Reported<String>? = null,
 )
 
 data class SyncScanRecordDto(
@@ -354,5 +431,98 @@ interface SyncApi {
     @DELETE("api/v1/me")
     suspend fun deleteMyAccount(
         @Header("Authorization") authorization: String,
+    )
+
+    // ---- 家庭（openapi 0.8.0 / 后端 v0.12.0） ----
+
+    @GET("api/v1/households")
+    suspend fun households(
+        @Header("Authorization") authorization: String,
+    ): HouseholdListResponse
+
+    @POST("api/v1/households")
+    suspend fun createHousehold(
+        @Header("Authorization") authorization: String,
+        @Body body: HouseholdCreateRequest,
+    ): HouseholdDto
+
+    @GET("api/v1/households/{id}")
+    suspend fun household(
+        @Header("Authorization") authorization: String,
+        @Path("id") id: String,
+    ): HouseholdDto
+
+    @PATCH("api/v1/households/{id}")
+    suspend fun patchHousehold(
+        @Header("Authorization") authorization: String,
+        @Path("id") id: String,
+        @Body body: HouseholdPatchRequest,
+    ): HouseholdDto
+
+    @DELETE("api/v1/households/{id}")
+    suspend fun deleteHousehold(
+        @Header("Authorization") authorization: String,
+        @Path("id") id: String,
+    )
+
+    /** 当前用户可见设备（本人 + 家庭成员共享）。 */
+    @GET("api/v1/my/devices")
+    suspend fun myDevices(
+        @Header("Authorization") authorization: String,
+    ): MyDevicesResponse
+
+    /** 设备别名/房间/家庭三态更新；仅 owner 可调用。 */
+    @PATCH("api/v1/my/devices/{platform}/{externalId}")
+    suspend fun patchMyDevice(
+        @Header("Authorization") authorization: String,
+        @Path("platform") platform: String,
+        @Path("externalId") externalId: String,
+        @Body body: DeviceMetaPatchRequest,
+    ): SyncDeviceDto
+
+    @GET("api/v1/households/{id}/members")
+    suspend fun householdMembers(
+        @Header("Authorization") authorization: String,
+        @Path("id") id: String,
+    ): HouseholdMemberListResponse
+
+    @POST("api/v1/households/{id}/invitations")
+    suspend fun createHouseholdInvitation(
+        @Header("Authorization") authorization: String,
+        @Path("id") id: String,
+    ): HouseholdInvitationDto
+
+    @POST("api/v1/households/invitations/claim")
+    suspend fun claimHouseholdInvitation(
+        @Header("Authorization") authorization: String,
+        @Body body: HouseholdInvitationClaimRequest,
+    ): HouseholdDto
+
+    @GET("api/v1/households/{id}/rooms")
+    suspend fun householdRooms(
+        @Header("Authorization") authorization: String,
+        @Path("id") id: String,
+    ): HouseholdRoomListResponse
+
+    @POST("api/v1/households/{id}/rooms")
+    suspend fun createHouseholdRoom(
+        @Header("Authorization") authorization: String,
+        @Path("id") id: String,
+        @Body body: HouseholdRoomCreateRequest,
+    ): HouseholdRoomDto
+
+    @PATCH("api/v1/households/{id}/rooms/{roomId}")
+    suspend fun patchHouseholdRoom(
+        @Header("Authorization") authorization: String,
+        @Path("id") id: String,
+        @Path("roomId") roomId: String,
+        @Body body: HouseholdRoomPatchRequest,
+    ): HouseholdRoomDto
+
+    @DELETE("api/v1/households/{id}/rooms/{roomId}")
+    suspend fun deleteHouseholdRoom(
+        @Header("Authorization") authorization: String,
+        @Path("id") id: String,
+        @Path("roomId") roomId: String,
     )
 }

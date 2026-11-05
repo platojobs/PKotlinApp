@@ -133,9 +133,16 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                 }
             }
         }
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                // 403/离线等家庭操作失败统一转成可读提示，不弹原始错误码。
+                viewModel.householdMessages.collect { message -> toast(message) }
+            }
+        }
     }
 
     private fun render(state: HomeUiState) {
+        renderHouseholdChips(state)
         renderGroupChips(state)
         renderItems(state)
         when {
@@ -190,6 +197,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                         deviceCount = section.devices.size,
                         collapsed = collapsed,
                         empty = section.room != null && section.devices.isEmpty(),
+                        unsynced = !state.householdSynced || section.room?.synced == false,
                     )
                 }
                 if (!collapsed) {
@@ -208,8 +216,32 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         adapter.submitList(items)
     }
 
+    /** 多于一个家庭时才显示切换控件；单家庭不占用首页空间。 */
+    private fun renderHouseholdChips(state: HomeUiState) {
+        if (state.households.size <= 1) {
+            binding.householdScroll.visibility = View.GONE
+            return
+        }
+        binding.householdScroll.visibility = View.VISIBLE
+        val signature = state.households.map { it.remoteId to it.name } to state.currentHousehold?.remoteId
+        if (binding.householdChips.tag == signature) return
+        binding.householdChips.tag = signature
+        binding.householdChips.removeAllViews()
+        state.households.forEach { household ->
+            binding.householdChips.addView(
+                makeChip(household.name, state.currentHousehold?.remoteId == household.remoteId) {
+                    viewModel.switchHousehold(household.remoteId)
+                },
+            )
+        }
+    }
+
     /** 长按设备卡片：选择目标房间；首项为「未分配」用于移出房间。 */
     private fun showRoomPicker(device: Device) {
+        if (!device.canEditRoom) {
+            toast(getString(R.string.household_shared_device_readonly))
+            return
+        }
         val rooms = lastState.rooms
         val labels = mutableListOf(getString(R.string.room_unassigned))
         labels += rooms.map { it.name }
@@ -226,8 +258,6 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             .setNegativeButton(R.string.action_cancel, null)
             .show()
     }
-
-    /** 房间管理：新建、点击行重命名、删除需二次确认。 */
     private fun showRoomManager() {
         val rooms = lastState.rooms
         val context = requireContext()

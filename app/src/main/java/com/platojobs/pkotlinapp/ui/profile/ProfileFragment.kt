@@ -32,6 +32,9 @@ import com.platojobs.pkotlinapp.data.collection.CollectionStatus
 import com.platojobs.pkotlinapp.data.prefs.ThemeMode
 import com.platojobs.pkotlinapp.databinding.FragmentProfileBinding
 import com.platojobs.pkotlinapp.domain.account.PairingCodeFormat
+import com.platojobs.pkotlinapp.domain.household.Household
+import com.platojobs.pkotlinapp.domain.household.HouseholdMember
+import com.platojobs.pkotlinapp.domain.household.HouseholdSyncStatus
 import com.platojobs.pkotlinapp.domain.sync.SyncStatus
 import com.platojobs.pkotlinapp.ui.common.BlePermissions
 import com.platojobs.pkotlinapp.ui.common.FileSharing
@@ -89,6 +92,7 @@ class ProfileFragment : Fragment() {
         binding.alertPermissionButton.setOnClickListener { openAppSettings() }
         setupAlertControls()
         setupAccountControls()
+        setupHouseholdControls()
         setupCollectionControls()
 
         binding.themeGroup.check(
@@ -166,6 +170,24 @@ class ProfileFragment : Fragment() {
                 launch {
                     viewModel.accountMessage.collect { message ->
                         Snackbar.make(binding.root, message, Snackbar.LENGTH_LONG).show()
+                    }
+                }
+                launch {
+                    viewModel.currentHousehold.collect { renderHousehold(it) }
+                }
+                launch {
+                    viewModel.members.collect { renderMembers(it) }
+                }
+                launch {
+                    viewModel.householdStatus.collect { renderHouseholdStatus(it) }
+                }
+                launch {
+                    viewModel.invite.collect { renderInvite(it) }
+                }
+                launch {
+                    viewModel.householdBusy.collect { busy ->
+                        binding.householdSection.householdCreateButton.isEnabled = !busy
+                        binding.householdSection.householdJoinButton.isEnabled = !busy
                     }
                 }
                 launch {
@@ -249,6 +271,147 @@ class ProfileFragment : Fragment() {
 
     private fun setupCollectionControls() {
         binding.collectionStopButton.setOnClickListener { viewModel.stopCollection() }
+    }
+
+    // ---- 家庭与邀请码 ----
+
+    private fun setupHouseholdControls() {
+        binding.householdSection.householdCreateButton.setOnClickListener {
+            showCreateHouseholdDialog()
+        }
+        binding.householdSection.householdInviteButton.setOnClickListener {
+            viewModel.generateInvitation()
+        }
+        binding.householdSection.householdInviteRegenerateButton.setOnClickListener {
+            viewModel.generateInvitation()
+        }
+        binding.householdSection.householdInviteCopyButton.setOnClickListener {
+            copyInviteCode()
+        }
+        binding.householdSection.householdJoinButton.setOnClickListener {
+            viewModel.claimInvitation(
+                binding.householdSection.householdJoinCodeInput.text?.toString().orEmpty(),
+            )
+        }
+        binding.householdSection.householdJoinCodeInput.filters = arrayOf(
+            InputFilter.AllCaps(),
+            InputFilter.LengthFilter(PairingCodeFormat.LENGTH),
+        )
+        binding.householdSection.householdJoinCodeInput.doAfterTextChanged { editable ->
+            val raw = editable?.toString().orEmpty()
+            val sanitized = PairingCodeFormat.sanitize(raw)
+            if (sanitized != raw) {
+                binding.householdSection.householdJoinCodeInput.setText(sanitized)
+                binding.householdSection.householdJoinCodeInput.setSelection(sanitized.length)
+            }
+        }
+    }
+
+    private fun showCreateHouseholdDialog() {
+        val input = android.widget.EditText(requireContext()).apply {
+            hint = getString(R.string.household_name_hint)
+            setSingleLine()
+        }
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.household_create)
+            .setView(input)
+            .setNegativeButton(R.string.action_cancel, null)
+            .setPositiveButton(R.string.action_confirm) { _, _ ->
+                viewModel.createHousehold(input.text?.toString().orEmpty())
+            }
+            .show()
+    }
+
+    private fun copyInviteCode() {
+        val code = viewModel.invite.value.code ?: return
+        val clipboard = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText(getString(R.string.household_invite_title), code))
+        Snackbar.make(binding.root, R.string.household_invite_copied, Snackbar.LENGTH_SHORT).show()
+    }
+
+    private fun renderHousehold(household: Household?) {
+        val section = binding.householdSection
+        section.householdCurrent.text = if (household == null) {
+            getString(R.string.household_none)
+        } else {
+            getString(
+                R.string.household_current,
+                household.name,
+                getString(
+                    if (household.isOwner) R.string.household_role_owner else R.string.household_role_member,
+                ),
+            )
+        }
+        // member 没有邀请/改名权限：入口保留，失败时用 403 可读文案降级。
+        section.householdInviteButton.isEnabled = household != null
+    }
+
+    private fun renderMembers(members: List<HouseholdMember>) {
+        val section = binding.householdSection
+        section.householdMembersList.removeAllViews()
+        if (members.isEmpty()) {
+            section.householdMembersList.addView(memberRow(getString(R.string.household_members_empty)))
+            return
+        }
+        members.forEach { member ->
+            val role = getString(
+                if (member.role == com.platojobs.pkotlinapp.domain.household.HouseholdRole.OWNER) {
+                    R.string.household_role_owner
+                } else {
+                    R.string.household_role_member
+                },
+            )
+            section.householdMembersList.addView(
+                memberRow(getString(R.string.household_member_row, shortUserId(member.userId), role)),
+            )
+        }
+    }
+
+    private fun memberRow(text: String): View = android.widget.TextView(requireContext()).apply {
+        this.text = text
+        setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodyMedium)
+        setPadding(0, 4, 0, 4)
+    }
+
+    private fun shortUserId(userId: String): String =
+        if (userId.length <= 10) userId else "${userId.take(6)}…${userId.takeLast(4)}"
+
+    private fun renderHouseholdStatus(status: HouseholdSyncStatus) {
+        val section = binding.householdSection
+        val unsynced = !status.synced
+        section.householdSyncState.visibility = if (unsynced) View.VISIBLE else View.GONE
+        section.householdSyncState.text = if (unsynced) {
+            getString(R.string.household_unsynced)
+        } else {
+            ""
+        }
+    }
+
+    private fun renderInvite(state: InviteState) {
+        val section = binding.householdSection
+        val hasCode = state.code != null
+        section.householdInviteButton.visibility = if (hasCode) View.GONE else View.VISIBLE
+        section.householdInviteButton.isEnabled = !state.loading
+        section.householdInviteCode.visibility = if (hasCode) View.VISIBLE else View.GONE
+        section.householdInviteCountdown.visibility = if (hasCode) View.VISIBLE else View.GONE
+        section.householdInviteActions.visibility = if (hasCode) View.VISIBLE else View.GONE
+
+        if (hasCode) {
+            section.householdInviteCode.text = state.code
+            section.householdInviteCountdown.text = when {
+                state.expiresAt <= 0L -> getString(R.string.household_invite_unknown_expiry)
+                state.expired -> getString(R.string.household_invite_expired)
+                else -> getString(
+                    R.string.household_invite_expires_in,
+                    state.remainingSeconds / 60,
+                    state.remainingSeconds % 60,
+                )
+            }
+            section.householdInviteCopyButton.isEnabled = !state.expired
+        }
+        section.householdInviteError.visibility =
+            if (state.error != null) View.VISIBLE else View.GONE
+        section.householdInviteError.text = state.error
     }
 
     private fun copyPairingCode() {

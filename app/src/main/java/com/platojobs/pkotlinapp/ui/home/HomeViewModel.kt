@@ -1,5 +1,6 @@
 package com.platojobs.pkotlinapp.ui.home
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
@@ -11,10 +12,14 @@ import com.platojobs.pkotlinapp.data.ble.BleConnectionState
 import com.platojobs.pkotlinapp.data.ble.BleError
 import com.platojobs.pkotlinapp.data.ble.BleException
 import com.platojobs.pkotlinapp.data.ble.BleScanner
+import com.platojobs.pkotlinapp.data.household.HouseholdRepository
 import com.platojobs.pkotlinapp.data.prefs.AppSettings
 import com.platojobs.pkotlinapp.data.prefs.DeviceSortMode
 import com.platojobs.pkotlinapp.data.sync.SyncManager
 import com.platojobs.pkotlinapp.data.sync.SyncScheduler
+import com.platojobs.pkotlinapp.domain.household.Household
+import com.platojobs.pkotlinapp.domain.household.HouseholdErrorKind
+import com.platojobs.pkotlinapp.domain.household.classifyHouseholdError
 import com.platojobs.pkotlinapp.domain.model.Device
 import com.platojobs.pkotlinapp.domain.model.Room
 import com.platojobs.pkotlinapp.domain.model.ScanLog
@@ -70,6 +75,11 @@ data class HomeUiState(
     val sortMode: DeviceSortMode = DeviceSortMode.RECENT,
     val loading: Boolean = true,
     val syncError: String? = null,
+    /** 可见家庭列表；多于一个时才显示切换控件。 */
+    val households: List<Household> = emptyList(),
+    val currentHousehold: Household? = null,
+    /** 家庭接口是否同步成功；离线时房间标注「未同步」。 */
+    val householdSynced: Boolean = true,
 )
 
 /** 首页快捷场景的实时进度（执行中逐条推进）。 */
@@ -95,6 +105,8 @@ class HomeViewModel(
     private val syncScheduler: SyncScheduler,
     private val syncManager: SyncManager,
     private val settings: AppSettings,
+    private val householdRepository: HouseholdRepository,
+    private val context: Context,
     private val unknownDeviceName: String,
 ) : ViewModel() {
 
@@ -106,6 +118,10 @@ class HomeViewModel(
 
     private val _ruleMessages = MutableSharedFlow<String>(extraBufferCapacity = 4)
     val ruleMessages: SharedFlow<String> = _ruleMessages.asSharedFlow()
+
+    /** 家庭操作的可读提示（403/离线等），由 Fragment 统一展示。 */
+    private val _householdMessages = MutableSharedFlow<String>(extraBufferCapacity = 4)
+    val householdMessages: SharedFlow<String> = _householdMessages.asSharedFlow()
 
     private val _query = MutableStateFlow("")
     private val _sortMode = MutableStateFlow(settings.deviceSortMode)
@@ -129,14 +145,26 @@ class HomeViewModel(
 
     private val dayWindow = todayWindow()
 
+    private val homeContent = combine(
+        deviceRepository.observeDevices().onEach { _loaded.value = true },
+        readingRepository.observeLatestPerDevice(),
+        ruleEventRepository.observeCountBetween(dayWindow.first, dayWindow.second),
+        roomRepository.observeRooms(),
+    ) { devices, readings, alerts, rooms ->
+        HomeContent(devices, readings, alerts, rooms)
+    }
+
+    private val householdContent = combine(
+        householdRepository.households,
+        householdRepository.current,
+        householdRepository.status,
+    ) { households, current, status ->
+        HouseholdContent(households, current, status.synced)
+    }
+
     val uiState: StateFlow<HomeUiState> = combine(
-        combine(
-            deviceRepository.observeDevices().onEach { _loaded.value = true },
-            readingRepository.observeLatestPerDevice(),
-            ruleEventRepository.observeCountBetween(dayWindow.first, dayWindow.second),
-            roomRepository.observeRooms(),
-        ) { devices, readings, alerts, rooms ->
-            HomeContent(devices, readings, alerts, rooms)
+        combine(homeContent, householdContent) { content, household ->
+            content to household
         },
         sceneRepository.observeScenes(),
         combine(_query, _sortMode, _selectedGroup, _collapsedRooms) { query, sort, group, collapsed ->
@@ -144,25 +172,38 @@ class HomeViewModel(
         },
         bleConnectionManager.state,
         combine(_loaded, syncManager.status) { loaded, status -> loaded to status.lastError },
-    ) { content, scenes, filters, connection, status ->
+    ) { contentAndHousehold, scenes, filters, connection, status ->
+        val (content, household) = contentAndHousehold
         val (loaded, syncError) = status
         val newestPerDevice = content.readings.groupBy { it.deviceId }.mapValues { it.value.first() }
+        val currentLocalId = household.current?.localId
+        val visibleRooms = content.rooms.filter { room ->
+            room.householdId == null || (currentLocalId != null && room.householdId == currentLocalId)
+        }
+        val visibleDevices = content.devices.filter { device ->
+            device.householdId == null ||
+                currentLocalId == null ||
+                device.householdId == currentLocalId
+        }
         HomeUiState(
-            devices = content.devices,
-            sections = sectionsOf(content.devices, content.rooms, filters),
-            rooms = content.rooms,
+            devices = visibleDevices,
+            sections = sectionsOf(visibleDevices, visibleRooms, filters),
+            rooms = visibleRooms,
             collapsedRooms = filters.collapsed,
             searching = filters.query.isNotBlank(),
             latestReadings = newestPerDevice,
             connectedMac = (connection as? BleConnectionState.Connected)?.mac,
             alertCountToday = content.alerts,
             scenes = scenes,
-            groups = content.devices.mapNotNull { it.group?.takeIf(String::isNotBlank) }.distinct().sorted(),
+            groups = visibleDevices.mapNotNull { it.group?.takeIf(String::isNotBlank) }.distinct().sorted(),
             selectedGroup = filters.group,
             query = filters.query,
             sortMode = filters.sort,
             loading = !loaded,
             syncError = syncError,
+            households = household.households,
+            currentHousehold = household.current,
+            householdSynced = household.synced,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -188,23 +229,59 @@ class HomeViewModel(
         _collapsedRooms.update { if (roomId in it) it - roomId else it + roomId }
     }
 
+    init {
+        viewModelScope.launch { householdRepository.refreshHouseholds() }
+    }
+
     fun createRoom(name: String) {
         if (name.isBlank()) return
-        viewModelScope.launch { roomRepository.createRoom(name) }
+        viewModelScope.launch {
+            runCatching { householdRepository.createRoom(name) }
+                .onFailure(::emitHouseholdError)
+        }
     }
 
     fun renameRoom(id: Long, name: String) {
         if (name.isBlank()) return
-        viewModelScope.launch { roomRepository.renameRoom(id, name) }
+        viewModelScope.launch {
+            runCatching { householdRepository.renameRoom(id, name) }
+                .onFailure(::emitHouseholdError)
+        }
     }
 
     fun deleteRoom(id: Long) {
-        viewModelScope.launch { roomRepository.deleteRoom(id) }
+        viewModelScope.launch {
+            runCatching { householdRepository.deleteRoom(id) }
+                .onFailure(::emitHouseholdError)
+        }
     }
 
     /** [roomId] 为 null 时移出房间，回到「未分配」。 */
     fun assignRoom(mac: String, roomId: Long?) {
-        viewModelScope.launch { deviceRepository.assignRoom(mac, roomId) }
+        viewModelScope.launch {
+            runCatching { householdRepository.moveDeviceToRoom(mac, roomId) }
+                .onFailure(::emitHouseholdError)
+        }
+    }
+
+    /** 首页家庭切换：多于一个家庭时可见，切换后按该家庭拉取房间与设备。 */
+    fun switchHousehold(remoteId: String) {
+        viewModelScope.launch { householdRepository.switchHousehold(remoteId) }
+    }
+
+    private fun emitHouseholdError(error: Throwable) {
+        _householdMessages.tryEmit(
+            when (classifyHouseholdError(error)) {
+                HouseholdErrorKind.PERMISSION_DENIED ->
+                    context.getString(R.string.household_permission_denied)
+
+                HouseholdErrorKind.NOT_FOUND -> context.getString(R.string.household_not_found)
+                HouseholdErrorKind.INVALID_CODE -> context.getString(R.string.invite_code_invalid)
+                HouseholdErrorKind.RATE_LIMITED -> context.getString(R.string.invite_rate_limited)
+                HouseholdErrorKind.OFFLINE -> context.getString(R.string.household_offline_hint)
+                HouseholdErrorKind.SERVER_ERROR -> context.getString(R.string.household_server_error)
+            },
+        )
     }
 
     fun runScene(scene: Scene) {
@@ -268,6 +345,12 @@ class HomeViewModel(
         val readings: List<Reading>,
         val alerts: Int,
         val rooms: List<Room>,
+    )
+
+    private data class HouseholdContent(
+        val households: List<Household>,
+        val current: Household?,
+        val synced: Boolean,
     )
 
     private data class HomeFilters(
@@ -412,6 +495,8 @@ class HomeViewModel(
                     syncScheduler = container.syncScheduler,
                     syncManager = container.syncManager,
                     settings = container.settings,
+                    householdRepository = container.householdRepository,
+                    context = app.applicationContext,
                     unknownDeviceName = app.getString(R.string.device_unknown),
                 )
             }

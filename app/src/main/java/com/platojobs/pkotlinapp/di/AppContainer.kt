@@ -101,9 +101,24 @@ class AppContainer(context: Context) {
         ReadingRepositoryImpl(database.readingDao())
     }
 
-    /** 本地房间仓库：仅本机，不参与云端同步。 */
+    /** 本机房间仓库：作为离线缓存；服务端房间由 householdRepository 合并进来。 */
     val roomRepository: RoomRepository by lazy {
         RoomRepositoryImpl(database.roomDao(), database.deviceDao())
+    }
+
+    /** 家庭仓库：家庭/成员/邀请码/房间与设备房间上报。 */
+    val householdRepository: com.platojobs.pkotlinapp.data.household.HouseholdRepository by lazy {
+        com.platojobs.pkotlinapp.data.household.HouseholdRepository(
+            householdDao = database.householdDao(),
+            roomDao = database.roomDao(),
+            deviceDao = database.deviceDao(),
+            remote = com.platojobs.pkotlinapp.data.household.RemoteHouseholdDataSource(
+                api = syncApi,
+                tokenStore = secureTokenStore,
+            ),
+            prefs = syncPrefs,
+            scope = ioScope,
+        )
     }
 
     /** 本地场景仓库：仅本机，不参与云端同步。 */
@@ -215,6 +230,7 @@ class AppContainer(context: Context) {
                 remote = remoteSyncDataSource,
                 repository = readingRepository,
             ),
+            householdSyncer = householdRepository,
         )
     }
 

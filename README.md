@@ -577,6 +577,20 @@ Debug / Release 都可通过 `apiBaseUrl` 切换；发布前请传入正式域�
 - **空态**：无房间且无设备 →「还没有房间」+「新建房间」；有房间但无设备 → 保留房间分区，房间头显示「该房间暂无设备」，点标题进入扫描；搜索无结果 → 沿用「没有匹配设备」空态。
 - **同步边界**：房间仅本机维护，不参与云端同步；扫描、编辑与云端拉取都用 `existing?.roomId` 保留本机归属，不会被同步覆盖。
 
+### 6.12 家庭、邀请码与房间共享（v0.14.0）
+
+- **数据模型**：Room v12（`MIGRATION_11_12`）新增 `households(id, remoteId 唯一, name, isPersonal, role, memberCount, deviceCount, sortOrder, createdAt)`；`rooms` 增加可空 `remoteId`、`householdId`；`devices` 增加可空 `householdId`、`remoteRoomId`、`pendingRoomPatch`、`pendingRoomLocalId`、`pendingHouseholdRemoteId`、`shared`。
+- **设备归属映射取舍**：选择反规范化 `devices.remoteRoomId`（+ 本机 `roomId` 外键）而不是独立映射表。理由：房间归属是设备上的单一可选属性，服务端 `PATCH /my/devices` 本来就按设备粒度更新；映射表会让同一事实存在两份来源，需要额外一致性与级联清理，而收益只是未来可能的多房间归属——当前契约没有这个需求。
+- **拉取时机**：登录后 `HouseholdSyncer` 挂在 `SyncManager` 的冷启动、手动同步与切换账号三条路径；`GET /households` 落库并持久化当前家庭（`SyncPrefs.current_household`），失效时回落到个人家庭。切换家庭只拉该家庭的房间与设备，不影响其他家庭缓存。
+- **迁移合并策略（不静默丢弃本机房间）**：首次接入时把没有 `remoteId` 的本机房间按 `sortOrder` 处理——先按规范化名称（`trim` + 小写 + 合并连续空白）认领尚未被占用的服务端同名房间，认领后保留本机 `id`，因此设备归属原样保留；仍匹配不到的房间**按本地顺序逐条上传**到服务端，绝不删除；剩余服务端房间插入本机；只有「曾映射过 remoteId 而服务端已删除」的房间才在本机移除，房间内设备回到未分配。该策略是幂等的，`planRoomMerge` 单测覆盖认领、上传、插入、移除与大小写/空白不重复认领；`HouseholdMigrationTest` 用真实 SQLite 验证 v11 → v12 房间与设备归属不丢。
+- **上报方式**：设备房间归属只走 `PATCH /my/devices/{platform}/{externalId}`（`roomId` 三态：缺失不改、`""` 清除、非空覆盖；householdId 同理），**不塞进 `POST /sync/push`**，避免与 LWW 的 `updatedAt` 版本比较互相覆盖。本机先乐观更新并写 `pendingRoomPatch`，网络失败保留 pending 下次同步重试；403/404 等 4xx 清除 pending 并回读服务端快照撤销乐观更新。冷启动拉取时 `applyServerMeta` 对 `pending` 设备只用 `CASE` 更新房间元数据、保留 `syncState`，不会把未上传的本地编辑洗掉。
+- **共享设备**：家庭成员拥有的设备以 `shared:<platform>:<externalId>` 合成一条只读记录，展示真实别名/房间数据，不参与 push 与房间修改；服务端不再返回该设备时（被移除或退出家庭）自动清理，避免列表残留。
+- **家庭管理（我的）**：展示当前家庭与角色（所有者/成员）与成员列表；创建家庭；生成邀请码展示 8 位码与服务端 `expiresAt` 倒计时、复制、过期后重新生成；加入家庭输入框复用配对码那套规范化（`ABCDEFGHJKLMNPQRSTUVWXYZ23456789`、自动大写、过滤、截断 8 位）与 404/429 文案。
+- **首页切换**：仅当家庭数 > 1 时在搜索框上方显示可见的横向家庭 Chip（不做隐藏长按）；单家庭不渲染切换控件。切换只改变当前家庭，不写死列表数据。
+- **房间来源**：服务端房间为权威来源，本机 `rooms` 作为离线缓存；线下新增房间先落本机并在联网时上传，未获得 `remoteId` 的房间头标记「未同步」；成员设备的真实房间同样按 `remoteRoomId → roomId` 映射展示。
+- **权限降级**：403 映射「你没有修改该家庭或房间的权限」，404「家庭或房间不存在，可能已被移除」，429「尝试次数过多」，网络错误「网络不可用，已保留本机数据」；不展示原始错误码、不整页报错，操作失败后列表保持可用。
+- **离线**：家庭接口不可用时保留本机房间与设备，状态卡显示「未同步：当前显示本机缓存，联网后自动更新」，不白屏、不清空家庭列表（服务端返回空列表时也保留本机数据）。
+
 ---
 
 ## 7. 构建与运行
@@ -927,6 +941,7 @@ CI：GitHub Actions 的 `e2e-postgres` job 与该次运行同一脚本，日志�
 
 ## 16. 版本记录
 
+- `v0.14.0`：家庭接上后端，房间真正归属家庭并支持成员共享。Room v12（`MIGRATION_11_12`）新增 `households` 表，`rooms` 增加 `remoteId/householdId`，`devices` 增加 `householdId/remoteRoomId/pendingRoomPatch/pendingRoomLocalId/pendingHouseholdRemoteId/shared`；设备归属选择反规范化 `devices.remoteRoomId` 而不是映射表（单一可选属性、PATCH 按设备粒度，理由见 §6.12）。登录/手动同步/重登三条路径拉 `GET /households` 并持久化当前家庭，切换家庭按家庭拉房间与设备。首次接入按规范化名称认领服务端同名房间、其余按本地顺序上传，绝不静默丢弃本机房间，`planRoomMerge` + `HouseholdMigrationTest` 覆盖。设备房间归属只走 `PATCH /my/devices`（不塞 push，避免 LWW），失败保留 pending 重试，4xx 清 pending 并回读服务端。「我的」新增家庭管理（角色/成员、创建、8 位邀请码 + 服务端倒计时 + 复制 + 重新生成、加入家庭复用配对码规范化与 404/429 文案）；首页仅在多家庭时显示可见切换 Chip；服务端房间为权威来源，未上传房间与离线状态明确标注「未同步」；403/404/429/离线全部降级为可读提示。fixture 与真 Postgres e2e 均跑通「创建家庭 → 邀请码 → 第二账号领取 → 成员可见设备 → member 改房间 403 → 跨家庭 404」；单测 235 全绿、`lintDebug` 0 issue、`assembleDebug` 全绿，tag `v0.14.0`。
 - `v0.13.0`：本机房间与首页分区。Room v11 新增 `rooms(id, name, sortOrder, createdAt)` 与可空 `devices.roomId`（`MIGRATION_10_11`），旧设备保持未分配、`deviceGroup` 原样保留；`RoomMigrationTest` 用真实 SQLite 验证升级。首页按房间分段、房间头可折叠、「未分配」固定最后；搜索时平铺结果并忽略折叠，排序只在房间内生效，分组 Chip 仅按 `deviceGroup` 过滤并隐藏空房间（决策见 §6.11）。房间支持新建/重命名/删除（二次确认，删除后设备回到未分配），设备可长按或详情页移入移出；空态区分「还没有房间」与「房间内无设备引导扫描」。房间仅本机、不参与同步，扫描/编辑/拉取均保留 `roomId`。`RoomRepositoryTest` 覆盖排序、重命名与删除落点；单测 227 全绿、`lintDebug` 0 issue、`assembleDebug`、fixture 与真 Postgres e2e 全绿，tag `v0.13.0`。
 - `v0.12.0`：与 iOS 配平的双语、超大字号与无障碍。全部文案拆为默认中文 `values/strings.xml` 与 `values-en/strings.xml`（457 条字符串 + 8 组 `plurals`，占位符全部命名参数），英文统一 Device/Reading/Sync/Scan/Group/Alert/**Transfer Code**/Bucket，禁止 pairing code；新增 `BilingualAuditTest` 校验两份资源 key/占位符/空值一致性、UI 层 Kotlin 无中文字面量、英文术语、配色对比度与 48dp 触控区。界面日期/数字改用 `Locale.getDefault()`，CSV 仍固定 `Locale.US`。200% 字号下首页降为单列、卡片与详情行自适应换行、规则弹窗可滚动、图表 Y 轴缩为 3 刻度且标签宽度自适应、市场 Chip 换行不省略；`FontScaleLayoutTest` 用 Robolectric 实测高度与父宽。无障碍补规则开关 `stateDescription`、图标 `contentDescription`、图表整图/选中摘要，`text_tertiary` 调深满足 `surface_sunken` 上 ≥4.5:1。单测 222 全绿、`lintDebug` 0 issue、`assembleDebug`、fixture 与真 Postgres e2e 全绿，tag `v0.12.0`。
 - `v0.11.0`：与 iOS 对齐的「有厚度」功能，Android 以规则模板替代 CSV 入口。**指标阈值规则**：`rules` 支持指标 + 比较符（`>`/`<`/`>=`/`<=`）+ 阈值 + 连续 N 条（1–5，默认 1）防抖，接入现有 `RuleEngine` 与读数入库链路（含后台采集），恢复通知只在确实触发过且通知已投递时发一条，节流沿用 `ruleId + mac`；命中事件落库并携带 `metric/value/thresholdValue/unit`，展示 `℃`/`%`/`bpm`。Room v10（`MIGRATION_9_10`）旧规则 `type/threshold` 不变并回填指标字段，旧规则升级后仍触发。**图表点选**：点按/长按选中最近桶，展示区间（本地时区）、min/max/avg/last/条数，点空白取消，不改 Y 轴、只用现有语义色；整图与选中态更新 `contentDescription`；命中几何为纯函数并补单测。**推荐规则**：智能页按设备真实出现过的指标生成模板（温度>30℃/湿度>70%/电量<20%/心率>120/CO₂>1000），一键写入 Room 立即生效；无读数显示真实空态。单测 211 全绿、`lintDebug` 0 issue、`assembleDebug`、fixture 与真 Postgres e2e 全绿，tag `v0.11.0`。

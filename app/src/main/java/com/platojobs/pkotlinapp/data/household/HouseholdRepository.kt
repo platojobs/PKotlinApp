@@ -1,0 +1,503 @@
+package com.platojobs.pkotlinapp.data.household
+
+import com.platojobs.pkotlinapp.data.local.DeviceDao
+import com.platojobs.pkotlinapp.data.local.DeviceEntity
+import com.platojobs.pkotlinapp.data.local.HouseholdDao
+import com.platojobs.pkotlinapp.data.local.HouseholdEntity
+import com.platojobs.pkotlinapp.data.local.RoomDao
+import com.platojobs.pkotlinapp.data.local.RoomEntity
+import com.platojobs.pkotlinapp.data.sync.SyncPrefs
+import com.platojobs.pkotlinapp.domain.household.Household
+import com.platojobs.pkotlinapp.domain.household.HouseholdErrorKind
+import com.platojobs.pkotlinapp.domain.household.HouseholdInvitation
+import com.platojobs.pkotlinapp.domain.household.HouseholdMember
+import com.platojobs.pkotlinapp.domain.household.HouseholdNotFoundException
+import com.platojobs.pkotlinapp.domain.household.HouseholdRemote
+import com.platojobs.pkotlinapp.domain.household.HouseholdRole
+import com.platojobs.pkotlinapp.domain.household.HouseholdSnapshot
+import com.platojobs.pkotlinapp.domain.household.HouseholdSyncStatus
+import com.platojobs.pkotlinapp.domain.household.HouseholdSyncer
+import com.platojobs.pkotlinapp.domain.household.LocalRoomSnapshot
+import com.platojobs.pkotlinapp.domain.household.RoomMergePlan
+import com.platojobs.pkotlinapp.domain.household.chooseCurrentHousehold
+import com.platojobs.pkotlinapp.domain.household.classifyHouseholdError
+import com.platojobs.pkotlinapp.domain.household.planRoomMerge
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+
+/**
+ * 家庭仓库：服务端家庭是权威来源，本机房间/设备作为离线缓存。
+ *
+ * 关键约束：
+ * - 首次接入不丢本机房间：按名称认领服务端同名房间，其余按本地顺序上传（[planRoomMerge]）；
+ * - 设备房间归属只在 `PATCH /my/devices` 上报，不塞进 push，避免与 LWW 冲突；
+ * - 上报失败保留 pending，网络类错误下次同步重试；4xx 权限/不存在会清掉 pending 并回读服务端快照；
+ * - 家庭接口不可用时只标记「未同步」，不改动本机房间与设备。
+ */
+class HouseholdRepository(
+    private val householdDao: HouseholdDao,
+    private val roomDao: RoomDao,
+    private val deviceDao: DeviceDao,
+    private val remote: HouseholdRemote,
+    private val prefs: SyncPrefs,
+    private val scope: CoroutineScope,
+    private val clock: () -> Long = System::currentTimeMillis,
+) : HouseholdSyncer {
+
+    private val mutex = Mutex()
+
+    private val _currentRemoteId = MutableStateFlow(prefs.currentHouseholdRemoteId)
+    private val _status = MutableStateFlow(HouseholdSyncStatus())
+    val status: StateFlow<HouseholdSyncStatus> = _status
+
+    val households: Flow<List<Household>> = householdDao.observeHouseholds().map { rows ->
+        rows.map { it.toDomain() }
+    }
+
+    /** 当前家庭：优先持久化选择，失效时回落到个人家庭。 */
+    val current: Flow<Household?> = combine(householdDao.observeHouseholds(), _currentRemoteId) {
+        rows, preferred ->
+        rows.firstOrNull { it.remoteId == preferred }
+            ?: rows.firstOrNull { it.isPersonal }
+            ?: rows.firstOrNull()
+    }.map { it?.toDomain() }
+
+    val currentHousehold: StateFlow<Household?> = current.stateIn(
+        scope = scope,
+        started = SharingStarted.Eagerly,
+        initialValue = null,
+    )
+
+    override suspend fun onSync() {
+        syncAll()
+    }
+
+    override suspend fun onRelogin() = mutex.withLock {
+        householdDao.clear()
+        roomDao.clearRemoteLinks()
+        deviceDao.clearHouseholdLinks()
+        deviceDao.deleteShared()
+        prefs.currentHouseholdRemoteId = null
+        _currentRemoteId.value = null
+        _status.value = HouseholdSyncStatus()
+    }
+
+    /**
+     * 登录后/后台同步：拉家庭列表 → 合并房间 → 拉设备 → 补报待处理房间变更。
+     * 离线时返回 false，但保留本机数据。
+     */
+    suspend fun syncAll(): Boolean = mutex.withLock {
+        val adoptOrphans = prefs.currentHouseholdRemoteId == null
+        _status.value = _status.value.copy(syncing = true, lastError = null)
+        try {
+            val snapshots = remote.listHouseholds()
+            persistHouseholds(snapshots)
+            val chosen = chooseCurrentHousehold(snapshots, prefs.currentHouseholdRemoteId)
+            setCurrentRemoteId(chosen?.remoteId)
+            val row = chosen?.let { householdDao.findByRemoteId(it.remoteId) } ?: return@withLock false
+
+            if (adoptOrphans) roomDao.adoptOrphanRooms(row.id)
+            mergeRooms(row)
+            pullDevices(row)
+            val patchError = flushPendingPatches(row)
+            _status.value = HouseholdSyncStatus(
+                synced = true,
+                syncing = false,
+                lastError = patchError?.let { classifyHouseholdError(it).name },
+                lastSyncAt = clock(),
+            )
+            true
+        } catch (e: Exception) {
+            _status.value = _status.value.copy(
+                syncing = false,
+                synced = false,
+                lastError = classifyHouseholdError(e).name,
+            )
+            false
+        }
+    }
+
+    /** 切换家庭：只拉该家庭的房间与设备；失败时保留已缓存内容并标记未同步。 */
+    suspend fun switchHousehold(remoteId: String) {
+        mutex.withLock {
+            setCurrentRemoteId(remoteId)
+            val row = householdDao.findByRemoteId(remoteId) ?: return@withLock
+            // 切换后房间来源应以服务端为准，先合并再拉设备。
+            runCatching {
+                mergeRooms(row)
+                pullDevices(row)
+            }
+        }
+    }
+
+    suspend fun refreshHouseholds(): Boolean = mutex.withLock {
+        _status.value = _status.value.copy(syncing = true, lastError = null)
+        try {
+            val snapshots = remote.listHouseholds()
+            persistHouseholds(snapshots)
+            val chosen = chooseCurrentHousehold(snapshots, prefs.currentHouseholdRemoteId)
+            setCurrentRemoteId(chosen?.remoteId)
+            _status.value = _status.value.copy(syncing = false, synced = true, lastSyncAt = clock())
+            true
+        } catch (e: Exception) {
+            _status.value = _status.value.copy(
+                syncing = false,
+                synced = false,
+                lastError = classifyHouseholdError(e).name,
+            )
+            false
+        }
+    }
+
+    suspend fun createHousehold(name: String): Household = mutex.withLock {
+        val snapshot = remote.createHousehold(name.trim())
+        val row = upsertHousehold(snapshot, sortOrder = householdDao.getAll().size)
+        setCurrentRemoteId(snapshot.remoteId)
+        mergeRooms(row)
+        pullDevices(row)
+        row.toDomain()
+    }
+
+    suspend fun claimInvitation(code: String): Household = mutex.withLock {
+        val snapshot = remote.claimInvitation(code)
+        upsertHousehold(snapshot, sortOrder = householdDao.getAll().size)
+        setCurrentRemoteId(snapshot.remoteId)
+        val row = householdDao.findByRemoteId(snapshot.remoteId)
+            ?: throw HouseholdNotFoundException()
+        mergeRooms(row)
+        pullDevices(row)
+        row.toDomain()
+    }
+
+    suspend fun members(): List<HouseholdMember> {
+        val current = currentRow() ?: return emptyList()
+        return remote.members(current.remoteId)
+    }
+
+    suspend fun createInvitation(): HouseholdInvitation {
+        val current = currentRow() ?: throw HouseholdNotFoundException()
+        return remote.createInvitation(current.remoteId)
+    }
+
+    /**
+     * 新建房间：本机先落库保证离线可用；在线时立即上传。
+     * member 无权限时删除本机临时行并抛出可读的 403。
+     */
+    suspend fun createRoom(name: String): Long {
+        val current = currentRow()
+        val nextSort = roomDao.getRoomsForHousehold(current?.id ?: -1)
+            .maxOfOrNull { it.sortOrder }?.plus(1) ?: 0
+        val localId = roomDao.insert(
+            RoomEntity(
+                name = name.trim(),
+                sortOrder = nextSort,
+                createdAt = clock(),
+                remoteId = null,
+                householdId = current?.id,
+            ),
+        )
+        if (current == null) return localId
+        return try {
+            val created = remote.createRoom(current.remoteId, name.trim(), nextSort)
+            roomDao.linkRemote(localId, created.remoteId, current.id, created.sortOrder)
+            localId
+        } catch (e: Exception) {
+            when (classifyHouseholdError(e)) {
+                HouseholdErrorKind.OFFLINE -> {
+                    _status.value = _status.value.copy(synced = false, lastError = HouseholdErrorKind.OFFLINE.name)
+                    localId
+                }
+
+                HouseholdErrorKind.PERMISSION_DENIED,
+                HouseholdErrorKind.NOT_FOUND,
+                HouseholdErrorKind.SERVER_ERROR,
+                -> {
+                    roomDao.delete(localId)
+                    throw e
+                }
+
+                else -> {
+                    roomDao.delete(localId)
+                    throw e
+                }
+            }
+        }
+    }
+
+    suspend fun renameRoom(localId: Long, name: String) {
+        val room = roomDao.find(localId) ?: return
+        val current = currentRow()
+        if (room.remoteId != null && current != null) {
+            remote.updateRoom(current.remoteId, room.remoteId, name.trim(), null)
+        }
+        roomDao.rename(localId, name.trim())
+    }
+
+    suspend fun deleteRoom(localId: Long) {
+        val room = roomDao.find(localId)
+        val current = currentRow()
+        if (room?.remoteId != null && current != null) {
+            remote.deleteRoom(current.remoteId, room.remoteId)
+        }
+        deviceDao.clearRoomAssignments(localId)
+        roomDao.delete(localId)
+    }
+
+    /**
+     * 设备移入/移出房间：本地乐观更新后 PATCH 服务端。
+     * 网络失败保留 pending；403/404 清除 pending 并回读服务端，避免长期重试无意义请求。
+     */
+    suspend fun moveDeviceToRoom(mac: String, roomLocalId: Long?) {
+        val device = deviceDao.find(mac) ?: return
+        if (device.shared) throw HouseholdNotFoundException()
+        val current = currentRow()
+        val room = if (roomLocalId != null) roomDao.find(roomLocalId) else null
+        deviceDao.queueRoomAssignment(
+            mac = mac,
+            roomId = room?.id,
+            remoteRoomId = room?.remoteId,
+            pendingLocalId = room?.id,
+            householdRemoteId = if (room != null) current?.remoteId else null,
+        )
+        val error = flushPendingPatches(current)
+        if (error != null) throw error
+    }
+
+    private suspend fun mergeRooms(row: HouseholdEntity) {
+        val local = roomDao.getRoomsForHousehold(row.id)
+        val snapshots = local.map {
+            LocalRoomSnapshot(it.id, it.name, it.sortOrder, it.remoteId)
+        }
+        val remoteRooms = remote.listRooms(row.remoteId)
+        val plan: RoomMergePlan = planRoomMerge(snapshots, remoteRooms)
+
+        plan.update.forEach { (localId, serverRoom) ->
+            roomDao.updateFromServer(localId, serverRoom.name, serverRoom.sortOrder)
+        }
+        plan.adopt.forEach { (localId, serverRoom) ->
+            roomDao.linkRemote(localId, serverRoom.remoteId, row.id, serverRoom.sortOrder)
+        }
+        plan.push.sortedBy { it.sortOrder }.forEach { localRoom ->
+            val created = remote.createRoom(row.remoteId, localRoom.name, localRoom.sortOrder)
+            roomDao.linkRemote(localRoom.localId, created.remoteId, row.id, created.sortOrder)
+        }
+        plan.insert.forEach { serverRoom ->
+            if (roomDao.findByRemoteId(serverRoom.remoteId) == null) {
+                roomDao.insert(
+                    RoomEntity(
+                        name = serverRoom.name,
+                        sortOrder = serverRoom.sortOrder,
+                        createdAt = serverRoom.createdAt,
+                        remoteId = serverRoom.remoteId,
+                        householdId = row.id,
+                    ),
+                )
+            }
+        }
+        // 服务端已删除的远端房间：本机同步删除，房间内设备回到未分配。
+        plan.remove.forEach { localId ->
+            deviceDao.clearRoomAssignments(localId)
+            roomDao.delete(localId)
+        }
+    }
+
+    private suspend fun pullDevices(row: HouseholdEntity) {
+        val remoteRooms = roomDao.getRoomsForHousehold(row.id)
+            .mapNotNull { room -> room.remoteId?.let { it to room.id } }
+            .toMap()
+        val localDevices = deviceDao.getAllDevices()
+        val localByKey = localDevices.associateBy { keyOf(it.platform, it.externalId) }
+        val seenSharedMacs = mutableSetOf<String>()
+
+        remote.listDevices().forEach { ref ->
+            if (ref.householdRemoteId != null && ref.householdRemoteId != row.remoteId) return@forEach
+            if (ref.householdRemoteId == null && !row.isPersonal) return@forEach
+            val roomLocalId = ref.roomRemoteId?.let { remoteRooms[it] }
+            val existing = localByKey[keyOf(ref.platform, ref.externalId)]
+            if (existing == null) {
+                // 其他家庭成员共享的设备：以真实服务端数据展示，只读且不参与 push。
+                val mac = sharedMac(ref.platform, ref.externalId)
+                seenSharedMacs += mac
+                val timestamp = ref.updatedAt.takeIf { it > 0 } ?: clock()
+                deviceDao.insertOrUpdate(
+                    DeviceEntity(
+                        mac = mac,
+                        name = ref.alias ?: "共享设备",
+                        lastRssi = 0,
+                        lastSeenTimestamp = timestamp,
+                        id = ref.externalId,
+                        platform = ref.platform,
+                        externalId = ref.externalId,
+                        updatedAt = ref.updatedAt,
+                        deletedAt = null,
+                        syncState = "synced",
+                        createdAt = timestamp,
+                        householdId = row.id,
+                        remoteRoomId = ref.roomRemoteId,
+                        roomId = roomLocalId,
+                        shared = true,
+                    ),
+                )
+            } else {
+                deviceDao.applyServerMeta(existing.mac, row.id, ref.roomRemoteId, roomLocalId)
+            }
+        }
+        // 服务端已不再返回的共享设备（被移除/退出家庭）同步清理，避免列表残留。
+        val staleShared = deviceDao.sharedDevicesForHousehold(row.id)
+            .filter { it.mac !in seenSharedMacs }
+            .map { it.mac }
+        if (staleShared.isNotEmpty()) deviceDao.deleteByMacs(staleShared)
+    }
+
+    private suspend fun flushPendingPatches(row: HouseholdEntity?): Throwable? {
+        var firstError: Throwable? = null
+        deviceDao.pendingRoomPatches().forEach { device ->
+            if (device.shared) {
+                deviceDao.finishRoomPatch(device.mac)
+                return@forEach
+            }
+            val targetLocalId = device.pendingRoomLocalId
+            val targetRoom = if (targetLocalId != null) roomDao.find(targetLocalId) else null
+            if (targetLocalId != null && targetRoom == null) {
+                // 房间已被删除：把设备回到未分配。
+            } else if (targetRoom?.remoteId == null && targetLocalId != null) {
+                // 房间尚未上传成功，保留 pending 等下一轮。
+                return@forEach
+            }
+            val roomRemoteId = if (targetLocalId == null) "" else targetRoom?.remoteId.orEmpty()
+            val householdRemoteId =
+                if (roomRemoteId.isEmpty()) null else device.pendingHouseholdRemoteId ?: row?.remoteId
+            try {
+                remote.patchDevice(
+                    platform = device.platform,
+                    externalId = device.externalId,
+                    roomRemoteId = roomRemoteId,
+                    householdRemoteId = householdRemoteId,
+                )
+                deviceDao.finishRoomPatch(device.mac)
+            } catch (e: Exception) {
+                firstError = firstError ?: e
+                when (classifyHouseholdError(e)) {
+                    HouseholdErrorKind.PERMISSION_DENIED,
+                    HouseholdErrorKind.NOT_FOUND,
+                    HouseholdErrorKind.INVALID_CODE,
+                    HouseholdErrorKind.RATE_LIMITED,
+                    HouseholdErrorKind.SERVER_ERROR,
+                    -> {
+                        deviceDao.finishRoomPatch(device.mac)
+                        // 回读服务端真值，撤销被拒绝的本地乐观更新。
+                        runCatching { if (row != null) pullDevices(row) }
+                    }
+
+                    HouseholdErrorKind.OFFLINE -> Unit
+                }
+            }
+        }
+        return firstError
+    }
+
+    private suspend fun currentRow(): HouseholdEntity? {
+        val preferred = prefs.currentHouseholdRemoteId
+        return householdDao.findByRemoteId(preferred.orEmpty())
+            ?: householdDao.getAll().firstOrNull { it.isPersonal }
+            ?: householdDao.getAll().firstOrNull()
+    }
+
+    private suspend fun setCurrentRemoteId(remoteId: String?) {
+        if (remoteId != null) {
+            prefs.currentHouseholdRemoteId = remoteId
+            _currentRemoteId.value = remoteId
+        }
+    }
+
+    private suspend fun persistHouseholds(snapshots: List<HouseholdSnapshot>) {
+        // 空列表通常意味着服务端异常或权限异常，保留本机数据而不是清空家庭与房间。
+        if (snapshots.isEmpty()) return
+        val existing = householdDao.getAll()
+        val remoteIds = snapshots.map { it.remoteId }
+        val removed = existing.filter { it.remoteId !in remoteIds }
+        removed.forEach { row ->
+            roomDao.deleteForHousehold(row.id)
+            deviceDao.clearHouseholdAssignments(row.id)
+            householdDao.delete(row.id)
+        }
+        snapshots.forEachIndexed { index, snapshot ->
+            val row = householdDao.findByRemoteId(snapshot.remoteId)
+            if (row == null) {
+                upsertHousehold(snapshot, sortOrder = index)
+            } else {
+                householdDao.update(
+                    id = row.id,
+                    name = snapshot.name,
+                    isPersonal = snapshot.isPersonal,
+                    role = snapshot.role.name.lowercase(),
+                    memberCount = snapshot.memberCount,
+                    deviceCount = snapshot.deviceCount,
+                    sortOrder = index,
+                    createdAt = snapshot.createdAt.takeIf { it > 0 } ?: row.createdAt,
+                )
+            }
+        }
+        if (removed.isNotEmpty()) {
+            val current = prefs.currentHouseholdRemoteId
+            if (current != null && current !in remoteIds) _currentRemoteId.value = null
+        }
+    }
+
+    private suspend fun upsertHousehold(
+        snapshot: HouseholdSnapshot,
+        sortOrder: Int,
+    ): HouseholdEntity {
+        householdDao.findByRemoteId(snapshot.remoteId)?.let { return it }
+        val id = householdDao.insert(
+            HouseholdEntity(
+                remoteId = snapshot.remoteId,
+                name = snapshot.name,
+                isPersonal = snapshot.isPersonal,
+                role = snapshot.role.name.lowercase(),
+                memberCount = snapshot.memberCount,
+                deviceCount = snapshot.deviceCount,
+                sortOrder = sortOrder,
+                createdAt = snapshot.createdAt,
+            ),
+        )
+        return householdDao.findByRemoteId(snapshot.remoteId)
+            ?: HouseholdEntity(
+                id = id,
+                remoteId = snapshot.remoteId,
+                name = snapshot.name,
+                isPersonal = snapshot.isPersonal,
+                role = snapshot.role.name.lowercase(),
+                memberCount = snapshot.memberCount,
+                deviceCount = snapshot.deviceCount,
+                sortOrder = sortOrder,
+                createdAt = snapshot.createdAt,
+            )
+    }
+
+    private fun HouseholdEntity.toDomain() = Household(
+        localId = id,
+        remoteId = remoteId,
+        name = name,
+        isPersonal = isPersonal,
+        role = HouseholdRole.parse(role),
+        memberCount = memberCount,
+        deviceCount = deviceCount,
+        sortOrder = sortOrder,
+        createdAt = createdAt,
+    )
+
+    private fun keyOf(platform: String, externalId: String) =
+        "${platform.lowercase()}|$externalId"
+
+    private fun sharedMac(platform: String, externalId: String) =
+        "shared:${platform.lowercase()}:$externalId"
+}

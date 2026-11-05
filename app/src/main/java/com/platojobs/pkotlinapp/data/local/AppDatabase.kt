@@ -113,6 +113,37 @@ internal object RoomMigrationSql {
     )
 }
 
+/** v11 -> v12 的家庭接入：新增 households 表，房间/设备增加远端家庭与房间字段。 */
+internal object HouseholdMigrationSql {
+    val V11_TO_V12 = listOf(
+        """
+        CREATE TABLE IF NOT EXISTS `households` (
+            `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+            `remoteId` TEXT NOT NULL,
+            `name` TEXT NOT NULL,
+            `isPersonal` INTEGER NOT NULL DEFAULT 0,
+            `role` TEXT NOT NULL,
+            `memberCount` INTEGER NOT NULL DEFAULT 0,
+            `deviceCount` INTEGER NOT NULL DEFAULT 0,
+            `sortOrder` INTEGER NOT NULL DEFAULT 0,
+            `createdAt` INTEGER NOT NULL DEFAULT 0
+        )
+        """.trimIndent(),
+        "CREATE UNIQUE INDEX IF NOT EXISTS `index_households_remoteId` " +
+            "ON `households` (`remoteId`)",
+        // 房间：remoteId 为空表示仅本机、待上传；householdId 为空表示旧数据，首次家庭同步归入当前家庭。
+        "ALTER TABLE rooms ADD COLUMN remoteId TEXT",
+        "ALTER TABLE rooms ADD COLUMN householdId INTEGER",
+        // 设备：家庭/远端房间归属，以及房间变更待上报标记。
+        "ALTER TABLE devices ADD COLUMN householdId INTEGER",
+        "ALTER TABLE devices ADD COLUMN remoteRoomId TEXT",
+        "ALTER TABLE devices ADD COLUMN pendingRoomPatch INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE devices ADD COLUMN pendingRoomLocalId INTEGER",
+        "ALTER TABLE devices ADD COLUMN pendingHouseholdRemoteId TEXT",
+        "ALTER TABLE devices ADD COLUMN shared INTEGER NOT NULL DEFAULT 0",
+    )
+}
+
 @Database(
     entities = [
         DeviceEntity::class,
@@ -123,8 +154,9 @@ internal object RoomMigrationSql {
         SceneEntity::class,
         SceneActionEntity::class,
         RoomEntity::class,
+        HouseholdEntity::class,
     ],
-    version = 11,
+    version = 12,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -142,6 +174,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun sceneDao(): SceneDao
 
     abstract fun roomDao(): RoomDao
+
+    abstract fun householdDao(): HouseholdDao
 
     companion object {
         private const val DB_NAME = "device_dashboard.db"
@@ -261,6 +295,16 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v11 -> v12：接入服务端家庭。已有房间与设备归属原样保留（roomId 不动），
+         * 新列默认为空，等待首次 GET /households 后把本机房间合并进当前家庭。
+         */
+        val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                HouseholdMigrationSql.V11_TO_V12.forEach(db::execSQL)
+            }
+        }
+
         @Volatile
         private var instance: AppDatabase? = null
 
@@ -281,6 +325,7 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_8_9,
                     MIGRATION_9_10,
                     MIGRATION_10_11,
+                    MIGRATION_11_12,
                 )
                     .build()
                     .also { instance = it }

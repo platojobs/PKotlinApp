@@ -1,16 +1,21 @@
 package com.platojobs.pkotlinapp.ui.detail
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.platojobs.pkotlinapp.PKotlinApplication
+import com.platojobs.pkotlinapp.R
 import com.platojobs.pkotlinapp.data.ble.BleConnectionManager
 import com.platojobs.pkotlinapp.data.ble.BleConnectionState
 import com.platojobs.pkotlinapp.data.collection.CollectionSession
 import com.platojobs.pkotlinapp.data.collection.CollectionStatus
+import com.platojobs.pkotlinapp.data.household.HouseholdRepository
 import com.platojobs.pkotlinapp.data.prefs.AppSettings
 import com.platojobs.pkotlinapp.data.sync.SyncScheduler
+import com.platojobs.pkotlinapp.domain.household.HouseholdErrorKind
+import com.platojobs.pkotlinapp.domain.household.classifyHouseholdError
 import com.platojobs.pkotlinapp.domain.export.ExportTooManyRowsException
 import com.platojobs.pkotlinapp.domain.export.ReadingCsv
 import com.platojobs.pkotlinapp.domain.export.ReadingCsvRow
@@ -36,13 +41,18 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -106,27 +116,65 @@ class DeviceDetailViewModel(
     private val settings: AppSettings,
     private val collectionSession: CollectionSession,
     private val roomRepository: RoomRepository,
+    private val householdRepository: HouseholdRepository,
+    private val context: Context,
     private val now: () -> Long = System::currentTimeMillis,
 ) : ViewModel() {
 
-    /** 本机房间列表与当前设备归属。 */
-    val rooms: StateFlow<List<Room>> = roomRepository.observeRooms()
-        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    /** 当前家庭下的房间；服务端房间合并后自动更新。 */
+    val rooms: StateFlow<List<Room>> = combine(
+        roomRepository.observeRooms(),
+        householdRepository.current,
+    ) { rooms, current ->
+        val currentId = current?.localId
+        rooms.filter { it.householdId == null || (currentId != null && it.householdId == currentId) }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val roomId: StateFlow<Long?> = deviceRepository.observeDevice(mac)
         .map { it?.roomId }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
+    private val _roomMessages = MutableSharedFlow<String>(extraBufferCapacity = 4)
+    val roomMessages: SharedFlow<String> = _roomMessages.asSharedFlow()
+
     fun assignRoom(targetRoomId: Long?) {
-        viewModelScope.launch { deviceRepository.assignRoom(mac, targetRoomId) }
+        viewModelScope.launch {
+            if (deviceRepository.observeDevice(mac).first()?.shared == true) {
+                _roomMessages.tryEmit(context.getString(R.string.household_shared_device_readonly))
+                return@launch
+            }
+            runCatching { householdRepository.moveDeviceToRoom(mac, targetRoomId) }
+                .onFailure(::emitRoomError)
+        }
     }
 
     /** 详情页尚无房间时的新建入口：建好后直接把当前设备放进去。 */
     fun createRoomAndAssign(name: String) {
         if (name.isBlank()) return
         viewModelScope.launch {
-            val id = roomRepository.createRoom(name)
-            deviceRepository.assignRoom(mac, id)
+            if (deviceRepository.observeDevice(mac).first()?.shared == true) {
+                _roomMessages.tryEmit(context.getString(R.string.household_shared_device_readonly))
+                return@launch
+            }
+            runCatching {
+                val id = householdRepository.createRoom(name)
+                householdRepository.moveDeviceToRoom(mac, id)
+            }.onFailure(::emitRoomError)
         }
+    }
+
+    private fun emitRoomError(error: Throwable) {
+        _roomMessages.tryEmit(
+            when (classifyHouseholdError(error)) {
+                HouseholdErrorKind.PERMISSION_DENIED ->
+                    context.getString(R.string.household_permission_denied)
+
+                HouseholdErrorKind.NOT_FOUND -> context.getString(R.string.household_not_found)
+                HouseholdErrorKind.INVALID_CODE -> context.getString(R.string.invite_code_invalid)
+                HouseholdErrorKind.RATE_LIMITED -> context.getString(R.string.invite_rate_limited)
+                HouseholdErrorKind.OFFLINE -> context.getString(R.string.household_offline_hint)
+                HouseholdErrorKind.SERVER_ERROR -> context.getString(R.string.household_server_error)
+            },
+        )
     }
 
     val connectionState: StateFlow<BleConnectionState> = bleConnectionManager.state
@@ -525,6 +573,8 @@ class DeviceDetailViewModel(
                     settings = container.settings,
                     collectionSession = container.collectionSession,
                     roomRepository = container.roomRepository,
+                    householdRepository = container.householdRepository,
+                    context = app.applicationContext,
                 )
             }
         }

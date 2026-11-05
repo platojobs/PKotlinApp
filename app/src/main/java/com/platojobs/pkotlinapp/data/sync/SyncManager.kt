@@ -1,6 +1,7 @@
 package com.platojobs.pkotlinapp.data.sync
 
 import com.platojobs.pkotlinapp.data.local.DeviceDao
+import com.platojobs.pkotlinapp.domain.household.HouseholdSyncer
 import com.platojobs.pkotlinapp.domain.sync.AuthExpiredException
 import com.platojobs.pkotlinapp.domain.sync.SyncCursorStore
 import com.platojobs.pkotlinapp.domain.sync.SyncEngine
@@ -29,6 +30,8 @@ class SyncManager(
     private val tokenStore: TokenStore,
     private val cursorStore: SyncCursorStore,
     private val readingSyncer: ReadingSyncer,
+    /** 家庭同步（可选）；失败只记录家庭状态，不阻塞设备/读数同步。 */
+    private val householdSyncer: HouseholdSyncer? = null,
     scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
 ) {
 
@@ -55,6 +58,7 @@ class SyncManager(
                 // 失败（如离线）不影响首屏，pending 标记保留到下一次后台同步。
                 runCatching { readingSyncer.syncPending() }
             }
+            syncHouseholdSafely()
             statusStore.recordSuccess(lastSyncAt = System.currentTimeMillis(), conflicts = 0)
             true
         } catch (e: AuthExpiredException) {
@@ -73,6 +77,7 @@ class SyncManager(
             val outcome = engine.syncAll()
             // 设备先落服务端，再补传读数；同一 push 契约、独立 200/批的幂等批次。
             readingSyncer.syncPending()
+            syncHouseholdSafely()
             statusStore.recordSuccess(
                 lastSyncAt = System.currentTimeMillis(),
                 conflicts = outcome.conflicts.size,
@@ -104,10 +109,13 @@ class SyncManager(
         tokenStore.clear()
         cursorStore.cursor = null
         dao.markAllPending()
+        // 新匿名账号的家庭空间与旧账号无关：清空本地家庭映射，本机房间保留待重新合并。
+        householdSyncer?.onRelogin()
         statusStore.resetForRelogin()
         try {
             val outcome = engine.syncAll()
             readingSyncer.syncPending()
+            syncHouseholdSafely()
             statusStore.recordSuccess(
                 lastSyncAt = System.currentTimeMillis(),
                 conflicts = outcome.conflicts.size,
@@ -125,7 +133,16 @@ class SyncManager(
     fun isLocalOnly(): Boolean = status.value.localOnly
 
     fun isAuthExpired(): Boolean = status.value.authExpired
+
+    private suspend fun syncHouseholdSafely() {
+        try {
+            householdSyncer?.onSync()
+        } catch (_: Exception) {
+            // 家庭接口不可用（离线/后端未部署）时保留本机房间与设备，仅由家庭模块标记未同步。
+        }
+    }
 }
 
 private fun Exception.readableMessage(): String =
     message?.takeIf { it.isNotBlank() } ?: javaClass.simpleName
+

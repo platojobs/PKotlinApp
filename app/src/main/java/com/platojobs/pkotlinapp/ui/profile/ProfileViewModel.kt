@@ -11,6 +11,7 @@ import com.platojobs.pkotlinapp.data.account.AccountService
 import com.platojobs.pkotlinapp.data.collection.CollectionLauncher
 import com.platojobs.pkotlinapp.data.collection.CollectionSession
 import com.platojobs.pkotlinapp.data.collection.CollectionStatus
+import com.platojobs.pkotlinapp.data.household.HouseholdRepository
 import com.platojobs.pkotlinapp.data.prefs.AppSettings
 import com.platojobs.pkotlinapp.data.prefs.ThemeMode
 import com.platojobs.pkotlinapp.data.sync.SyncErrorKind
@@ -21,6 +22,12 @@ import com.platojobs.pkotlinapp.domain.account.PairingCode
 import com.platojobs.pkotlinapp.domain.account.PairingCodeFormat
 import com.platojobs.pkotlinapp.domain.account.PairingCodeInvalidException
 import com.platojobs.pkotlinapp.domain.account.PairingRateLimitedException
+import com.platojobs.pkotlinapp.domain.household.Household
+import com.platojobs.pkotlinapp.domain.household.HouseholdErrorKind
+import com.platojobs.pkotlinapp.domain.household.HouseholdInvitation
+import com.platojobs.pkotlinapp.domain.household.HouseholdMember
+import com.platojobs.pkotlinapp.domain.household.HouseholdSyncStatus
+import com.platojobs.pkotlinapp.domain.household.classifyHouseholdError
 import com.platojobs.pkotlinapp.domain.model.ScanLog
 import com.platojobs.pkotlinapp.domain.repository.ScanLogRepository
 import com.platojobs.pkotlinapp.domain.sync.SyncStatus
@@ -62,6 +69,17 @@ data class PairingState(
     val expired: Boolean get() = code != null && remainingSeconds <= 0
 }
 
+/** 邀请码展示态：8 位码、服务端过期时间与真实倒计时。 */
+data class InviteState(
+    val code: String? = null,
+    val expiresAt: Long = 0L,
+    val remainingSeconds: Int = 0,
+    val loading: Boolean = false,
+    val error: String? = null,
+) {
+    val expired: Boolean get() = code != null && remainingSeconds <= 0
+}
+
 /** 账号数据导出：Running 显示真实累计条数与页码。 */
 sealed interface AccountExportState {
     data object Idle : AccountExportState
@@ -77,6 +95,7 @@ class ProfileViewModel(
     private val syncManager: SyncManager,
     private val accountService: AccountService,
     private val tokenStore: TokenStore,
+    private val householdRepository: HouseholdRepository,
     collectionSession: CollectionSession,
 ) : ViewModel() {
 
@@ -284,6 +303,144 @@ class ProfileViewModel(
         }
     }
 
+    // ---- 家庭 ----
+
+    val households: StateFlow<List<Household>> = householdRepository.households
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val currentHousehold: StateFlow<Household?> = householdRepository.currentHousehold
+
+    val householdStatus: StateFlow<HouseholdSyncStatus> = householdRepository.status
+
+    private val _members = MutableStateFlow<List<HouseholdMember>>(emptyList())
+    val members: StateFlow<List<HouseholdMember>> = _members.asStateFlow()
+
+    private val _invite = MutableStateFlow(InviteState())
+    val invite: StateFlow<InviteState> = _invite.asStateFlow()
+
+    private var inviteTicker: Job? = null
+
+    private val _householdBusy = MutableStateFlow(false)
+    val householdBusy: StateFlow<Boolean> = _householdBusy.asStateFlow()
+
+    init {
+        viewModelScope.launch { refreshHousehold() }
+        viewModelScope.launch {
+            currentHousehold.collect { household ->
+                if (household == null) {
+                    _members.value = emptyList()
+                } else {
+                    runCatching { householdRepository.members() }
+                        .onSuccess { _members.value = it }
+                }
+            }
+        }
+    }
+
+    /** 拉家庭列表与成员；离线时保留缓存并标记未同步。 */
+    fun refreshHousehold() {
+        viewModelScope.launch {
+            householdRepository.refreshHouseholds()
+            householdRepository.currentHousehold.value?.let {
+                runCatching { householdRepository.members() }.onSuccess { list ->
+                    _members.value = list
+                }
+            }
+        }
+    }
+
+    fun createHousehold(name: String) {
+        if (name.isBlank() || _householdBusy.value) return
+        viewModelScope.launch {
+            _householdBusy.value = true
+            try {
+                val created = householdRepository.createHousehold(name)
+                _accountMessage.emit(appContext.getString(R.string.household_created, created.name))
+            } catch (e: Exception) {
+                _accountMessage.emit(householdErrorText(e))
+            } finally {
+                _householdBusy.value = false
+            }
+        }
+    }
+
+    /** 生成邀请码：服务端签发 8 位一次性明文码，旧码立即失效。 */
+    fun generateInvitation() {
+        if (_invite.value.loading) return
+        _invite.update { it.copy(loading = true, error = null) }
+        viewModelScope.launch {
+            try {
+                val invitation = householdRepository.createInvitation()
+                _invite.value = InviteState(
+                    code = invitation.code,
+                    expiresAt = invitation.expiresAt,
+                    remainingSeconds = remainingSeconds(invitation),
+                    loading = false,
+                )
+                startInviteCountdown(invitation)
+            } catch (e: Exception) {
+                _invite.update { it.copy(loading = false, error = householdErrorText(e)) }
+            }
+        }
+    }
+
+    private fun startInviteCountdown(invitation: HouseholdInvitation) {
+        inviteTicker?.cancel()
+        inviteTicker = viewModelScope.launch {
+            while (isActive) {
+                val remaining = remainingSeconds(invitation)
+                _invite.update { it.copy(remainingSeconds = remaining) }
+                if (remaining <= 0) break
+                delay(1000)
+            }
+        }
+    }
+
+    private fun remainingSeconds(invitation: HouseholdInvitation): Int {
+        if (invitation.expiresAt <= 0L) return 0
+        return ((invitation.expiresAt - System.currentTimeMillis()) / 1000)
+            .coerceAtLeast(0)
+            .toInt()
+    }
+
+    /** 加入家庭：输入规范化复用配对码规则；404/429 使用可读文案。 */
+    fun claimInvitation(raw: String) {
+        if (_householdBusy.value) return
+        val code = PairingCodeFormat.sanitize(raw)
+        if (!PairingCodeFormat.isValid(code)) {
+            viewModelScope.launch {
+                _accountMessage.emit(appContext.getString(R.string.invite_code_format_error))
+            }
+            return
+        }
+        viewModelScope.launch {
+            _householdBusy.value = true
+            try {
+                val household = householdRepository.claimInvitation(code)
+                _accountMessage.emit(
+                    appContext.getString(R.string.household_joined, household.name),
+                )
+                _invite.value = InviteState()
+            } catch (e: Exception) {
+                _accountMessage.emit(householdErrorText(e))
+            } finally {
+                _householdBusy.value = false
+            }
+        }
+    }
+
+    private fun householdErrorText(error: Throwable): String =
+        appContext.getString(
+            when (classifyHouseholdError(error)) {
+                HouseholdErrorKind.PERMISSION_DENIED -> R.string.household_permission_denied
+                HouseholdErrorKind.NOT_FOUND -> R.string.household_not_found
+                HouseholdErrorKind.INVALID_CODE -> R.string.invite_code_invalid
+                HouseholdErrorKind.RATE_LIMITED -> R.string.invite_rate_limited
+                HouseholdErrorKind.OFFLINE -> R.string.household_offline_hint
+                HouseholdErrorKind.SERVER_ERROR -> R.string.household_server_error
+            },
+        )
+
     // ---- 导出 / 注销 ----
 
     /** 拉全账号数据并写盘；进度是真实页数与条数。 */
@@ -382,6 +539,7 @@ class ProfileViewModel(
                     syncManager = app.container.syncManager,
                     accountService = app.container.accountService,
                     tokenStore = app.container.tokenStore,
+                    householdRepository = app.container.householdRepository,
                     collectionSession = app.container.collectionSession,
                 )
             }

@@ -1018,6 +1018,136 @@ class E2eContractTest {
             assertNotNull(page.nextCursor)
         }
 
+        // ---- 家庭链路（fixture 与 postgres 都执行） ----
+        val householdDevice = run {
+            val suffix = UUID.randomUUID().toString().replace("-", "").take(6).chunked(2)
+                .joinToString(":") { it.uppercase() }
+            "AA:BB:CC:$suffix"
+        }
+        step("household: owner pushes one device") {
+            val push = PushDeviceDto(
+                id = UUID.randomUUID().toString(),
+                platform = "android",
+                externalId = householdDevice,
+                mac = householdDevice.lowercase(),
+                alias = Reported("家庭成员设备"),
+                scanRecords = emptyList(),
+                updatedAt = Rfc3339.format(System.currentTimeMillis() - 5_000),
+            )
+            val result = post(
+                "/sync/push",
+                pushRequestAdapter.toJson(
+                    SyncPushRequest(clientId = "e2e-household-client", devices = listOf(push)),
+                ),
+                user.token,
+            )
+            assertEquals(200, result.code)
+        }
+        val householdId = captureStep("household: owner creates a household") {
+            val result = post("/households", """{"name":"e2e-home"}""", user.token)
+            assertEquals(201, result.code)
+            parseMap(result.body)["id"] as? String ?: error("missing household id")
+        }
+
+        val roomId = captureStep("household: owner creates a room") {
+            val result = post(
+                "/households/$householdId/rooms",
+                """{"name":"客厅","sortOrder":0}""",
+                user.token,
+            )
+            assertEquals(201, result.code)
+            parseMap(result.body)["id"] as? String ?: error("missing room id")
+        }
+
+        step("household: owner assigns device room via PATCH /my/devices") {
+            val result = patch(
+                "/my/devices/android/$householdDevice",
+                """{"householdId":"$householdId","roomId":"$roomId"}""",
+                user.token,
+            )
+            assertEquals(200, result.code)
+            val device = parseMap(result.body)
+            assertEquals(householdId, device["householdId"])
+            assertEquals(roomId, device["roomId"])
+        }
+
+        val inviteCode = captureStep("household: owner issues an 8-char one-time invitation") {
+            val result = post("/households/$householdId/invitations", "{}", user.token)
+            assertEquals(201, result.code)
+            val code = parseMap(result.body)["code"] as? String ?: error("missing invite code")
+            assertTrue("invite code=$code", code.matches(Regex("[A-HJ-NP-Z2-9]{8}")))
+            assertNotNull(parseMap(result.body)["expiresAt"])
+            code
+        }
+
+        val member = captureStep("household: second account claims the invitation") {
+            val session = newAnonymousSession("household member")
+            val result = post("/households/invitations/claim", claimBody(inviteCode), session.token)
+            assertEquals(200, result.code)
+            assertEquals(householdId, parseMap(result.body)["id"])
+            session
+        }
+
+        step("household: member sees the owner device with real room data") {
+            val result = get("/my/devices", member.token)
+            assertEquals(200, result.code)
+            val device = parseMap(result.body)["items"]
+                .let { it as? List<*> }
+                .orEmpty()
+                .map { it as? Map<*, *> }
+                .firstOrNull { it?.get("externalId") == householdDevice }
+                ?: error("member cannot see owner device")
+            assertEquals(householdId, device["householdId"])
+            assertEquals(roomId, device["roomId"])
+        }
+
+        step("household: owner sees owner and member roles") {
+            val result = get("/households/$householdId/members", user.token)
+            assertEquals(200, result.code)
+            val members = (parseMap(result.body)["items"] as? List<*>).orEmpty()
+                .map { it as? Map<*, *> }
+            assertEquals(2, members.size)
+            assertEquals("owner", members.firstOrNull { it?.get("userId") == user.userId }?.get("role"))
+            assertEquals("member", members.firstOrNull { it?.get("userId") == member.userId }?.get("role"))
+        }
+
+        step("household: member renaming a room is rejected with 403") {
+            val result = patch(
+                "/households/$householdId/rooms/$roomId",
+                """{"name":"阳台"}""",
+                member.token,
+            )
+            assertEquals(403, result.code)
+            val error = parseMap(result.body)["error"] as Map<*, *>
+            assertEquals("FORBIDDEN", error["code"])
+        }
+
+        step("household: member creating a room is rejected with 403") {
+            val result = post(
+                "/households/$householdId/rooms",
+                """{"name":"次卧","sortOrder":1}""",
+                member.token,
+            )
+            assertEquals(403, result.code)
+        }
+
+        step("household: member cannot patch the owner device (404)") {
+            val result = patch(
+                "/my/devices/android/$householdDevice",
+                """{"roomId":""}""",
+                member.token,
+            )
+            assertEquals(404, result.code)
+        }
+
+        step("household: cross-household access returns 404") {
+            val outsider = newAnonymousSession("household outsider")
+            assertEquals(404, get("/households/$householdId/rooms", outsider.token).code)
+            assertEquals(404, get("/households/$householdId", outsider.token).code)
+        }
+
+        println("[E2E] SUMMARY: household contract cases passed")
+
         step("account: delete returns 204 and revokes every token of the account") {
             val deleted = delete("/me", claimed.token)
             assertEquals(204, deleted.code)
@@ -1171,6 +1301,17 @@ class E2eContractTest {
 
     private fun claimBody(code: String): String = """{"code":"$code"}"""
 
+    private fun newAnonymousSession(label: String): UserSession {
+        val result = post("/auth/anonymous")
+        assertEquals("$label anonymous login", 201, result.code)
+        val body = parseMap(result.body)
+        return UserSession(
+            userId = body["userId"] as? String ?: error("$label missing userId"),
+            token = body["token"] as? String ?: error("$label missing token"),
+        )
+    }
+
+
     /** token TTL 契约：180 天；允许 1 天误差，避免服务端取整/时钟漂移误报。 */
     private fun assertTokenTtl(body: Map<String, Any?>, label: String) {
         val raw = body["expiresAt"] as? String ?: error("$label missing expiresAt")
@@ -1219,6 +1360,9 @@ class E2eContractTest {
     private fun delete(path: String, token: String): HttpResult =
         execute("DELETE", path, body = null, token = token)
 
+    private fun patch(path: String, body: String, token: String): HttpResult =
+        execute("PATCH", path, body = body, token = token)
+
     private fun push(body: String, token: String, idempotencyKey: String): HttpResult =
         execute(
             "POST",
@@ -1243,6 +1387,10 @@ class E2eContractTest {
         when (method) {
             "GET" -> builder.get()
             "DELETE" -> builder.delete()
+            "PATCH" -> builder.patch(
+                (body ?: "").toRequestBody("application/json; charset=utf-8".toMediaType()),
+            )
+
             else -> builder.post(
                 (body ?: "").toRequestBody("application/json; charset=utf-8".toMediaType()),
             )

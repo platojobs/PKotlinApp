@@ -3,6 +3,8 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Android 13+ 告警通知运行时权限；拒绝不影响其它功能。 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- Android 12 以下：蓝牙为普通权限，扫描需要定位权限 -->
     <uses-permission
@@ -50,6 +52,17 @@
             android:name=".ui.detail.DeviceDetailActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
+
+        <!-- 只暴露 cacheDir/exports 下的 CSV，供系统分享读取。 -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>

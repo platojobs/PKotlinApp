@@ -45,7 +45,11 @@ class RoomSyncLocalStore(
                 aliasDirty = existing?.aliasDirty ?: record.aliasDirty,
                 advertisedName = record.advertisedName ?: existing?.advertisedName,
                 group = record.group ?: existing?.group,
-            ).toEntity(macOverride = localMac),
+            ).toEntity(
+                macOverride = localMac,
+                createdAt = existing?.createdAt?.takeIf { it > 0 }
+                    ?: System.currentTimeMillis(),
+            ),
         )
     }
 
@@ -74,7 +78,7 @@ private fun DeviceEntity.toSyncRecord() = SyncRecord(
     advertisedName = advertisedName,
 )
 
-private fun SyncRecord.toEntity(macOverride: String? = null): DeviceEntity {
+private fun SyncRecord.toEntity(macOverride: String? = null, createdAt: Long = 0L): DeviceEntity {
     val normalized = if (platform == PLATFORM_ANDROID) {
         normalizeExternalId(externalId)
     } else {
@@ -99,5 +103,6 @@ private fun SyncRecord.toEntity(macOverride: String? = null): DeviceEntity {
         group = group,
         advertisedName = advertisedName,
         aliasDirty = aliasDirty,
+        createdAt = createdAt,
     )
 }

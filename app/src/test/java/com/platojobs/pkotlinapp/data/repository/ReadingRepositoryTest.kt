@@ -179,6 +179,18 @@ class ReadingRepositoryTest {
             .filter { it.deviceId == deviceId && it.metric == metric && it.recordedAt >= from }
             .sortedBy { it.recordedAt }
 
+        override suspend fun getBetween(
+            deviceId: String,
+            metric: String,
+            from: Long,
+            to: Long,
+        ): List<ReadingEntity> = stored
+            .filter {
+                it.deviceId == deviceId && it.metric == metric &&
+                    it.recordedAt >= from && it.recordedAt <= to
+            }
+            .sortedWith(compareBy({ it.recordedAt }, { it.id }))
+
         override suspend fun metricAggregates(deviceId: String): List<ReadingMetricRow> =
             stored.filter { it.deviceId == deviceId }
                 .groupBy { it.metric }

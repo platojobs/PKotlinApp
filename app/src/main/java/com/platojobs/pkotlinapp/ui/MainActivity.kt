@@ -99,6 +99,11 @@ class MainActivity : AppCompatActivity() {
         super.onSaveInstanceState(outState)
     }
 
+    /** 设备列表空状态的「去扫描」入口，切回首页扫描 Tab。 */
+    fun openScanTab() {
+        binding.bottomNav.selectedItemId = R.id.nav_home
+    }
+
     private fun showTab(itemId: Int) {
         val tag = fragmentTags[itemId] ?: return
         val fragmentManager = supportFragmentManager

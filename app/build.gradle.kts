@@ -31,8 +31,8 @@ android {
         applicationId = "com.platojobs.pkotlinapp"
         minSdk = 24
         targetSdk = 36
-        versionCode = 13
-        versionName = "0.5.0"
+        versionCode = 14
+        versionName = "0.6.0"
         buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
     }
 
@@ -67,6 +67,13 @@ android {
     buildFeatures {
         viewBinding = true
         buildConfig = true
+    }
+
+    testOptions {
+        unitTests {
+            // Robolectric 断言 NotificationCompat 构建出的真实通知对象。
+            isIncludeAndroidResources = true
+        }
     }
 
     compileOptions {
@@ -149,4 +156,5 @@ dependencies {
     testImplementation(libs.junit)
     // 用真实 SQLite 在 JVM 上验证 Room 迁移 SQL，不依赖模拟器。
     testImplementation(libs.sqlite.jdbc)
+    testImplementation(libs.robolectric)
 }

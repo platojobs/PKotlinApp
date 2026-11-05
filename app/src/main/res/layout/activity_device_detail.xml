@@ -526,6 +526,42 @@
                         android:textColor="@color/text_secondary"
                         android:visibility="gone" />
 
+                    <LinearLayout
+                        android:id="@+id/readingsExportRow"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:visibility="gone">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/detail_export_desc"
+                            android:textAppearance="?attr/textAppearanceBodySmall"
+                            android:textColor="@color/text_secondary" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/readingsExportButton"
+                            style="?attr/materialButtonOutlinedStyle"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="8dp"
+                            android:text="@string/detail_export_button" />
+
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/readingsExportProgress"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:textAppearance="?attr/textAppearanceBodySmall"
+                        android:textColor="@color/text_secondary"
+                        android:visibility="gone" />
+
                     <TextView
                         android:id="@+id/readingsRecentTitle"
                         android:layout_width="match_parent"

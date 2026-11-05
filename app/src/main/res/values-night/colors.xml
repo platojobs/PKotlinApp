@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 深色主题下的同名颜色覆盖；图表/信号/次要文字都从这里取色，禁止在代码里硬编码。 -->
+    <color name="brand_primary">#A8B4FF</color>
+    <color name="signal_active">#7FD18B</color>
+    <color name="signal_inactive">#3A4152</color>
+    <color name="text_secondary">#B3BAC5</color>
+    <color name="chart_line">#A8B4FF</color>
+    <color name="chart_point">#E5E7EB</color>
+    <color name="chart_grid">#3A4152</color>
+    <color name="chart_axis">#8B93A7</color>
+    <!-- 12% 透明度的浅紫区间带，深色底上仍能看出 min-max 波动范围。 -->
+    <color name="chart_band">#40A8B4FF</color>
+</resources>

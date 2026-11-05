@@ -6,6 +6,21 @@
 
 ---
 
+## v0.6.0
+
+**主题：告警通知 / CSV 导出 / 设备列表检索 / 深色模式**
+
+- 告警通知：规则命中后经 `RuleAlertSink` 投递本地通知，Android 8+ 独立渠道「设备告警」；Android 13+ 动态申请 `POST_NOTIFICATIONS`，拒绝时「我的」给出跳设置的提示且不阻断功能。「我的」新增真实告警开关与 1/5/30 分钟节流窗口；同一设备同一规则窗口内只通知一次，信号回落阈值内发一条「已恢复」，状态落 SharedPreferences 抗进程重启。通知正文只含设备名、指标、当前值、阈值与触发时间，点击打开设备详情，不含 token/账号。
+- CSV 导出：详情「数据」区按当前设备 + 指标 + 区间导出。≤7 天读 Room；>7 天按 `limit=100` + cursor 分页直到 `hasMore=false`，上限 5 万条。CSV 带 UTF-8 BOM、表头 `recordedAt,metric,value,unit`、ISO8601 UTC 时间与 RFC 4180 转义；文件仅写 `cacheDir/exports/`，经 `FileProvider` + `ACTION_SEND` 系统分享；导出显示真实累计条数，失败给可重试错误。
+- 设备列表：搜索按别名/广播名/型号名/MAC 模糊匹配（大小写不敏感，MAC 忽略冒号）；排序支持最近出现（默认）/名称/信号强度/添加时间并持久化；分组 Chip 来自真实分组值并含「未分组」；空结果区分「无设备（去扫描）」与「筛选无结果（清除筛选）」。
+- 深色模式：新增 `values-night/colors.xml`，图表折线/数据点/网格/坐标轴/min–max 区间带、Chip、卡片、次要文字全部走主题资源；Room v8 新增 `devices.createdAt`（`MIGRATION_7_8`，历史数据用 `lastSeenTimestamp` 回填）支撑「按添加时间」排序。
+- 测试：新增 `AlertThrottleTest`、`AlertNotifierTest`、`AlertNotificationFactoryTest`（Robolectric 断言 NotificationCompat 构建对象）、`ReadingCsvTest`、`ReadingPagerTest`、`DeviceListFilterTest`、`AppSettingsTest`、`ChartColorAuditTest`；v7→v8 迁移用例。单测 96 → 139。
+- 文档：README 删除「待 iOS 确认」，`00 4A / 00 4D` 明确为两端实测 12.0℃ / 20.0℃；新增 §6.2–§6.5；验收清单升级 v0.6.0 并新增 §7.8–§7.10。
+
+版本：`versionCode = 14`、`versionName = 0.6.0`。
+
+---
+
 ## v0.5.0
 
 **主题：详情页数据区升级为可切换长周期的产品级图表（对齐 PJGoIoT v0.5.0）**

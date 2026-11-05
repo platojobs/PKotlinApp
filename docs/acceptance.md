@@ -1,9 +1,9 @@
-# 真机验收清单（v0.5.0）
+# 真机验收清单（v0.6.0）
 
 本清单用于「执行人不在开发现场」时也能照着做完验收。每项都写明**操作步骤、预期现象、失败判定**。
 所有结果请记录到文末的「验收记录表」；未实际执行的项不要填 PASS。
 
-- 适用版本：`versionName = 0.5.0`（`versionCode = 13`）
+- 适用版本：`versionName = 0.6.0`（`versionCode = 14`）
 - 应用包名：`com.platojobs.pkotlinapp`
 - 主界面：`com.platojobs.pkotlinapp.ui.MainActivity`
 - 设备详情：`com.platojobs.pkotlinapp.ui.detail.DeviceDetailActivity`
@@ -55,7 +55,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versionCode"
 ```
 
-预期：`versionName=0.5.0`、`versionCode=13`。
+预期：`versionName=0.6.0`、`versionCode=14`。
 
 ---
 
@@ -111,9 +111,9 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
   - 权限自检三项（扫描 / 连接 / 定位）与系统授权状态一致；
   - 扫描日志有真实记录，可清空；
   - 主题切换立即生效并持久化（杀进程重开仍生效）；
-  - 版本信息显示「版本 0.5.0」「构建类型：debug」；
+  - 版本信息显示「版本 0.6.0」「构建类型：debug」；
   - 项目仓库链接可打开 GitHub。
-- 失败判定：同步卡片空白、权限状态与实际不一致、版本号不是 0.5.0、主题重启后丢失。
+- 失败判定：同步卡片空白、权限状态与实际不一致、版本号不是 0.6.0、主题重启后丢失。
 
 ---
 
@@ -312,7 +312,7 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
 
 ---
 
-## 7. Room v1 → v2 → v3 → v4 → v5 → v6 → v7 迁移
+## 7. Room v1 → v2 → v3 → v4 → v5 → v6 → v7 → v8 迁移
 
 > 需要 v0.3.1 的 Debug APK 作为「旧版本」。若手头没有，可从 tag 构建：
 >
@@ -327,7 +327,7 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
 - 预期：设备 / 规则 / 日志均能在界面上看到。
 - 失败判定：旧版本本身无法产生数据（先排除环境问题）。
 
-### M2 覆盖安装 v0.5.0
+### M2 覆盖安装 v0.6.0
 
 - 步骤：
   ```bash
@@ -348,37 +348,49 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
   adb exec-out run-as com.platojobs.pkotlinapp cat databases/device_dashboard.db > /tmp/device_dashboard.db
   sqlite3 /tmp/device_dashboard.db "PRAGMA user_version;"
   sqlite3 /tmp/device_dashboard.db \
-    "SELECT mac, platform, externalId, syncState, substr(id,1,8), deviceType, deviceTypeName, deviceGroup, advertisedName, aliasDirty FROM devices;"
+    "SELECT mac, platform, externalId, syncState, substr(id,1,8), deviceType, deviceTypeName, deviceGroup, advertisedName, aliasDirty, createdAt FROM devices;"
   ```
-- 预期：`user_version = 7`；每条设备 `platform = android`、`externalId` 为规范化大写 MAC、`id` 非空 UUID、`syncState` 为 `pending`/`synced`；旧数据的 `deviceTypeName`、`deviceGroup`、`advertisedName` 为 NULL，`aliasDirty = 0`（列存在且历史行不丢）；`readings` 表存在且为空或仅含本次会话读数。
-- 失败判定：版本不是 7、旧字段为空、`externalId` 为小写或带空格、行数比升级前少、`aliasDirty` 列缺失、`readings` 表或索引缺失。
+- 预期：`user_version = 8`；每条设备 `platform = android`、`externalId` 为规范化大写 MAC、`id` 非空 UUID、`syncState` 为 `pending`/`synced`；旧数据的 `deviceTypeName`、`deviceGroup`、`advertisedName` 为 NULL，`aliasDirty = 0`，`createdAt` 已用 `lastSeenTimestamp` 回填（不为 0）；`readings` 表存在且为空或仅含本次会话读数。
+- 失败判定：版本不是 8、旧字段为空、`externalId` 为小写或带空格、行数比升级前少、`aliasDirty` 或 `createdAt` 列缺失、`readings` 表或索引缺失。
 
 ### M4 v5 → v6 迁移不丢数据（可选复验）
 
 - 步骤：
   1. 安装 v0.3.6 Debug 包（Room v5），扫描一台设备并编辑别名/分组，让 `name/deviceGroup/advertisedName` 落库；
-  2. 覆盖安装 v0.5.0，再导出数据库并查询：
+  2. 覆盖安装 v0.6.0，再导出数据库并查询：
      ```bash
      sqlite3 /tmp/device_dashboard.db "PRAGMA user_version;"
      sqlite3 /tmp/device_dashboard.db \
-       "SELECT mac, name, deviceType, vendor, firmwareVersion, compatibility, deviceTypeName, deviceGroup, advertisedName, aliasDirty FROM devices;"
+       "SELECT mac, name, deviceType, vendor, firmwareVersion, compatibility, deviceTypeName, deviceGroup, advertisedName, aliasDirty, createdAt FROM devices;"
      ```
-- 预期：`user_version = 7`；设备行数与 v0.3.6 一致，原有字段逐列保留，新增 `aliasDirty = 0`；`readings` 表已创建。
+- 预期：`user_version = 8`；设备行数与 v0.3.6 一致，原有字段逐列保留，新增 `aliasDirty = 0`、`createdAt` 已回填；`readings` 表已创建。
 - 失败判定：行数减少、旧字段变 NULL、启动时 `Room cannot verify the data integrity`。
 
 ### M5 v6 → v7 迁移不丢数据（可选复验）
 
 - 步骤：
   1. 安装 v0.3.7 Debug 包（Room v6），扫描一台设备并编辑别名/分组；
-  2. 覆盖安装 v0.5.0，导出数据库查询：
+  2. 覆盖安装 v0.6.0，导出数据库查询：
      ```bash
      sqlite3 /tmp/device_dashboard.db "PRAGMA user_version;"
      sqlite3 /tmp/device_dashboard.db "SELECT COUNT(*) FROM devices;"
      sqlite3 /tmp/device_dashboard.db "SELECT COUNT(*) FROM readings;"
      ```
   3. 连接设备产生读数，进入设备详情「数据」区。
-- 预期：`user_version = 7`；设备行数与升级前一致；升级瞬间 `readings` 为空（旧版本没有该表），连接后出现真实读数；详情页不崩溃。
+- 预期：`user_version = 8`；设备行数与升级前一致，`createdAt` 已回填；升级瞬间 `readings` 为空（旧版本没有该表），连接后出现真实读数；详情页不崩溃。
 - 失败判定：启动崩溃、设备丢失、`readings` 表缺失、详情页图表崩溃。
+
+### M6 v7 → v8 迁移与添加时间排序（v0.6.0 新增）
+
+- 步骤：
+  1. 安装 v0.5.0 Debug 包（Room v7），扫描至少 2 台设备并记录各自「最近出现」时间；
+  2. 覆盖安装 v0.6.0，导出数据库并查询：
+     ```bash
+     sqlite3 /tmp/device_dashboard.db "PRAGMA user_version;"
+     sqlite3 /tmp/device_dashboard.db "SELECT mac, lastSeenTimestamp, createdAt FROM devices;"
+     ```
+- 预期：`user_version = 8`；每行 `createdAt >= 0` 且历史设备 `createdAt` 等于 `lastSeenTimestamp`；设备列表选择「添加时间」时顺序按 `createdAt` 倒序，切换其它排序后重启仍保持所选排序。
+- 失败判定：`createdAt` 缺失、全部为 0、升级崩溃。
 
 ### 7.2 离线缓存与分组验收（v0.3.5 新增）
 
@@ -471,6 +483,44 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
 - 失败判定：切换区间不重新查询、bucket 映射错误、缺口仍连线、X 轴等距、Y 轴不随数据变化、单位不更新、30 天离线提示缺失、空区间显示假数据或崩溃。
 - 说明：图表几何（空数据/单桶/等距/缺口/30 天 24 桶/异常值/Y 轴）由 `ReadingChartGeometryTest`、`ReadingRangeTest`、`ReadingSeriesBucketingTest` 覆盖；series 与 metrics 契约由 e2e 覆盖。
 
+### 7.8 告警通知验收（v0.6.0 新增）
+
+前置：Android 13+ 真机；已添加低 RSSI 或断开规则；准备能制造信号衰减/断开的外设。
+
+- 步骤与预期：
+  1. **首次授权**：首次新增规则或打开「我的」告警开关时弹出系统通知权限；允许后 `adb shell dumpsys notification --noredact | grep device_alerts` 能看到渠道「设备告警」。
+  2. **告警投递**：让设备信号低于阈值（或断开），下拉通知栏出现「设备告警」，正文含设备名、信号强度当前值、阈值与触发时间（HH:mm）；点击通知直接进入该设备详情。
+  3. **节流**：在「我的」选择 1 分钟窗口，连续制造多次同规则命中；1 分钟内只出现一条通知；切换 5/30 分钟重复验证（规则事件仍持续记录，通知不刷屏）。
+  4. **恢复**：让信号回到阈值内，出现一条「告警已恢复」；再次恢复不会重复出现；恢复后立即再次触发可再次通知。
+  5. **开关关闭**：关闭「接收告警通知」，再次制造命中；通知栏无新增，但设备页规则事件仍增加；重新打开开关后新的命中可正常投递。
+  6. **拒绝权限**：Android 13+ 拒绝 `POST_NOTIFICATIONS` 后，「我的」出现「系统通知权限未授予」与「去设置授予通知权限」；点击跳应用设置；扫描、连接、同步、图表均不受影响。
+  7. **隐私**：通知正文与展开内容不含 token、账号、安装 ID 等敏感字段。
+- 失败判定：无渠道、拒绝权限后崩溃或其它功能被阻断、窗口内重复通知、恢复通知重复/缺失、关闭开关仍投递、点击通知进错设备。
+
+### 7.9 读数 CSV 导出验收（v0.6.0 新增）
+
+前置：后端为 PJGoIoT v0.5.0+；详情页已有指标与读数；准备一台可导出 7 天前后数据的设备。
+
+- 步骤与预期：
+  1. **≤7 天本地导出**：详情选择 1 小时/24 小时/7 天与某指标，点「导出 CSV」；进度显示真实条数；系统分享面板出现，选择「保存到文件」后能用 Excel/Numbers 打开。
+  2. **>7 天服务端分页**：选择 30 天导出，`logcat` 可见多次 `GET .../readings?limit=100&cursor=...`，直到 `hasMore=false`；进度条数字持续增长。
+  3. **文件格式**：用文本编辑器确认首字节为 UTF-8 BOM，表头为 `recordedAt,metric,value,unit`，时间为 `2026-…Z`（UTC）；英文逗号/引号/换行字段被正确加引号转义；无数据指标仍生成仅表头的文件。
+  4. **路径与分享**：`adb shell run-as com.platojobs.pkotlinapp ls cache/exports` 能看到文件；分享 URI 为 `content://com.platojobs.pkotlinapp.fileprovider/exports/...`；应用私有目录之外无副本。
+  5. **超限**：制造/构造超过 5 万条的区间，导出提示「超过 50000 条，请缩短区间后重试」，不产生超大文件、不卡死。
+  6. **失败重试**：停掉后端后导出 30 天，出现明确失败提示与「重试」；恢复后端后点重试成功。
+- 失败判定：无进度、静默失败、CSV 乱码/无 BOM、时间非 UTC、超过 5 万条仍继续、文件出现在应用私有目录之外。
+
+### 7.10 深色模式验收（v0.6.0 新增）
+
+前置：至少一台设备有读数与分组；准备好浅色/深色截图对比。
+
+- 步骤与预期：
+  1. **三态切换**：「我的」主题为「跟随系统 / 浅色 / 深色」；切换后界面立即重建，状态持久化，重启保持。
+  2. **图表**：深色下进入详情「数据」区，折线、数据点、网格、坐标轴、min–max 区间带清晰可辨，不出现白底白线/黑底黑线；切换区间与指标后仍正确。
+  3. **控件**：排序/分组/指标/区间 Chip、卡片、次要文字、空状态在深色下对比度足够，无硬编码白色/黑色块。
+  4. **回归**：浅色与深色下导出、告警通知按钮、搜索框均可用；无文字不可见。
+- 失败判定：存在硬编码颜色（白底白字/黑底黑字）、切换主题不生效、图表元素在深色不可辨。
+
 ---
 
 ## 8. Release 包安装与 R8 生效验证
@@ -497,7 +547,7 @@ adb install -r app/build/outputs/apk/release/app-release.apk
 adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versionCode"
 ```
 
-预期：安装成功；版本 `0.5.0 / 13`；能启动；五模块可进入；BLE 扫描/连接可用。
+预期：安装成功；版本 `0.6.0 / 14`；能启动；五模块可进入；BLE 扫描/连接可用。
 失败判定：`INSTALL_FAILED_NO_MATCHING_ABIS`、安装后闪退（多为 R8 裁剪过度或签名问题）。
 
 ### L3 签名验证
@@ -572,6 +622,17 @@ apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk
 | S2 | 非法报文丢弃 |  |  |  |
 | S3 | 读数同步/离线补传 |  |  |  |
 | S4 | 0/1/60 点图表 |  |  |  |
+| M6 | v7→v8 添加时间 |  |  |  |
+| T1 | 告警通知渠道/投递 |  |  |  |
+| T2 | 通知节流与恢复 |  |  |  |
+| T3 | 通知权限拒绝提示 |  |  |  |
+| T4 | 告警开关关闭不投递 |  |  |  |
+| E1 | ≤7 天 CSV 导出/分享 |  |  |  |
+| E2 | >7 天分页导出 |  |  |  |
+| E3 | CSV BOM/转义/UTC |  |  |  |
+| D1 | 列表搜索/排序/分组 |  |  |  |
+| D2 | 两种空状态 |  |  |  |
+| K1 | 深色图表与控件 |  |  |  |
 | L1 | Release 构建 |  |  |  |
 | L2 | Release 安装 |  |  |  |
 | L3 | 签名验证 |  |  |  |

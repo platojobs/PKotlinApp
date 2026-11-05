@@ -4,6 +4,10 @@ import android.content.Context
 import com.platojobs.pkotlinapp.data.ble.BleConnectionManager
 import com.platojobs.pkotlinapp.data.ble.BleScanner
 import com.platojobs.pkotlinapp.data.local.AppDatabase
+import com.platojobs.pkotlinapp.data.notification.AlertNotifier
+import com.platojobs.pkotlinapp.data.notification.AlertStatePrefs
+import com.platojobs.pkotlinapp.data.notification.AndroidAlertContentBuilder
+import com.platojobs.pkotlinapp.data.notification.AndroidAlertPoster
 import com.platojobs.pkotlinapp.data.prefs.AppSettings
 import com.platojobs.pkotlinapp.data.remote.ApiClient
 import com.platojobs.pkotlinapp.data.remote.DeviceInfoRepositoryImpl
@@ -33,8 +37,10 @@ import com.platojobs.pkotlinapp.domain.repository.ReadingRepository
 import com.platojobs.pkotlinapp.domain.repository.RuleEventRepository
 import com.platojobs.pkotlinapp.domain.repository.RuleRepository
 import com.platojobs.pkotlinapp.domain.repository.ScanLogRepository
+import com.platojobs.pkotlinapp.domain.rule.AlertThrottle
 import com.platojobs.pkotlinapp.domain.rule.RuleEngine
 import com.platojobs.pkotlinapp.domain.sync.SyncEngine
+import com.platojobs.pkotlinapp.ui.common.NotificationPermission
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -119,11 +125,25 @@ class AppContainer(context: Context) {
 
     val settings: AppSettings by lazy { AppSettings(appContext) }
 
+    private val alertNotifier by lazy {
+        AlertNotifier(
+            throttle = AlertThrottle(
+                store = AlertStatePrefs(appContext),
+                windowMillis = { settings.alertThrottleMinutes * 60_000L },
+            ),
+            isEnabled = { settings.alertsEnabled },
+            canNotify = { NotificationPermission.isGranted(appContext) },
+            contentBuilder = AndroidAlertContentBuilder(appContext),
+            poster = AndroidAlertPoster(appContext),
+        )
+    }
+
     val ruleEngine: RuleEngine by lazy {
         RuleEngine(
             ruleRepository = ruleRepository,
             eventRepository = ruleEventRepository,
             textProvider = AndroidRuleTextProvider(appContext),
+            alertSink = alertNotifier,
         )
     }
 

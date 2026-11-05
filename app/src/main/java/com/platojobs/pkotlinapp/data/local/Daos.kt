@@ -125,6 +125,18 @@ interface ReadingDao {
     )
     suspend fun getSince(deviceId: String, metric: String, from: Long): List<ReadingEntity>
 
+    /** 导出用：闭区间内的本地读数，按时间正序。 */
+    @Query(
+        "SELECT * FROM readings WHERE deviceId = :deviceId AND metric = :metric " +
+            "AND recordedAt >= :from AND recordedAt <= :to ORDER BY recordedAt ASC, id ASC",
+    )
+    suspend fun getBetween(
+        deviceId: String,
+        metric: String,
+        from: Long,
+        to: Long,
+    ): List<ReadingEntity>
+
     /**
      * 指标清单的本地兜底：按 lastAt 倒序、同一时刻按 metric 升序，与服务端口径一致；
      * unit 取该指标 recordedAt 最大的一条（历史读数可能换过单位）。

@@ -273,6 +273,59 @@ class DeviceMigrationTest {
         }
     }
 
+    @Test
+    fun `v7 to v8 adds createdAt and backfills from lastSeenTimestamp`() {
+        DriverManager.getConnection("jdbc:sqlite::memory:").use { connection ->
+            connection.createStatement().use { it.execute(v3DevicesCreateSql) }
+            DeviceMigrationSql.V3_TO_V4.forEach { sql ->
+                connection.createStatement().use { it.execute(sql) }
+            }
+            DeviceMigrationSql.V4_TO_V5.forEach { sql ->
+                connection.createStatement().use { it.execute(sql) }
+            }
+            DeviceMigrationSql.V5_TO_V6.forEach { sql ->
+                connection.createStatement().use { it.execute(sql) }
+            }
+            connection.createStatement().use { statement ->
+                statement.executeUpdate(
+                    """
+                    INSERT INTO devices (
+                        mac, name, lastRssi, lastSeenTimestamp, id, platform, externalId,
+                        updatedAt, deletedAt, syncState, deviceType, vendor, firmwareVersion,
+                        compatibility, deviceTypeName, deviceGroup, advertisedName, aliasDirty
+                    ) VALUES (
+                        'AA:BB:CC:DD:EE:01', '客厅温湿度计', -55, 1762300000000,
+                        'client-uuid-1', 'android', 'AA:BB:CC:DD:EE:01', 1762300000000,
+                        NULL, 'synced', 'nordic_uart', 'Nordic', '1.2.0', 'android · ble',
+                        'Nordic UART 温湿度计', '客厅', 'PJ-Sensor', 0
+                    )
+                    """.trimIndent(),
+                )
+            }
+
+            DeviceMigrationSql.V7_TO_V8.forEach { sql ->
+                connection.createStatement().use { it.execute(sql) }
+            }
+
+            val columns = tableColumns(connection)
+            assertTrue(columns.contains("createdAt"))
+            assertEquals(19, columns.size)
+            assertEquals(1, countRows(connection))
+
+            connection.createStatement().use { statement ->
+                statement.executeQuery(
+                    "SELECT lastSeenTimestamp, createdAt FROM devices " +
+                        "WHERE mac = 'AA:BB:CC:DD:EE:01'",
+                ).use { cursor ->
+                    assertTrue(cursor.next())
+                    // 历史设备用最后出现时间回填，而不是 0（1970）。
+                    assertEquals(1762300000000L, cursor.getLong("lastSeenTimestamp"))
+                    assertEquals(1762300000000L, cursor.getLong("createdAt"))
+                }
+            }
+        }
+    }
+
     private fun countRows(connection: java.sql.Connection): Int =
         connection.createStatement().use { statement ->
             statement.executeQuery("SELECT COUNT(*) FROM devices").use { cursor ->

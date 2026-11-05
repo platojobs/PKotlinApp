@@ -64,6 +64,13 @@ class ReadingRepositoryImpl(
         from: Long,
     ): List<Reading> = dao.getSince(deviceId, metric, from).map(ReadingEntity::toDomain)
 
+    override suspend fun readingsBetween(
+        deviceId: String,
+        metric: String,
+        from: Long,
+        to: Long,
+    ): List<Reading> = dao.getBetween(deviceId, metric, from, to).map(ReadingEntity::toDomain)
+
     override suspend fun summary(deviceId: String, metric: String, hours: Int): ReadingSummary {
         val end = now()
         val start = end - hours.coerceAtLeast(1) * 60L * 60L * 1000L

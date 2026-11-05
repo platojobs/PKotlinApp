@@ -16,6 +16,7 @@ import com.platojobs.pkotlinapp.domain.model.ScanLog
 import com.platojobs.pkotlinapp.domain.repository.ScanLogRepository
 import com.platojobs.pkotlinapp.domain.sync.SyncStatus
 import com.platojobs.pkotlinapp.ui.common.BlePermissions
+import com.platojobs.pkotlinapp.ui.common.NotificationPermission
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -30,6 +31,7 @@ data class PermissionStatus(
     val scanGranted: Boolean,
     val connectGranted: Boolean,
     val locationGranted: Boolean,
+    val notificationGranted: Boolean,
 )
 
 class ProfileViewModel(
@@ -44,6 +46,12 @@ class ProfileViewModel(
 
     private val _themeMode = MutableStateFlow(settings.themeMode)
     val themeMode: StateFlow<ThemeMode> = _themeMode.asStateFlow()
+
+    private val _alertsEnabled = MutableStateFlow(settings.alertsEnabled)
+    val alertsEnabled: StateFlow<Boolean> = _alertsEnabled.asStateFlow()
+
+    private val _alertThrottleMinutes = MutableStateFlow(settings.alertThrottleMinutes)
+    val alertThrottleMinutes: StateFlow<Int> = _alertThrottleMinutes.asStateFlow()
 
     val scanLogs: StateFlow<List<ScanLog>> = scanLogRepository.observeRecent(50)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -127,6 +135,17 @@ class ProfileViewModel(
         _themeMode.value = mode
     }
 
+    fun setAlertsEnabled(enabled: Boolean) {
+        settings.alertsEnabled = enabled
+        _alertsEnabled.value = enabled
+    }
+
+    fun setAlertThrottle(minutes: Int) {
+        if (minutes !in AppSettings.ALERT_THROTTLE_OPTIONS) return
+        settings.alertThrottleMinutes = minutes
+        _alertThrottleMinutes.value = minutes
+    }
+
     fun clearLogs() {
         viewModelScope.launch { scanLogRepository.clear() }
     }
@@ -135,6 +154,7 @@ class ProfileViewModel(
         scanGranted = BlePermissions.hasScan(appContext),
         connectGranted = BlePermissions.hasConnect(appContext),
         locationGranted = BlePermissions.hasLocation(appContext),
+        notificationGranted = NotificationPermission.isGranted(appContext),
     )
 
     companion object {

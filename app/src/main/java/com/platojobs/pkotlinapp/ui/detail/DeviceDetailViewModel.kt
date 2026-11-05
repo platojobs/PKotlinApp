@@ -8,6 +8,10 @@ import com.platojobs.pkotlinapp.PKotlinApplication
 import com.platojobs.pkotlinapp.data.ble.BleConnectionManager
 import com.platojobs.pkotlinapp.data.ble.BleConnectionState
 import com.platojobs.pkotlinapp.data.sync.SyncScheduler
+import com.platojobs.pkotlinapp.domain.export.ExportTooManyRowsException
+import com.platojobs.pkotlinapp.domain.export.ReadingCsv
+import com.platojobs.pkotlinapp.domain.export.ReadingCsvRow
+import com.platojobs.pkotlinapp.domain.export.ReadingPager
 import com.platojobs.pkotlinapp.domain.model.Device
 import com.platojobs.pkotlinapp.domain.model.DeviceInfo
 import com.platojobs.pkotlinapp.domain.model.toOfflineDeviceInfo
@@ -22,8 +26,11 @@ import com.platojobs.pkotlinapp.domain.repository.DeviceInfoRepository
 import com.platojobs.pkotlinapp.domain.repository.DeviceRepository
 import com.platojobs.pkotlinapp.domain.repository.ReadingRepository
 import com.platojobs.pkotlinapp.domain.rule.RuleEngine
+import java.io.File
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -65,6 +72,19 @@ data class ReadingsState(
     val offlineOnlyLocal7d: Boolean = false,
 )
 
+/** 导出状态：进度条使用真实条数，失败保留原因供重试。 */
+sealed interface ExportState {
+    data object Idle : ExportState
+
+    data class Running(val rows: Int) : ExportState
+
+    data class Ready(val file: File, val rows: Int) : ExportState
+
+    enum class ErrorKind { NO_METRIC, TOO_MANY, FAILED }
+
+    data class Error(val kind: ErrorKind, val detail: String = "") : ExportState
+}
+
 class DeviceDetailViewModel(
     private val mac: String,
     private val deviceName: String,
@@ -75,6 +95,7 @@ class DeviceDetailViewModel(
     private val syncScheduler: SyncScheduler,
     private val readingRepository: ReadingRepository,
     private val readingRemote: ReadingRemote,
+    private val exportDir: File,
     private val now: () -> Long = System::currentTimeMillis,
 ) : ViewModel() {
 
@@ -89,6 +110,9 @@ class DeviceDetailViewModel(
 
     private val _readings = MutableStateFlow(ReadingsState())
     val readings: StateFlow<ReadingsState> = _readings.asStateFlow()
+
+    private val _export = MutableStateFlow<ExportState>(ExportState.Idle)
+    val export: StateFlow<ExportState> = _export.asStateFlow()
 
     private var metricsJob: Job? = null
     private var seriesJob: Job? = null
@@ -309,6 +333,87 @@ class DeviceDetailViewModel(
         _encryption.value = EncryptionInfo(enabled, System.currentTimeMillis())
     }
 
+    /**
+     * 导出当前设备 + 当前指标 + 当前区间：
+     * - 7 天内直接读 Room；超过 7 天按 cursor 分页拉服务端，最多 5 万条；
+     * - 文件只写 cacheDir/exports；进度使用真实条数。
+     */
+    fun exportReadings() {
+        if (_export.value is ExportState.Running) return
+        val current = _readings.value
+        val metric = current.selectedMetric
+        if (metric == null) {
+            _export.value = ExportState.Error(ExportState.ErrorKind.NO_METRIC)
+            return
+        }
+        val range = current.selectedRange
+        val to = now()
+        val from = to - range.windowMillis
+        val fallbackUnit = current.metrics.firstOrNull { it.metric == metric }?.unit
+            ?: ReadingMetrics.unit(metric)
+
+        _export.value = ExportState.Running(0)
+        viewModelScope.launch {
+            try {
+                val rows = if (range.windowMillis <= Reading.LOCAL_RETENTION_MILLIS) {
+                    readingRepository.readingsBetween(mac, metric, from, to).map { reading ->
+                        ReadingCsvRow(
+                            recordedAt = reading.recordedAt,
+                            metric = reading.metric,
+                            value = reading.value,
+                            unit = reading.unit.ifBlank { fallbackUnit },
+                        )
+                    }
+                } else {
+                    val remote = ReadingPager { limit, cursor ->
+                        readingRemote.queryReadings(mac, metric, from, to, limit, cursor)
+                    }.fetchAll { count ->
+                        _export.value = ExportState.Running(count)
+                    }
+                    remote.sortedBy { it.recordedAt }.map { reading ->
+                        ReadingCsvRow(
+                            recordedAt = reading.recordedAt,
+                            metric = reading.metric.ifBlank { metric },
+                            value = reading.value,
+                            unit = reading.unit.ifBlank { fallbackUnit },
+                        )
+                    }
+                }
+
+                _export.value = ExportState.Running(rows.size)
+                val file = withContext(Dispatchers.IO) {
+                    exportDir.mkdirs()
+                    val target = File(
+                        exportDir,
+                        ReadingCsv.fileName(mac, metric, "${range.hours}h", now()),
+                    )
+                    target.writeText(ReadingCsv.render(rows), Charsets.UTF_8)
+                    target
+                }
+                _export.value = ExportState.Ready(file, rows.size)
+            } catch (e: ExportTooManyRowsException) {
+                _export.value = ExportState.Error(
+                    ExportState.ErrorKind.TOO_MANY,
+                    e.maxRows.toString(),
+                )
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _export.value = ExportState.Error(
+                    ExportState.ErrorKind.FAILED,
+                    e.message.orEmpty(),
+                )
+            }
+        }
+    }
+
+    /** UI 已分享/已提示错误后回到 Idle，避免配置变化时重复弹分享。 */
+    fun consumeExport() {
+        if (_export.value !is ExportState.Running) {
+            _export.value = ExportState.Idle
+        }
+    }
+
     /** 设备编辑：别名与分组直接落 Room，并排队同步；离线时也能立即可见。 */
     fun saveProfile(alias: String, group: String?) {
         viewModelScope.launch {
@@ -375,6 +480,7 @@ class DeviceDetailViewModel(
                     syncScheduler = container.syncScheduler,
                     readingRepository = container.readingRepository,
                     readingRemote = container.readingRemote,
+                    exportDir = File(app.cacheDir, "exports"),
                 )
             }
         }

@@ -48,6 +48,9 @@ class DeviceRepositoryImpl(
                     device.name.takeIf { it.isNotBlank() } ?: existing?.name.orEmpty()
                 },
                 aliasDirty = device.aliasDirty || existing?.aliasDirty == true,
+                createdAt = existing?.createdAt?.takeIf { it > 0 }
+                    ?: device.createdAt.takeIf { it > 0 }
+                    ?: System.currentTimeMillis(),
                 advertisedName = device.advertisedName ?: existing?.advertisedName,
                 group = device.group ?: existing?.group,
                 deviceType = device.deviceType ?: existing?.deviceType,
@@ -155,6 +158,7 @@ private fun DeviceEntity.toDomain() = Device(
     group = group,
     advertisedName = advertisedName,
     aliasDirty = aliasDirty,
+    createdAt = createdAt,
 )
 
 private fun Device.toEntity() = DeviceEntity(
@@ -176,6 +180,7 @@ private fun Device.toEntity() = DeviceEntity(
     group = group,
     advertisedName = advertisedName,
     aliasDirty = aliasDirty,
+    createdAt = createdAt,
 )
 
 private fun RuleEntity.toDomain() = DeviceRule(

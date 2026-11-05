@@ -410,7 +410,7 @@ Debug / Release 都可通过 `apiBaseUrl` 切换；发布前请传入正式域�
 - 设备列表：每行展示「分组：X / 未分组」，标题旁统计「共 N 台设备 · M 个分组」，数据全部来自 Room，离线一致。
 - 同步：连续失败 3 次进入纯本地模式，主界面横幅 +「我的」同步卡片提示；Room 数据（首页、设备、日志）不依赖网络。
 - 首页 / 设备 / 我的：本地 Room 数据不依赖网络，断网仍可用。
-- 离线验收步骤见 [真机验收清单 §7.2](docs/acceptance.md#72-离线缓存与分组验收v035-新增)；别名/广播名与分组三态验收见 [§7.4](docs/acceptance.md#74-别名--广播名与分组三态验收v036-新增)；清空别名验收见 [§7.5](docs/acceptance.md#75-清空别名验收v037-新增)；读数采集验收见 [§7.6](docs/acceptance.md#76-设备读数readings验收v040-新增)；长周期图表与区间验收见 [§7.7](docs/acceptance.md#77-长周期图表与区间验收v050-新增)。
+- 离线验收步骤见 [真机验收清单 §7.2](docs/acceptance.md#72-离线缓存与分组验收v035-新增)；别名/广播名与分组三态验收见 [§7.4](docs/acceptance.md#74-别名--广播名与分组三态验收v036-新增)；清空别名验收见 [§7.5](docs/acceptance.md#75-清空别名验收v037-新增)；读数采集验收见 [§7.6](docs/acceptance.md#76-设备读数readings验收v040-新增)；长周期图表与区间验收见 [§7.7](docs/acceptance.md#77-长周期图表与区间验收v050-新增)；告警通知见 [§7.8](docs/acceptance.md#78-告警通知验收v060-新增)、CSV 导出见 [§7.9](docs/acceptance.md#79-读数-csv-导出验收v060-新增)、深色模式见 [§7.10](docs/acceptance.md#710-深色模式验收v060-新增)。
 
 ### 6.1 数据采集与长周期图表（readings，v0.5.0）
 
@@ -437,7 +437,7 @@ Debug / Release 都可通过 `apiBaseUrl` 切换；发布前请传入正式域�
 | 温度 | `70 FE` | `temperature` −4.00℃ |
 | 温度 | `00 00 C0 3F` | `temperature` 1.5℃（float32） |
 | 温度 | `FF FF` | `temperature` −0.01℃（优先 sint16，不按 half NaN 丢弃） |
-| 温度 | `00 4A` / `00 4D` | IEEE-754 half 实际为 12.0℃ / 20.0℃（`00 4A` 不是 20.0℃ 的编码） |
+| 温度 | `00 4A` / `00 4D` | **两端实测已确认**：12.0℃ / 20.0℃（iOS 用 `Float16(bitPattern:)` 真解码，Android 同口径半精度回退） |
 | NUS | `temperature=23.5\nbattery=88\nxx` | 2 条读数（第 3 行丢弃） |
 | 任意 | 空字节 | 丢弃，不崩溃 |
 
@@ -477,6 +477,34 @@ Debug / Release 都可通过 `apiBaseUrl` 切换；发布前请传入正式域�
 - **服务端只返回有数据的桶**（空桶不返回、不补零）。客户端必须按 `start` 的真实时间比例定位，绝不能按数组下标等距绘制；当 `bucket.start > previous.end` 时视为缺口，折线**断开**，不得跨越空桶连线。这是长周期图最常见的画错点，`ReadingChartGeometryTest` 有专门用例固化。
 - 网络失败时回退本地（Room 仅保留 7 天）：本地读数按同一 UTC 网格聚合，30 天区间标注「离线：仅本地 7 天数据」，数据集中在时间轴右侧；其余区间标注「离线：本地数据」。
 - Y 轴按区间内真实 min/max 自适应；单桶或同值时自动展开固定范围，标签带当前指标单位。
+
+### 6.2 告警通知（v0.6.0）
+
+- 规则引擎命中 `LOW_RSSI` / `DISCONNECTED` / `BOND_LOST` 后，通过 `RuleAlertSink` 投递本地通知；Android 8+ 使用单独渠道 **「设备告警」**（`device_alerts`），通知点击直接打开对应设备详情。
+- **权限**：Android 13+ 动态申请 `POST_NOTIFICATIONS`（新增规则或打开「我的」告警开关时触发）；拒绝后「我的」显示「系统通知权限未授予」与「去设置授予通知权限」按钮，不阻断规则记录、扫描、同步等功能。
+- **节流**：同一设备 + 同一规则在窗口内只通知一次，默认 **5 分钟**，可在「我的」选择 **1 / 5 / 30 分钟**。窗口与「恢复待发」状态落 `SharedPreferences`（`alert_notification_state`），进程重启后仍去重。
+- **恢复**：信号回落到阈值内时发一条「告警已恢复」，每次告警只发一次；关闭开关或权限缺失时不投递，但规则事件仍写入 Room。
+- 通知正文只含设备名、指标、当前值、阈值与触发时间（例如「客厅温度计 · 信号强度 -85 dBm（阈值 -70 dBm）· 10:32」），**不放 token / 账号**。
+
+### 6.3 读数 CSV 导出（v0.6.0）
+
+- 详情「数据」区新增「导出 CSV」：导出 **当前设备 + 当前指标 + 当前区间**。区间跨度 **≤7 天**直接读 Room；**>7 天**走服务端 `GET .../readings?limit=100&cursor=...` 分页直到 `hasMore=false`，最多 **5 万条**，超限提示「请缩短区间后重试」。
+- 文件：UTF-8 **BOM**，表头固定 `recordedAt,metric,value,unit`，时间为 **ISO8601 UTC**（`2026-01-01T04:00:00Z`），逗号/引号/换行按 RFC 4180 转义；空数据仍输出表头。
+- 路径：只写 `cacheDir/exports/`，文件名 `readings_<MAC>_<metric>_<range>_<UTC时间>.csv`；通过 `FileProvider`（`${applicationId}.fileprovider`）生成 `content://` URI，用 `ACTION_SEND` 系统分享，不落应用私有目录之外。
+- UI：导出期间显示**真实累计条数**（「正在导出… N 条」）；失败给出明确原因与「重试」操作，不静默失败。
+
+### 6.4 设备列表检索与排序（v0.6.0）
+
+- 搜索框即时过滤：别名、广播名、型号展示名、MAC（大小写不敏感；MAC 可忽略冒号，如 `aabbcc112233`）。
+- 排序 Chip：**最近出现（默认） / 名称 / 信号强度 / 添加时间**，选择写入 `AppSettings`，重启后保持；「添加时间」来自 Room 新增的 `devices.createdAt`（只写一次，升级时用 `lastSeenTimestamp` 回填）。
+- 分组 Chip 来自真实 `deviceGroup` 值（去重升序），存在空分组时追加「未分组」；与搜索可叠加。
+- 空结果分两种：**没有设备** → 引导「去扫描」（切到首页扫描 Tab）；**筛选无结果** → 「没有匹配的设备」+ 一键「清除筛选」。
+
+### 6.5 深色模式（v0.6.0）
+
+- 「我的」主题三态保持不变：**跟随系统 / 浅色 / 深色**，切换通过 `AppCompatDelegate` 立即重建界面。
+- 图表折线、数据点、网格、坐标轴、min–max 区间带，以及 Chip、卡片、次要文字的颜色全部来自主题资源；深色值集中在 `values-night/colors.xml`，代码中**不出现** `#FFF` / `#000` / `Color.rgb(...)` 等硬编码。
+- `ChartColorAuditTest` 扫描 `ui/chart` 源码与布局，断言无颜色字面量，并校验日间/夜间资源成对存在；深色下网格 `#3A4152`、坐标轴 `#8B93A7`、折线 `#A8B4FF`，对比度满足可读性。
 
 **限制**：模拟器无法验证真实 BLE notify 投递与厂商固件字节格式；解析规则已用单测覆盖，但真实心率带/温湿度计/NUS 设备需按 [§7.6](docs/acceptance.md#76-设备读数readings验收v040-新增) 真机验收。
 
@@ -620,6 +648,7 @@ release {
 
 ## 11. 版本记录
 
+- `v0.6.0`：四项真实可用功能。**告警通知**：独立渠道「设备告警」、Android 13+ `POST_NOTIFICATIONS` 动态申请与「我的」拒绝提示、真实开关、1/5/30 分钟节流（SharedPreferences 持久化）、信号恢复通知只发一次、点击通知进设备详情、正文不含敏感信息。**CSV 导出**：详情按当前设备+指标+区间导出，≤7 天读 Room、>7 天服务端 cursor 分页（上限 5 万条），UTF-8 BOM / `recordedAt,metric,value,unit` / ISO8601 UTC / RFC 4180 转义，写 `cacheDir/exports/` 并用 `FileProvider` + `ACTION_SEND` 分享，真实进度与可重试错误。**设备列表**：别名/广播名/型号/MAC 即时搜索、四种排序持久化、真实分组 Chip（含未分组）、无设备与筛选无结果两种空状态。**深色模式**：`values-night/colors.xml` + 图表颜色全部走主题资源，`ChartColorAuditTest` 防硬编码回归。Room v8 新增 `devices.createdAt`（`MIGRATION_7_8`）；单测 139，lint 0 issue。
 - `v0.5.0`：详情页数据区升级为产品级长周期图表。新增区间切换（1 小时 / 24 小时 / 7 天 / 30 天，默认 24 小时）与 `1m/1h/1d` 分桶映射、500 桶自动降级；接入 `GET .../readings/series`（UTC RFC3339 网格）与 `GET .../readings/metrics`（count/lastAt/unit，倒序）。图表按桶 `start` 的真实时间比例定位，空桶不返回时折线断开不连线，每个桶画 avg 折线 + min–max 区间带，Y 轴与单位自适应；网络失败回退本地分桶，30 天提示「离线：仅本地 7 天数据」。指标 Chip 改为服务端真值并展示「指标名 · N 条」，24h 汇总固定窗口、单位随指标。单测 96 个（新增区间映射/分桶/缺口几何/Y 轴/离线降级/指标排序），e2e 新增 series/metrics/空区间/非法 bucket 4 项。
 - `v0.4.1`：与 iOS 统一读数解析口径：NUS 改为按 `\n` 逐行解析（整包 ≤256 字节、单行 ≤64 字符，单行失败只丢该行）；温度 2 字节优先 sint16 × 0.01℃、否则回退 IEEE-754 half，4 字节走 float32，范围统一 −50..150℃；心率 uint16 明确小端；电池 0% 视为合法。清理逻辑修正为只删除 `syncState = 'synced'` 且超过 7 天的记录，pending 无论多旧都保留。新增黄金字节表单测（总单测 79 个），lint 0 issue。
 - `v0.4.0`：接入设备读数全链路：GATT 订阅心率 `0x2A37`、电池 `0x2A19`、温度 `0x2A6E`、NUS TX `6E400003-…` 并按特征解析（失败静默丢弃 + 本地日志）；Room v7 新增 `readings` 表（`MIGRATION_6_7`），指标白名单 + 未知指标 `other` + 原始快照，本地保留 7 天（服务端 90 天）；读数以 ≤200/批复用 `/sync/push` 按 id 幂等同步，断网累积、恢复补传；详情页新增「数据」区（真实指标 Chip、自绘 60 点折线图、24h min/max/avg/last、最近记录、离线/空状态/权限引导）。单测 73 个、e2e 新增读数契约 6 项（推送/重复 skipped/倒序查询/summary/NaN 400）。

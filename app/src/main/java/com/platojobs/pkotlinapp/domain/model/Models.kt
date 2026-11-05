@@ -45,6 +45,8 @@ data class Device(
      * 扫描路径永远不置位；置位后即使 [name] 为空也会作为显式清空上报。
      */
     val aliasDirty: Boolean = false,
+    /** 首次添加时间，只写一次；用于「按添加时间」排序。 */
+    val createdAt: Long = lastSeenTimestamp,
 )
 
 /**

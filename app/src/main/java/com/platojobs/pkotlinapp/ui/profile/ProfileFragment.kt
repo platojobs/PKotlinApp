@@ -1,5 +1,6 @@
 package com.platojobs.pkotlinapp.ui.profile
 
+import android.Manifest
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
@@ -8,6 +9,7 @@ import android.provider.Settings
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.fragment.app.Fragment
@@ -25,6 +27,7 @@ import com.platojobs.pkotlinapp.data.prefs.ThemeMode
 import com.platojobs.pkotlinapp.databinding.FragmentProfileBinding
 import com.platojobs.pkotlinapp.domain.sync.SyncStatus
 import com.platojobs.pkotlinapp.ui.common.BlePermissions
+import com.platojobs.pkotlinapp.ui.common.NotificationPermission
 import com.platojobs.pkotlinapp.ui.common.TimeFormat
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
@@ -39,6 +42,14 @@ class ProfileFragment : Fragment() {
     }
 
     private val scanLogAdapter = ScanLogAdapter()
+
+    private var syncingAlertSwitch = false
+
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) {
+        viewModel.refreshPermissions()
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -67,6 +78,8 @@ class ProfileFragment : Fragment() {
         binding.clearLogsButton.setOnClickListener { confirmClearLogs() }
         binding.syncNowButton.setOnClickListener { viewModel.manualSync() }
         binding.reloginButton.setOnClickListener { confirmRelogin() }
+        binding.alertPermissionButton.setOnClickListener { openAppSettings() }
+        setupAlertControls()
 
         binding.themeGroup.check(
             when (viewModel.themeMode.value) {
@@ -132,6 +145,43 @@ class ProfileFragment : Fragment() {
         binding.logsList.adapter = null
         _binding = null
         super.onDestroyView()
+    }
+
+    private fun setupAlertControls() {
+        binding.throttle1Button.text = getString(R.string.profile_alert_throttle_minutes, 1)
+        binding.throttle5Button.text = getString(R.string.profile_alert_throttle_minutes, 5)
+        binding.throttle30Button.text = getString(R.string.profile_alert_throttle_minutes, 30)
+        binding.alertThrottleGroup.check(
+            when (viewModel.alertThrottleMinutes.value) {
+                1 -> R.id.throttle1Button
+                30 -> R.id.throttle30Button
+                else -> R.id.throttle5Button
+            },
+        )
+        binding.alertThrottleGroup.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (!isChecked) return@addOnButtonCheckedListener
+            viewModel.setAlertThrottle(
+                when (checkedId) {
+                    R.id.throttle1Button -> 1
+                    R.id.throttle30Button -> 30
+                    else -> 5
+                },
+            )
+        }
+
+        syncingAlertSwitch = true
+        binding.alertSwitch.isChecked = viewModel.alertsEnabled.value
+        syncingAlertSwitch = false
+        binding.alertSwitch.setOnCheckedChangeListener { _, checked ->
+            if (syncingAlertSwitch) return@setOnCheckedChangeListener
+            viewModel.setAlertsEnabled(checked)
+            if (checked &&
+                NotificationPermission.requiresRuntimePermission() &&
+                !NotificationPermission.isGranted(requireContext())
+            ) {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
     }
 
     private fun renderSyncStatus(status: SyncStatus) {
@@ -211,6 +261,11 @@ class ProfileFragment : Fragment() {
                 ContextCompat.getColor(context, R.color.text_secondary),
             )
         }
+
+        val notificationHint = NotificationPermission.requiresRuntimePermission() &&
+            !status.notificationGranted
+        binding.alertPermissionHint.visibility = if (notificationHint) View.VISIBLE else View.GONE
+        binding.alertPermissionButton.visibility = if (notificationHint) View.VISIBLE else View.GONE
     }
 
     private fun openAppSettings() {

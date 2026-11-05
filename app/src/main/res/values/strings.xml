@@ -245,4 +245,44 @@
     <string name="readings_metric_co2">二氧化碳</string>
     <string name="readings_metric_pressure">气压</string>
     <string name="readings_metric_other">其他</string>
+
+    <string name="alert_channel_name">设备告警</string>
+    <string name="alert_channel_description">本地阈值规则命中时提醒</string>
+    <string name="alert_notify_title">设备告警</string>
+    <string name="alert_notify_triggered_rssi">%1$s · 信号强度 %2$d dBm（阈值 %3$d dBm）· %4$s</string>
+    <string name="alert_notify_triggered_disconnected">%1$s · 连接已断开 · %2$s</string>
+    <string name="alert_notify_triggered_bond_lost">%1$s · 绑定信息丢失，请重新配对 · %2$s</string>
+    <string name="alert_notify_recovered_title">告警已恢复</string>
+    <string name="alert_notify_recovered_rssi">%1$s · 信号强度 %2$d dBm 已回到阈值 %3$d dBm 内 · %4$s</string>
+
+    <string name="profile_alerts_title">告警通知</string>
+    <string name="profile_alerts_switch">接收告警通知</string>
+    <string name="profile_alerts_desc">规则命中后发送本地通知；关闭后规则仍会记录，只是不再提醒。</string>
+    <string name="profile_alert_throttle_title">同一设备同一规则提醒间隔</string>
+    <string name="profile_alert_throttle_minutes">%1$d 分钟</string>
+    <string name="profile_alert_permission_denied">系统通知权限未授予，告警不会投递。</string>
+    <string name="profile_alert_permission_action">去设置授予通知权限</string>
+
+    <string name="detail_export_desc">导出当前设备、当前指标与当前区间的全部读数，CSV 可直接用 Excel 打开。</string>
+    <string name="detail_export_button">导出 CSV</string>
+    <string name="detail_export_running">正在导出… %1$d 条</string>
+    <string name="detail_export_success">已导出 %1$d 条，正在打开分享</string>
+    <string name="detail_export_error">导出失败：%1$s</string>
+    <string name="detail_export_too_many">超过 %1$d 条，请缩短区间后重试</string>
+    <string name="detail_export_no_metric">请先选择指标</string>
+    <string name="detail_export_share_title">分享读数 CSV</string>
+    <string name="detail_export_retry">重试</string>
+
+    <string name="devices_search_hint">搜索别名、广播名、型号或 MAC</string>
+    <string name="devices_sort_title">排序</string>
+    <string name="devices_sort_recent">最近出现</string>
+    <string name="devices_sort_name">名称</string>
+    <string name="devices_sort_rssi">信号强度</string>
+    <string name="devices_sort_added">添加时间</string>
+    <string name="devices_group_all">全部</string>
+    <string name="devices_group_ungrouped">未分组</string>
+    <string name="devices_filter_empty_title">没有匹配的设备</string>
+    <string name="devices_filter_empty_hint">换个关键词，或清除筛选条件后再试。</string>
+    <string name="devices_filter_clear">清除筛选</string>
+    <string name="devices_empty_scan_action">去扫描</string>
 </resources>

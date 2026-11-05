@@ -31,6 +31,8 @@ data class DeviceEntity(
     val advertisedName: String? = null,
     // 用户是否显式编辑过别名（含清空）。扫描永远不置位；置位后空别名也要上报。
     @ColumnInfo(defaultValue = "0") val aliasDirty: Boolean = false,
+    // 首次添加时间（只写一次），供「按添加时间」排序；历史数据迁移时回填 lastSeenTimestamp。
+    @ColumnInfo(defaultValue = "0") val createdAt: Long = 0,
 )
 
 /**

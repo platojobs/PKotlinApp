@@ -23,6 +23,11 @@ internal object DeviceMigrationSql {
         // 用户显式编辑别名的标记：扫描不置位，清空别名也能上报。
         "ALTER TABLE devices ADD COLUMN aliasDirty INTEGER NOT NULL DEFAULT 0",
     )
+    val V7_TO_V8 = listOf(
+        // 首次添加时间；历史数据用最后出现时间回填，避免所有旧设备集中在 1970。
+        "ALTER TABLE devices ADD COLUMN createdAt INTEGER NOT NULL DEFAULT 0",
+        "UPDATE devices SET createdAt = lastSeenTimestamp WHERE createdAt = 0",
+    )
 }
 
 /** v6 -> v7 的读数表；SQL 与 Room 导出的 7.json 保持一致。 */
@@ -58,7 +63,7 @@ internal object ReadingMigrationSql {
         ScanLogEntity::class,
         ReadingEntity::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -157,6 +162,13 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v7 -> v8：新增首次添加时间，历史设备用最近出现时间回填。 */
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                DeviceMigrationSql.V7_TO_V8.forEach(db::execSQL)
+            }
+        }
+
         @Volatile
         private var instance: AppDatabase? = null
 
@@ -173,6 +185,7 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_4_5,
                     MIGRATION_5_6,
                     MIGRATION_6_7,
+                    MIGRATION_7_8,
                 )
                     .build()
                     .also { instance = it }

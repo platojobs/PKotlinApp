@@ -16,6 +16,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -23,6 +24,7 @@ import com.google.android.material.chip.Chip
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.snackbar.Snackbar
 import com.platojobs.pkotlinapp.PKotlinApplication
+import com.platojobs.pkotlinapp.BuildConfig
 import com.platojobs.pkotlinapp.R
 import com.platojobs.pkotlinapp.data.ble.BleConnectionState
 import com.platojobs.pkotlinapp.databinding.ActivityDeviceDetailBinding
@@ -43,6 +45,7 @@ import com.platojobs.pkotlinapp.ui.common.TimeFormat
 import com.platojobs.pkotlinapp.ui.common.applyTopInset
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import java.io.File
 import java.util.Locale
 
 class DeviceDetailActivity : AppCompatActivity() {
@@ -133,6 +136,7 @@ class DeviceDetailActivity : AppCompatActivity() {
         binding.infoRetryButton.setOnClickListener { viewModel.loadInfo() }
         binding.editProfileButton.setOnClickListener { showEditDeviceDialog() }
         binding.readingsPermissionButton.setOnClickListener { openAppSettings() }
+        binding.readingsExportButton.setOnClickListener { viewModel.exportReadings() }
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -158,6 +162,9 @@ class DeviceDetailActivity : AppCompatActivity() {
                 }
                 launch {
                     viewModel.readings.collect { state -> renderReadings(state) }
+                }
+                launch {
+                    viewModel.export.collect { state -> renderExport(state) }
                 }
             }
         }
@@ -315,6 +322,7 @@ class DeviceDetailActivity : AppCompatActivity() {
         binding.readingsRangeTitle.visibility = if (hasMetrics) View.VISIBLE else View.GONE
         binding.readingsRangeChips.visibility = if (hasMetrics) View.VISIBLE else View.GONE
         binding.readingsChipScroll.visibility = if (hasMetrics) View.VISIBLE else View.GONE
+        binding.readingsExportRow.visibility = if (hasMetrics) View.VISIBLE else View.GONE
         binding.readingsOfflineHint.visibility =
             if (hasMetrics && state.offlineLocal) View.VISIBLE else View.GONE
         binding.readingsOfflineHint.setText(
@@ -415,6 +423,76 @@ class DeviceDetailActivity : AppCompatActivity() {
         ReadingRange.DAY_30 -> getString(R.string.readings_range_30d)
     }
 
+    /** 导出：进度显示真实条数；成功后走系统分享，失败给可重试提示。 */
+    private fun renderExport(state: ExportState) {
+        when (state) {
+            ExportState.Idle -> {
+                binding.readingsExportButton.isEnabled = true
+                binding.readingsExportProgress.visibility = View.GONE
+            }
+
+            is ExportState.Running -> {
+                binding.readingsExportButton.isEnabled = false
+                binding.readingsExportProgress.visibility = View.VISIBLE
+                binding.readingsExportProgress.text = getString(
+                    R.string.detail_export_running,
+                    state.rows,
+                )
+            }
+
+            is ExportState.Ready -> {
+                binding.readingsExportButton.isEnabled = true
+                binding.readingsExportProgress.visibility = View.GONE
+                viewModel.consumeExport()
+                Snackbar.make(
+                    binding.root,
+                    getString(R.string.detail_export_success, state.rows),
+                    Snackbar.LENGTH_LONG,
+                ).show()
+                shareCsv(state.file)
+            }
+
+            is ExportState.Error -> {
+                binding.readingsExportButton.isEnabled = true
+                binding.readingsExportProgress.visibility = View.GONE
+                val message = when (state.kind) {
+                    ExportState.ErrorKind.NO_METRIC ->
+                        getString(R.string.detail_export_no_metric)
+
+                    ExportState.ErrorKind.TOO_MANY -> getString(
+                        R.string.detail_export_too_many,
+                        state.detail.toIntOrNull() ?: EXPORT_MAX_ROWS,
+                    )
+
+                    ExportState.ErrorKind.FAILED -> getString(
+                        R.string.detail_export_error,
+                        state.detail.ifBlank { getString(R.string.error_unknown) },
+                    )
+                }
+                viewModel.consumeExport()
+                Snackbar.make(binding.root, message, Snackbar.LENGTH_LONG)
+                    .setAction(R.string.detail_export_retry) { viewModel.exportReadings() }
+                    .show()
+            }
+        }
+    }
+
+    private fun shareCsv(file: File) {
+        val uri = FileProvider.getUriForFile(
+            this,
+            "${BuildConfig.APPLICATION_ID}.fileprovider",
+            file,
+        )
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/csv"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        startActivity(
+            Intent.createChooser(intent, getString(R.string.detail_export_share_title)),
+        )
+    }
+
     private fun renderSummary(summary: ReadingSummary?) {
         val visible = summary != null && summary.count > 0
         binding.readingsSummary.visibility = if (visible) View.VISIBLE else View.GONE
@@ -494,6 +572,7 @@ class DeviceDetailActivity : AppCompatActivity() {
         private const val EXTRA_MAC = "extra_mac"
         private const val EXTRA_NAME = "extra_name"
         private const val EXTRA_RSSI = "extra_rssi"
+        private const val EXPORT_MAX_ROWS = 50_000
 
         fun createIntent(
             context: Context,

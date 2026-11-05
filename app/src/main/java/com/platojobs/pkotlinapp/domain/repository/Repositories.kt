@@ -85,6 +85,14 @@ interface ReadingRepository {
     /** 指定时间之后的本地读数（正序），供离线分桶兜底。 */
     suspend fun readingsSince(deviceId: String, metric: String, from: Long): List<Reading>
 
+    /** 闭区间内的本地读数（正序），供 7 天内导出。 */
+    suspend fun readingsBetween(
+        deviceId: String,
+        metric: String,
+        from: Long,
+        to: Long,
+    ): List<Reading>
+
     /** 清理 7 天前数据；启动与同步后调用。 */
     suspend fun cleanup()
 }

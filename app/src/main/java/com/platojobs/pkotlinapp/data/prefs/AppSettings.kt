@@ -10,6 +10,14 @@ enum class ThemeMode {
     DARK,
 }
 
+/** 设备列表排序方式；默认最近出现，持久化在偏好设置里。 */
+enum class DeviceSortMode {
+    RECENT,
+    NAME,
+    RSSI,
+    ADDED,
+}
+
 class AppSettings(context: Context) {
 
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -22,6 +30,34 @@ class AppSettings(context: Context) {
             prefs.edit { putString(KEY_THEME, value.name) }
         }
 
+    /** 告警通知总开关；关闭后不投递通知，但规则命中仍会记录。 */
+    var alertsEnabled: Boolean
+        get() = prefs.getBoolean(KEY_ALERTS_ENABLED, true)
+        set(value) {
+            prefs.edit { putBoolean(KEY_ALERTS_ENABLED, value) }
+        }
+
+    /** 同一设备同一规则的通知节流窗口，只允许 1 / 5 / 30 分钟。 */
+    var alertThrottleMinutes: Int
+        get() = prefs.getInt(KEY_ALERT_THROTTLE_MINUTES, DEFAULT_ALERT_THROTTLE_MINUTES)
+            .takeIf { it in ALERT_THROTTLE_OPTIONS }
+            ?: DEFAULT_ALERT_THROTTLE_MINUTES
+        set(value) {
+            val normalized = value.takeIf { it in ALERT_THROTTLE_OPTIONS }
+                ?: DEFAULT_ALERT_THROTTLE_MINUTES
+            prefs.edit { putInt(KEY_ALERT_THROTTLE_MINUTES, normalized) }
+        }
+
+    var deviceSortMode: DeviceSortMode
+        get() = runCatching {
+            DeviceSortMode.valueOf(
+                prefs.getString(KEY_DEVICE_SORT, DeviceSortMode.RECENT.name).orEmpty(),
+            )
+        }.getOrDefault(DeviceSortMode.RECENT)
+        set(value) {
+            prefs.edit { putString(KEY_DEVICE_SORT, value.name) }
+        }
+
     fun applyTheme() {
         AppCompatDelegate.setDefaultNightMode(
             when (themeMode) {
@@ -32,8 +68,14 @@ class AppSettings(context: Context) {
         )
     }
 
-    private companion object {
-        const val PREFS_NAME = "app_settings"
-        const val KEY_THEME = "theme_mode"
+    companion object {
+        val ALERT_THROTTLE_OPTIONS = listOf(1, 5, 30)
+        const val DEFAULT_ALERT_THROTTLE_MINUTES = 5
+
+        private const val PREFS_NAME = "app_settings"
+        private const val KEY_THEME = "theme_mode"
+        private const val KEY_ALERTS_ENABLED = "alerts_enabled"
+        private const val KEY_ALERT_THROTTLE_MINUTES = "alert_throttle_minutes"
+        private const val KEY_DEVICE_SORT = "device_sort_mode"
     }
 }

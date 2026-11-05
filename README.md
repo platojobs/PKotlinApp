@@ -655,6 +655,27 @@ release {
 - **e2e-postgres job**（与 fixture e2e 并行，不阻塞主流程）：Docker 起真 Postgres + API，跑 `scripts/e2e-postgres.sh`（含 410 分支），失败上传 Postgres 服务日志，见 §15。
 - **release job**（仅 `v*` tag 或手动 `workflow_dispatch`）：执行 `assembleRelease`，**不注入签名密钥**，产出未签名 APK 作为构建验证；如需正式签名请在 GitHub Secrets 配置后自行补充注入步骤，仓库内不写任何密码。
 
+### 9.1 排障：没有 `workflow` scope 时如何推送 workflow 变更
+
+OAuth 凭据缺少 `workflow` scope 时，GitHub 会拒绝任何包含 `.github/workflows/` 改动的推送，报错：
+
+```text
+! [remote rejected] main -> main (refusing to allow an OAuth App to create or update
+workflow `.github/workflows/android.yml` without `workflow` scope)
+```
+
+首选补充授权：`gh auth refresh -s workflow`（需要能访问 `github.com/login/device/code`，在浏览器完成设备授权）。
+
+如果设备授权端点不可达（例如代理下 `dial tcp ...:443: i/o timeout`），改用 **SSH over 443** 推送，不修改任何全局 git config，也不改 remote：
+
+```bash
+GIT_SSH_COMMAND="ssh -i ~/.ssh/id_ed25519_github_platojobs_platojobsdemacbook-air \
+  -o IdentitiesOnly=yes -o ConnectTimeout=15" \
+  git push ssh://git@ssh.github.com:443/platojobs/PKotlinApp.git main v0.10.0
+```
+
+说明：SSH key 已登记在 GitHub 账号时，SSH 推送不受 OAuth App 的 `workflow` scope 限制；`ssh.github.com:443` 用于绕过 22 端口封锁。推送后可用 `git fetch origin main && git show origin/main:.github/workflows/android.yml | head` 确认远端 workflow 已更新。
+
 ---
 
 ## 10. 已知限制与真机自测项

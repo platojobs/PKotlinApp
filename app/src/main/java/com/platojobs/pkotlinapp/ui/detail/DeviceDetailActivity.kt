@@ -6,8 +6,10 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.view.View
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
@@ -17,6 +19,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import com.google.android.material.chip.Chip
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.snackbar.Snackbar
 import com.platojobs.pkotlinapp.PKotlinApplication
@@ -24,15 +27,22 @@ import com.platojobs.pkotlinapp.R
 import com.platojobs.pkotlinapp.data.ble.BleConnectionState
 import com.platojobs.pkotlinapp.databinding.ActivityDeviceDetailBinding
 import com.platojobs.pkotlinapp.databinding.DialogDeviceEditBinding
+import com.platojobs.pkotlinapp.databinding.ItemReadingBinding
 import com.platojobs.pkotlinapp.domain.model.displayDeviceTypeName
 import com.platojobs.pkotlinapp.domain.model.displayName
 import com.platojobs.pkotlinapp.domain.model.unrecognizedDeviceTypeKey
+import com.platojobs.pkotlinapp.domain.reading.Reading
+import com.platojobs.pkotlinapp.domain.reading.ReadingMetrics
+import com.platojobs.pkotlinapp.domain.reading.ReadingSummary
+import com.platojobs.pkotlinapp.ui.chart.ChartPoint
+import com.platojobs.pkotlinapp.ui.common.BlePermissions
 import com.platojobs.pkotlinapp.ui.common.applyBottomInset
 import com.platojobs.pkotlinapp.ui.common.applyHorizontalInsets
 import com.platojobs.pkotlinapp.ui.common.TimeFormat
 import com.platojobs.pkotlinapp.ui.common.applyTopInset
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 class DeviceDetailActivity : AppCompatActivity() {
 
@@ -53,6 +63,7 @@ class DeviceDetailActivity : AppCompatActivity() {
     }
 
     private var receiverRegistered = false
+    private var renderedMetrics: List<String> = emptyList()
 
     /**
      * Android 16 新增的受保护系统广播：
@@ -119,6 +130,7 @@ class DeviceDetailActivity : AppCompatActivity() {
         }
         binding.infoRetryButton.setOnClickListener { viewModel.loadInfo() }
         binding.editProfileButton.setOnClickListener { showEditDeviceDialog() }
+        binding.readingsPermissionButton.setOnClickListener { openAppSettings() }
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -141,6 +153,9 @@ class DeviceDetailActivity : AppCompatActivity() {
                 }
                 launch {
                     viewModel.encryption.collect { info -> renderEncryption(info) }
+                }
+                launch {
+                    viewModel.readings.collect { state -> renderReadings(state) }
                 }
             }
         }
@@ -279,6 +294,112 @@ class DeviceDetailActivity : AppCompatActivity() {
                 viewModel.saveProfile(alias = alias, group = group)
             }
             .show()
+    }
+
+    /** 数据区：权限/空状态/加载三选一，正常路径展示 Chip、图表、24h 汇总与最近记录。 */
+    private fun renderReadings(state: ReadingsState) {
+        val hasPermission = BlePermissions.hasConnect(this)
+        val hasMetrics = hasPermission && state.metrics.isNotEmpty()
+
+        binding.readingsPermissionBlock.visibility = if (hasPermission) View.GONE else View.VISIBLE
+        binding.readingsLoadingHint.visibility =
+            if (hasPermission && state.loading) View.VISIBLE else View.GONE
+        binding.readingsEmptyHint.visibility =
+            if (hasPermission && !state.loading && state.metrics.isEmpty()) View.VISIBLE else View.GONE
+        binding.readingsChipScroll.visibility = if (hasMetrics) View.VISIBLE else View.GONE
+        binding.readingsOfflineHint.visibility =
+            if (hasMetrics && state.offlineLocal) View.VISIBLE else View.GONE
+        if (hasMetrics) {
+            renderMetricChips(state.metrics, state.selectedMetric)
+        }
+        binding.readingsChart.visibility =
+            if (hasMetrics && state.points.isNotEmpty()) View.VISIBLE else View.GONE
+        binding.readingsChart.setPoints(
+            state.points.map { ChartPoint(it.value, it.recordedAt) },
+        )
+        renderSummary(state.summary)
+        renderRecent(state.recent)
+    }
+
+    private fun renderMetricChips(metrics: List<String>, selected: String?) {
+        if (renderedMetrics != metrics) {
+            renderedMetrics = metrics
+            binding.readingsChips.removeAllViews()
+            metrics.forEach { metric ->
+                val label = metricLabel(metric)
+                val chip = Chip(this).apply {
+                    id = View.generateViewId()
+                    text = label
+                    isCheckable = true
+                    // 200% 字号下允许换行，避免指标名被省略号截断。
+                    isSingleLine = false
+                    maxLines = 2
+                    ellipsize = null
+                    contentDescription = label
+                    setOnClickListener { viewModel.selectMetric(metric) }
+                }
+                binding.readingsChips.addView(chip)
+            }
+        }
+        for (index in metrics.indices) {
+            val chip = binding.readingsChips.getChildAt(index) as? Chip ?: continue
+            val checked = metrics[index] == selected
+            if (chip.isChecked != checked) chip.isChecked = checked
+        }
+    }
+
+    private fun renderSummary(summary: ReadingSummary?) {
+        val visible = summary != null && summary.count > 0
+        binding.readingsSummary.visibility = if (visible) View.VISIBLE else View.GONE
+        if (summary == null || !visible) return
+        val unit = summary.unit
+        binding.readingsSummary.text = getString(
+            R.string.readings_summary_line,
+            formatMeasure(summary.min, unit),
+            formatMeasure(summary.max, unit),
+            formatMeasure(summary.avg, unit),
+            formatMeasure(summary.last, unit),
+        )
+    }
+
+    private fun renderRecent(recent: List<Reading>) {
+        binding.readingsRecentTitle.visibility = if (recent.isEmpty()) View.GONE else View.VISIBLE
+        binding.readingsRecentList.removeAllViews()
+        recent.forEach { reading ->
+            val row = ItemReadingBinding.inflate(layoutInflater, binding.readingsRecentList, false)
+            row.readingValue.text = formatMeasure(reading.value, reading.unit)
+            row.readingTime.text = TimeFormat.relative(this, reading.recordedAt)
+            binding.readingsRecentList.addView(row.root)
+        }
+    }
+
+    private fun formatMeasure(value: Double?, unit: String): String {
+        if (value == null || !value.isFinite()) return getString(R.string.detail_unknown_value)
+        val number = if (kotlin.math.abs(value - value.toLong()) < 0.05) {
+            String.format(Locale.US, "%.0f", value)
+        } else {
+            String.format(Locale.US, "%.1f", value)
+        }
+        return if (unit.isBlank()) number else number + unit
+    }
+
+    private fun metricLabel(metric: String): String = when (metric) {
+        ReadingMetrics.TEMPERATURE -> getString(R.string.readings_metric_temperature)
+        ReadingMetrics.HUMIDITY -> getString(R.string.readings_metric_humidity)
+        ReadingMetrics.BATTERY -> getString(R.string.readings_metric_battery)
+        ReadingMetrics.HEART_RATE -> getString(R.string.readings_metric_heart_rate)
+        ReadingMetrics.CO2 -> getString(R.string.readings_metric_co2)
+        ReadingMetrics.PRESSURE -> getString(R.string.readings_metric_pressure)
+        else -> getString(R.string.readings_metric_other)
+    }
+
+    private fun openAppSettings() {
+        startActivity(
+            Intent(
+                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.fromParts("package", packageName, null),
+            ),
+        )
     }
 
     private fun renderEncryption(info: EncryptionInfo?) {

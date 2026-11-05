@@ -25,14 +25,40 @@ internal object DeviceMigrationSql {
     )
 }
 
+/** v6 -> v7 的读数表；SQL 与 Room 导出的 7.json 保持一致。 */
+internal object ReadingMigrationSql {
+    val V6_TO_V7 = listOf(
+        """
+        CREATE TABLE IF NOT EXISTS `readings` (
+            `id` TEXT NOT NULL,
+            `deviceId` TEXT NOT NULL,
+            `metric` TEXT NOT NULL,
+            `value` REAL NOT NULL,
+            `unit` TEXT NOT NULL,
+            `recordedAt` INTEGER NOT NULL,
+            `syncState` TEXT NOT NULL DEFAULT 'pending',
+            `rawSnapshot` TEXT,
+            PRIMARY KEY(`id`),
+            FOREIGN KEY(`deviceId`) REFERENCES `devices`(`mac`)
+                ON UPDATE NO ACTION ON DELETE CASCADE
+        )
+        """.trimIndent(),
+        "CREATE INDEX IF NOT EXISTS `index_readings_deviceId` ON `readings` (`deviceId`)",
+        "CREATE INDEX IF NOT EXISTS `index_readings_syncState` ON `readings` (`syncState`)",
+        "CREATE INDEX IF NOT EXISTS `index_readings_deviceId_metric_recordedAt` " +
+            "ON `readings` (`deviceId`, `metric`, `recordedAt`)",
+    )
+}
+
 @Database(
     entities = [
         DeviceEntity::class,
         RuleEntity::class,
         RuleEventEntity::class,
         ScanLogEntity::class,
+        ReadingEntity::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -44,6 +70,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun ruleEventDao(): RuleEventDao
 
     abstract fun scanLogDao(): ScanLogDao
+
+    abstract fun readingDao(): ReadingDao
 
     companion object {
         private const val DB_NAME = "device_dashboard.db"
@@ -122,6 +150,13 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v6 -> v7：新增读数表（外键 devices.mac，7 天本地保留由仓库层清理）。 */
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                ReadingMigrationSql.V6_TO_V7.forEach(db::execSQL)
+            }
+        }
+
         @Volatile
         private var instance: AppDatabase? = null
 
@@ -137,6 +172,7 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_3_4,
                     MIGRATION_4_5,
                     MIGRATION_5_6,
+                    MIGRATION_6_7,
                 )
                     .build()
                     .also { instance = it }

@@ -3,4 +3,8 @@
     <color name="signal_active">#2E7D32</color>
     <color name="signal_inactive">#D6D9E3</color>
     <color name="text_secondary">#6B7280</color>
+    <color name="chart_line">#3F51B5</color>
+    <color name="chart_point">#1F2937</color>
+    <color name="chart_grid">#E5E7EB</color>
+    <color name="chart_axis">#9CA3AF</color>
 </resources>

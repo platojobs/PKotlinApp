@@ -8,6 +8,7 @@ import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.POST
+import retrofit2.http.Path
 import retrofit2.http.Query
 
 /**
@@ -122,6 +123,48 @@ data class PushDeviceDto(
 data class SyncPushRequest(
     val clientId: String,
     val devices: List<PushDeviceDto>,
+    /** 可选读数批次；为空时 Moshi 省略该字段（兼容旧服务端）。 */
+    val readings: List<PushReadingDto>? = null,
+)
+
+/** POST /sync/push 中的单条读数。`id` 为客户端 UUID，服务端按 id 幂等。 */
+data class PushReadingDto(
+    val id: String,
+    val platform: String,
+    val externalId: String,
+    val metric: String,
+    val value: Double,
+    val unit: String,
+    /** RFC3339。 */
+    val recordedAt: String,
+)
+
+/** GET /my/devices/{platform}/{externalId}/readings 的单条返回。 */
+data class ReadingDto(
+    val id: String? = null,
+    val metric: String? = null,
+    val value: Double? = null,
+    val unit: String? = null,
+    val recordedAt: String? = null,
+)
+
+data class ReadingPageResponse(
+    val items: List<ReadingDto>? = null,
+    val nextCursor: String? = null,
+    val hasMore: Boolean? = null,
+)
+
+/** GET .../readings/summary 返回；无数据时 min/max/avg/last 可能为 null。 */
+data class ReadingSummaryResponse(
+    val metric: String? = null,
+    val unit: String? = null,
+    val count: Int? = null,
+    val min: Double? = null,
+    val max: Double? = null,
+    val avg: Double? = null,
+    val last: Double? = null,
+    val windowStart: String? = null,
+    val windowEnd: String? = null,
 )
 
 data class AppliedChangeDto(
@@ -147,6 +190,9 @@ data class SyncPushResponse(
     val applied: List<AppliedChangeDto>? = null,
     val conflicts: List<ConflictDto>? = null,
     val nextCursor: Long? = null,
+    // 读数按 id 幂等：重复 id 计入 skipped，不报错。
+    val appliedReadings: Int = 0,
+    val skippedReadings: Int = 0,
 )
 
 data class SyncChangesResponse(
@@ -173,4 +219,25 @@ interface SyncApi {
         @Header("Idempotency-Key") idempotencyKey: String,
         @Body body: SyncPushRequest,
     ): SyncPushResponse
+
+    @GET("api/v1/my/devices/{platform}/{externalId}/readings")
+    suspend fun readings(
+        @Header("Authorization") authorization: String,
+        @Path("platform") platform: String,
+        @Path("externalId") externalId: String,
+        @Query("metric") metric: String?,
+        @Query("from") from: String?,
+        @Query("to") to: String?,
+        @Query("limit") limit: Int,
+        @Query("cursor") cursor: String?,
+    ): ReadingPageResponse
+
+    @GET("api/v1/my/devices/{platform}/{externalId}/readings/summary")
+    suspend fun readingsSummary(
+        @Header("Authorization") authorization: String,
+        @Path("platform") platform: String,
+        @Path("externalId") externalId: String,
+        @Query("metric") metric: String,
+        @Query("hours") hours: Int,
+    ): ReadingSummaryResponse
 }

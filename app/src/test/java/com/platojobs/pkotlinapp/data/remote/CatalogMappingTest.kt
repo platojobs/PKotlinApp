@@ -45,6 +45,25 @@ class CatalogMappingTest {
             idempotencyKey: String,
             body: SyncPushRequest,
         ): SyncPushResponse = SyncPushResponse()
+
+        override suspend fun readings(
+            authorization: String,
+            platform: String,
+            externalId: String,
+            metric: String?,
+            from: String?,
+            to: String?,
+            limit: Int,
+            cursor: String?,
+        ): ReadingPageResponse = ReadingPageResponse()
+
+        override suspend fun readingsSummary(
+            authorization: String,
+            platform: String,
+            externalId: String,
+            metric: String,
+            hours: Int,
+        ): ReadingSummaryResponse = ReadingSummaryResponse()
     }
 
     private class FakeApi(

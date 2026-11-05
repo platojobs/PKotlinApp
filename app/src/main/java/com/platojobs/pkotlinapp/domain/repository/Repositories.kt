@@ -8,6 +8,9 @@ import com.platojobs.pkotlinapp.domain.model.ProductModel
 import com.platojobs.pkotlinapp.domain.model.RuleEvent
 import com.platojobs.pkotlinapp.domain.model.RuleType
 import com.platojobs.pkotlinapp.domain.model.ScanLog
+import com.platojobs.pkotlinapp.domain.reading.Reading
+import com.platojobs.pkotlinapp.domain.reading.ReadingSample
+import com.platojobs.pkotlinapp.domain.reading.ReadingSummary
 import kotlinx.coroutines.flow.Flow
 
 interface DeviceRepository {
@@ -54,6 +57,29 @@ interface ScanLogRepository {
     suspend fun add(log: ScanLog)
 
     suspend fun clear()
+}
+
+interface ReadingRepository {
+    /** 成功写入返回 true；外键/唯一键冲突等返回 false，绝不抛出。 */
+    suspend fun record(deviceId: String, sample: ReadingSample): Boolean
+
+    /** 该设备真实出现过的指标（动态 Chip 数据源）。 */
+    fun observeMetrics(deviceId: String): Flow<List<String>>
+
+    /** 最近 [limit] 个点，按时间正序返回（供图表直接使用）。 */
+    fun observeRecent(
+        deviceId: String,
+        metric: String,
+        limit: Int = 60,
+    ): Flow<List<Reading>>
+
+    suspend fun getRecent(deviceId: String, metric: String, limit: Int): List<Reading>
+
+    /** 本地 24h 汇总（离线可用）。 */
+    suspend fun summary(deviceId: String, metric: String, hours: Int = 24): ReadingSummary
+
+    /** 清理 7 天前数据；启动与同步后调用。 */
+    suspend fun cleanup()
 }
 
 interface DeviceInfoRepository {

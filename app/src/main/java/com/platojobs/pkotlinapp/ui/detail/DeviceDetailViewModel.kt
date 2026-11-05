@@ -11,8 +11,13 @@ import com.platojobs.pkotlinapp.data.sync.SyncScheduler
 import com.platojobs.pkotlinapp.domain.model.Device
 import com.platojobs.pkotlinapp.domain.model.DeviceInfo
 import com.platojobs.pkotlinapp.domain.model.toOfflineDeviceInfo
+import com.platojobs.pkotlinapp.domain.reading.Reading
+import com.platojobs.pkotlinapp.domain.reading.ReadingMetrics
+import com.platojobs.pkotlinapp.domain.reading.ReadingRemote
+import com.platojobs.pkotlinapp.domain.reading.ReadingSummary
 import com.platojobs.pkotlinapp.domain.repository.DeviceInfoRepository
 import com.platojobs.pkotlinapp.domain.repository.DeviceRepository
+import com.platojobs.pkotlinapp.domain.repository.ReadingRepository
 import com.platojobs.pkotlinapp.domain.rule.RuleEngine
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,11 +25,25 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 data class EncryptionInfo(
     val enabled: Boolean,
     val timestamp: Long,
+)
+
+/** 详情页「数据」区状态；列表/图表只来自本地 Room，汇总可优先用服务端。 */
+data class ReadingsState(
+    val metrics: List<String> = emptyList(),
+    val selectedMetric: String? = null,
+    val points: List<Reading> = emptyList(),
+    val summary: ReadingSummary? = null,
+    val recent: List<Reading> = emptyList(),
+    val offlineLocal: Boolean = false,
+    val loading: Boolean = true,
 )
 
 class DeviceDetailViewModel(
@@ -35,6 +54,8 @@ class DeviceDetailViewModel(
     private val deviceRepository: DeviceRepository,
     private val ruleEngine: RuleEngine,
     private val syncScheduler: SyncScheduler,
+    private val readingRepository: ReadingRepository,
+    private val readingRemote: ReadingRemote,
 ) : ViewModel() {
 
     val connectionState: StateFlow<BleConnectionState> = bleConnectionManager.state
@@ -46,8 +67,12 @@ class DeviceDetailViewModel(
     private val _encryption = MutableStateFlow<EncryptionInfo?>(null)
     val encryption: StateFlow<EncryptionInfo?> = _encryption.asStateFlow()
 
+    private val _readings = MutableStateFlow(ReadingsState())
+    val readings: StateFlow<ReadingsState> = _readings.asStateFlow()
+
     init {
         viewModelScope.launch { ruleEngine.refresh() }
+        observeReadings()
 
         viewModelScope.launch {
             connectionState.collectLatest { state ->
@@ -76,6 +101,73 @@ class DeviceDetailViewModel(
             }
         }
     }
+
+    fun selectMetric(metric: String) {
+        _readings.update {
+            if (it.selectedMetric == metric) it else it.copy(selectedMetric = metric)
+        }
+    }
+
+    /**
+     * 指标 Chip 只来自该设备真实出现过的读数；
+     * 图表/最近记录订阅本地 Flow，汇总优先远端、失败回退本地。
+     */
+    private fun observeReadings() {
+        viewModelScope.launch {
+            readingRepository.observeMetrics(mac).collect { metrics ->
+                val ordered = metrics.sortedBy { metricOrder(it) }
+                val selected = _readings.value.selectedMetric
+                    ?.takeIf { it in ordered }
+                    ?: ordered.firstOrNull()
+                _readings.update {
+                    it.copy(
+                        metrics = ordered,
+                        selectedMetric = selected,
+                        loading = false,
+                    )
+                }
+            }
+        }
+
+        viewModelScope.launch {
+            _readings.map { it.selectedMetric }
+                .distinctUntilChanged()
+                .collectLatest { metric ->
+                    if (metric == null) {
+                        _readings.update {
+                            it.copy(points = emptyList(), recent = emptyList(), summary = null)
+                        }
+                        return@collectLatest
+                    }
+                    readingRepository.observeRecent(mac, metric, CHART_POINTS).collectLatest { rows ->
+                        // DAO 按时间倒序返回：图表需要正序，最近记录保持最新在前。
+                        _readings.update {
+                            it.copy(
+                                points = rows.asReversed(),
+                                recent = rows.take(RECENT_ROWS),
+                            )
+                        }
+                        // 新读数连续到达时做轻微防抖，避免频繁请求 summary。
+                        delay(SUMMARY_DEBOUNCE_MS)
+                        refreshSummary(metric)
+                    }
+                }
+        }
+    }
+
+    private suspend fun refreshSummary(metric: String) {
+        val local = runCatching { readingRepository.summary(mac, metric, 24) }
+            .getOrNull() ?: return
+        val remote = runCatching { readingRemote.remoteSummary(mac, metric, 24) }.getOrNull()
+        // 远端为空但本地有未同步数据时不覆盖本地；远端失败则标注离线本地数据。
+        val summary = remote?.takeIf { it.count > 0 } ?: local
+        _readings.update {
+            it.copy(summary = summary, offlineLocal = remote == null)
+        }
+    }
+
+    private fun metricOrder(metric: String): Int =
+        ReadingMetrics.ALL.indexOf(metric).let { if (it < 0) ReadingMetrics.ALL.size else it }
 
     fun connect(): Boolean = bleConnectionManager.connect(mac)
 
@@ -162,6 +254,9 @@ class DeviceDetailViewModel(
 
     companion object {
         private const val RSSI_POLL_INTERVAL_MS = 2_000L
+        private const val CHART_POINTS = 60
+        private const val RECENT_ROWS = 10
+        private const val SUMMARY_DEBOUNCE_MS = 500L
 
         fun factory(
             app: PKotlinApplication,
@@ -178,6 +273,8 @@ class DeviceDetailViewModel(
                     deviceRepository = container.deviceRepository,
                     ruleEngine = container.ruleEngine,
                     syncScheduler = container.syncScheduler,
+                    readingRepository = container.readingRepository,
+                    readingRemote = container.readingRemote,
                 )
             }
         }

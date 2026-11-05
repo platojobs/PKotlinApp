@@ -3,6 +3,7 @@ package com.platojobs.pkotlinapp.data.sync
 import com.platojobs.pkotlinapp.data.remote.AppliedChangeDto
 import com.platojobs.pkotlinapp.data.remote.ConflictDto
 import com.platojobs.pkotlinapp.data.remote.PushDeviceDto
+import com.platojobs.pkotlinapp.data.remote.PushReadingDto
 import com.platojobs.pkotlinapp.data.remote.Reported
 import com.platojobs.pkotlinapp.data.remote.SyncApi
 import com.platojobs.pkotlinapp.data.remote.SyncChangeDto
@@ -13,6 +14,13 @@ import com.platojobs.pkotlinapp.data.remote.displayLabel
 import com.platojobs.pkotlinapp.domain.model.PLATFORM_ANDROID
 import com.platojobs.pkotlinapp.domain.model.SyncState
 import com.platojobs.pkotlinapp.domain.model.normalizeExternalId
+import com.platojobs.pkotlinapp.domain.reading.Reading
+import com.platojobs.pkotlinapp.domain.reading.ReadingMetrics
+import com.platojobs.pkotlinapp.domain.reading.ReadingPage
+import com.platojobs.pkotlinapp.domain.reading.ReadingPushAck
+import com.platojobs.pkotlinapp.domain.reading.ReadingRemote
+import com.platojobs.pkotlinapp.domain.reading.ReadingSummary
+import com.platojobs.pkotlinapp.domain.reading.RemoteReading
 import com.platojobs.pkotlinapp.domain.sync.AuthExpiredException
 import com.platojobs.pkotlinapp.domain.sync.Rfc3339
 import com.platojobs.pkotlinapp.domain.sync.SyncConflict
@@ -41,7 +49,7 @@ class RemoteSyncDataSource(
     private val api: SyncApi,
     private val tokenStore: TokenStore,
     private val installId: String,
-) : SyncRemote {
+) : SyncRemote, ReadingRemote {
 
     override suspend fun push(records: List<SyncRecord>, idempotencyKey: String): SyncPushAck =
         withToken { authorization ->
@@ -66,6 +74,85 @@ class RemoteSyncDataSource(
                 nextCursor = response.nextCursor?.toString(),
             )
         }
+
+    override suspend fun pushReadings(
+        readings: List<Reading>,
+        idempotencyKey: String,
+    ): ReadingPushAck = withToken { authorization ->
+        val request = SyncPushRequest(
+            clientId = installId,
+            devices = emptyList(),
+            readings = readings.map { it.toPushDto() },
+        )
+        val response = api.push(authorization, idempotencyKey, request)
+        ReadingPushAck(
+            applied = response.appliedReadings,
+            skipped = response.skippedReadings,
+        )
+    }
+
+    override suspend fun queryReadings(
+        deviceId: String,
+        metric: String?,
+        from: Long?,
+        to: Long?,
+        limit: Int,
+        cursor: String?,
+    ): ReadingPage = withToken { authorization ->
+        val externalId = normalizeExternalIdForPlatform(PLATFORM_ANDROID, deviceId)
+        val response = api.readings(
+            authorization = authorization,
+            platform = PLATFORM_ANDROID,
+            externalId = externalId,
+            metric = metric,
+            from = from?.let(Rfc3339::format),
+            to = to?.let(Rfc3339::format),
+            limit = limit.coerceIn(1, 100),
+            cursor = cursor,
+        )
+        ReadingPage(
+            items = response.items.orEmpty().mapNotNull { item ->
+                val id = item.id?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                val value = item.value ?: return@mapNotNull null
+                if (!value.isFinite()) return@mapNotNull null
+                RemoteReading(
+                    id = id,
+                    metric = item.metric.orEmpty(),
+                    value = value,
+                    unit = item.unit.orEmpty(),
+                    recordedAt = Rfc3339.parse(item.recordedAt) ?: 0L,
+                )
+            },
+            nextCursor = response.nextCursor,
+            hasMore = response.hasMore == true,
+        )
+    }
+
+    override suspend fun remoteSummary(
+        deviceId: String,
+        metric: String,
+        hours: Int,
+    ): ReadingSummary = withToken { authorization ->
+        val externalId = normalizeExternalIdForPlatform(PLATFORM_ANDROID, deviceId)
+        val response = api.readingsSummary(
+            authorization = authorization,
+            platform = PLATFORM_ANDROID,
+            externalId = externalId,
+            metric = metric,
+            hours = hours.coerceAtLeast(1),
+        )
+        ReadingSummary(
+            metric = response.metric ?: metric,
+            unit = response.unit ?: ReadingMetrics.unit(metric),
+            count = response.count ?: 0,
+            min = response.min,
+            max = response.max,
+            avg = response.avg,
+            last = response.last,
+            windowStart = Rfc3339.parse(response.windowStart) ?: 0L,
+            windowEnd = Rfc3339.parse(response.windowEnd) ?: 0L,
+        )
+    }
 
     /**
      * 401 与 iOS 保持一致：不自动重新匿名登录（自动重登会切换到另一个账号，
@@ -188,6 +275,16 @@ internal fun ConflictDto.toDomain(): SyncConflict {
         serverRecord = server?.toDomain(),
     )
 }
+
+internal fun Reading.toPushDto(): PushReadingDto = PushReadingDto(
+    id = id,
+    platform = PLATFORM_ANDROID,
+    externalId = normalizeExternalIdForPlatform(PLATFORM_ANDROID, deviceId),
+    metric = ReadingMetrics.normalize(metric),
+    value = value,
+    unit = unit,
+    recordedAt = Rfc3339.format(recordedAt),
+)
 
 internal fun normalizeExternalIdForPlatform(platform: String?, externalId: String): String {
     val safePlatform = platform?.takeIf { it.isNotBlank() } ?: PLATFORM_ANDROID

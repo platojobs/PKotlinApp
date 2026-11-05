@@ -410,7 +410,42 @@ Debug / Release 都可通过 `apiBaseUrl` 切换；发布前请传入正式域�
 - 设备列表：每行展示「分组：X / 未分组」，标题旁统计「共 N 台设备 · M 个分组」，数据全部来自 Room，离线一致。
 - 同步：连续失败 3 次进入纯本地模式，主界面横幅 +「我的」同步卡片提示；Room 数据（首页、设备、日志）不依赖网络。
 - 首页 / 设备 / 我的：本地 Room 数据不依赖网络，断网仍可用。
-- 离线验收步骤见 [真机验收清单 §7.2](docs/acceptance.md#72-离线缓存与分组验收v035-新增)；别名/广播名与分组三态验收见 [§7.4](docs/acceptance.md#74-别名--广播名与分组三态验收v036-新增)；清空别名验收见 [§7.5](docs/acceptance.md#75-清空别名验收v037-新增)。
+- 离线验收步骤见 [真机验收清单 §7.2](docs/acceptance.md#72-离线缓存与分组验收v035-新增)；别名/广播名与分组三态验收见 [§7.4](docs/acceptance.md#74-别名--广播名与分组三态验收v036-新增)；清空别名验收见 [§7.5](docs/acceptance.md#75-清空别名验收v037-新增)；读数采集验收见 [§7.6](docs/acceptance.md#76-设备读数readings验收v040-新增)。
+
+### 6.1 数据采集（readings，v0.4.0）
+
+设备连接并发现 GATT 服务后，App 会订阅以下 notify/indicate 特征，并把解析成功的读数写入 Room、随后随同步批次推送到服务端：
+
+| 特征 UUID | 指标 | 解析规则 | 单位 |
+| --- | --- | --- | --- |
+| `0x2A37` 心率测量 | `heart_rate` | 首字节为 flags；bit0=0 取下一字节 uint8，bit0=1 取后续两字节 uint16；只接受 1..300 | `bpm` |
+| `0x2A19` 电池电量 | `battery` | 单字节百分比，只接受 0..100 | `%` |
+| `0x2A6E` 温度 | `temperature` | 2 字节 little-endian：先按规范 sint16 / 0.01℃ 解释，落在 -40..125℃ 时采用；否则回退 IEEE-754 半精度；两者都不合理则丢弃 | `°C` |
+| `6E400003-B5A3-F393-E0A9-E50E24DCCA9E` NUS TX | 由文本决定 | UTF-8 文本行：`metric=value` 或纯数字；指标走白名单归一化，未知指标记为 `other` 并保留原始文本快照 | 按指标 |
+
+解析失败（空字节、长度不足、超长 >256 字节、非数字、NaN/Inf、超出合理范围）**静默丢弃**：只写一条 `Log.w("BleReadings", …)` 本地日志（含特征 UUID、长度和十六进制快照），不写 Room、不影响连接状态、不崩溃。可读特征在订阅后还会主动 `readCharacteristic` 一次，获取电池/温度初始值。
+
+**本地存储（Room v7）**
+
+- 新增 `readings` 表：`id`（UUID 主键）、`deviceId`（外键指向 `devices.mac`，`ON DELETE CASCADE`）、`metric`、`value`、`unit`、`recordedAt`、`syncState`（`pending`/`synced`）、`rawSnapshot`。
+- 索引：`deviceId`、`syncState`、`(deviceId, metric, recordedAt)`；`MIGRATION_6_7` 只 `CREATE TABLE` + 索引，不重建既有表。
+- 指标白名单：`temperature` / `humidity` / `battery` / `heart_rate` / `co2` / `pressure` / `other`；未知指标入库前归一为 `other`，并保留原始字节/文本摘要。
+- 保留期：客户端本地 **7 天**，在 `Application.onCreate` 与每次读数同步完成后执行清理；服务端保留 **90 天**。
+
+**同步策略**
+
+- 读数使用独立的 `ReadingSyncer`，复用同一个 `POST /api/v1/sync/push`：每批最多 **200** 条，成功后将对应行标为 `synced`，循环直到不足一批。
+- 幂等：批次 `Idempotency-Key` 由按 `id` 排序后的 `id/deviceId/metric/value/unit/recordedAt` 做 SHA-256（前缀 `readings-`）；失败重试复用同一幂等体，服务端再按 `id` 去重，重复 id 计入 `skippedReadings` 而不报错。
+- 断网时读数继续本地累积（`pending`），网络恢复后由常规同步/重试路径补传；设备与读数可以同批推送，服务端响应新增 `appliedReadings` / `skippedReadings`。
+- 远端查询：`GET /api/v1/my/devices/{platform}/{externalId}/readings`（倒序游标分页、可按 metric/时间过滤）与 `/readings/summary?metric=&hours=24`（min/max/avg/last）。详情页 24h 汇总优先远端，失败或为空时回退本地并显示「离线：本地数据」。
+
+**详情页「数据」区**
+
+- 指标 Chip 只来自该设备真实出现过的读数（Room Flow），按白名单顺序排列；没有读数时显示「连接设备后开始采集」，没有蓝牙连接权限时显示提示并提供「去应用设置」。
+- 最近 60 个点使用自绘 `ReadingChartView`：`onDraw` 画坐标轴、网格、折线、数据点与首尾时间；几何计算在纯 Kotlin `ReadingChartGeometry`，0 点/单点/同值都有确定结果，不除零、不越界。
+- 汇总行展示 24h 的最小/最大/平均/最新；「最近记录」展示最新 10 条（值 + 相对时间）。所有数值均来自真实 Room/远端数据，不放演示假数据。
+
+**限制**：模拟器无法验证真实 BLE notify 投递与厂商固件字节格式；解析规则已用单测覆盖，但真实心率带/温湿度计/NUS 设备需按 [§7.6](docs/acceptance.md#76-设备读数readings验收v040-新增) 真机验收。
 
 ---
 
@@ -421,7 +456,7 @@ export JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk-21.jdk/Contents/Home
 
 ./gradlew assembleDebug        # Debug APK
 ./gradlew lintDebug            # Lint
-./gradlew testDebugUnitTest    # 单元测试：51 个（含 DeviceMigration 3 + DeviceAliasPersistence 3）
+./gradlew testDebugUnitTest    # 单元测试：73 个（含读数解析/同步/迁移/图表）
 ./gradlew assembleRelease      # 签名 Release APK
 ./gradlew bundleRelease        # 签名 Release AAB
 
@@ -552,6 +587,7 @@ release {
 
 ## 11. 版本记录
 
+- `v0.4.0`：接入设备读数全链路：GATT 订阅心率 `0x2A37`、电池 `0x2A19`、温度 `0x2A6E`、NUS TX `6E400003-…` 并按特征解析（失败静默丢弃 + 本地日志）；Room v7 新增 `readings` 表（`MIGRATION_6_7`），指标白名单 + 未知指标 `other` + 原始快照，本地保留 7 天（服务端 90 天）；读数以 ≤200/批复用 `/sync/push` 按 id 幂等同步，断网累积、恢复补传；详情页新增「数据」区（真实指标 Chip、自绘 60 点折线图、24h min/max/avg/last、最近记录、离线/空状态/权限引导）。单测 73 个、e2e 新增读数契约 6 项（推送/重复 skipped/倒序查询/summary/NaN 400）。
 - `v0.3.7`：修复「清空别名无效」：Room v6 新增 `aliasDirty`（`MIGRATION_5_6`），详情页显式清空别名时上报 `"alias":""`，扫描路径永不置脏，服务端空别名拉回后清空本地并按广播名展示；复核分组 `NULL`/`""` 三态链路不复活；`lintDebug` 从 62 条 warning 清理到 0（硬编码文案抽 strings、未用资源删除、KTX/无障碍/备份规则修复，仅 4 个版本提示类检查在 `lint.xml` 显式抑制并写明理由）；新增 `DeviceAliasPersistenceTest`、v5→v6 迁移测试与 e2e 清空别名断言（e2e 扩到 24 项），单测 51 个。
 - `v0.3.6`：跟随 PJGoIoT openapi 0.3.3：Room v5 新增 `advertisedName`（广播名）并与用户别名 `name` 隔离 + `MIGRATION_4_5`，列表/详情按「别名 → 广播名 → 型号名」展示；扫描只写广播名、编辑只写别名；DTO 引入 `Reported<String>?` 三态（absent / `""` / 值）与 Moshi adapter，删除分组显式上报 `"group":""`、未修改则省略；幂等键只哈希实际上报字段；冲突/拉取缺省字段按 absent 处理并保留本地值；新增三态序列化、别名隔离、清空不复活、幂等键稳定性测试，e2e 扩到 22 项。
 - `v0.3.5`：离线降级修复：Room v4 新增 `deviceTypeName`（catalog 展示名）与 `deviceGroup`（真实分组）可空列 + `MIGRATION_3_4`；离线型号优先展示缓存名，缺失时回退型号键并标注「未识别的型号」；设备编辑（别名/分组）落库并即时离线可见，设备列表展示分组与分组统计；扫描写入不再覆盖已缓存 enrich/分组；市场筛选 Chip 补 contentDescription、选中态 stateDescription 与 200% 字号换行；新增离线展示名/分组与 v3→v4 迁移测试。

@@ -1,6 +1,8 @@
 package com.platojobs.pkotlinapp.data.sync
 
 import com.platojobs.pkotlinapp.data.remote.AnonymousLoginResponse
+import com.platojobs.pkotlinapp.data.remote.ReadingPageResponse
+import com.platojobs.pkotlinapp.data.remote.ReadingSummaryResponse
 import com.platojobs.pkotlinapp.data.remote.SyncApi
 import com.platojobs.pkotlinapp.data.remote.SyncChangesResponse
 import com.platojobs.pkotlinapp.data.remote.SyncPushRequest
@@ -59,6 +61,25 @@ class RemoteSyncTokenTest {
             idempotencyKey: String,
             body: SyncPushRequest,
         ): SyncPushResponse = SyncPushResponse()
+
+        override suspend fun readings(
+            authorization: String,
+            platform: String,
+            externalId: String,
+            metric: String?,
+            from: String?,
+            to: String?,
+            limit: Int,
+            cursor: String?,
+        ): ReadingPageResponse = ReadingPageResponse()
+
+        override suspend fun readingsSummary(
+            authorization: String,
+            platform: String,
+            externalId: String,
+            metric: String,
+            hours: Int,
+        ): ReadingSummaryResponse = ReadingSummaryResponse()
     }
 
     private fun httpError(code: Int) = HttpException(

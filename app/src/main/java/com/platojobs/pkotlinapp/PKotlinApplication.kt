@@ -26,6 +26,8 @@ class PKotlinApplication : Application() {
         container = AppContainer(this)
         container.settings.applyTheme()
 
+        // 7 天保留：启动即清理，避免离线长期累积；同步成功后还会再清理一次。
+        appScope.launch { runCatching { container.readingRepository.cleanup() } }
         initialSync = appScope.async { container.syncManager.coldStartPull() }
         appScope.launch { runCatching { container.syncScheduler.schedule() } }
     }

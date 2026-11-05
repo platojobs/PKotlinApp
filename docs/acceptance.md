@@ -1,9 +1,9 @@
-# 真机验收清单（v0.3.7）
+# 真机验收清单（v0.4.0）
 
 本清单用于「执行人不在开发现场」时也能照着做完验收。每项都写明**操作步骤、预期现象、失败判定**。
 所有结果请记录到文末的「验收记录表」；未实际执行的项不要填 PASS。
 
-- 适用版本：`versionName = 0.3.7`（`versionCode = 10`）
+- 适用版本：`versionName = 0.4.0`（`versionCode = 11`）
 - 应用包名：`com.platojobs.pkotlinapp`
 - 主界面：`com.platojobs.pkotlinapp.ui.MainActivity`
 - 设备详情：`com.platojobs.pkotlinapp.ui.detail.DeviceDetailActivity`
@@ -55,7 +55,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versionCode"
 ```
 
-预期：`versionName=0.3.7`、`versionCode=10`。
+预期：`versionName=0.4.0`、`versionCode=11`。
 
 ---
 
@@ -111,9 +111,9 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
   - 权限自检三项（扫描 / 连接 / 定位）与系统授权状态一致；
   - 扫描日志有真实记录，可清空；
   - 主题切换立即生效并持久化（杀进程重开仍生效）；
-  - 版本信息显示「版本 0.3.7」「构建类型：debug」；
+  - 版本信息显示「版本 0.4.0」「构建类型：debug」；
   - 项目仓库链接可打开 GitHub。
-- 失败判定：同步卡片空白、权限状态与实际不一致、版本号不是 0.3.7、主题重启后丢失。
+- 失败判定：同步卡片空白、权限状态与实际不一致、版本号不是 0.4.0、主题重启后丢失。
 
 ---
 
@@ -312,7 +312,7 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
 
 ---
 
-## 7. Room v1 → v2 → v3 → v4 → v5 → v6 迁移
+## 7. Room v1 → v2 → v3 → v4 → v5 → v6 → v7 迁移
 
 > 需要 v0.3.1 的 Debug APK 作为「旧版本」。若手头没有，可从 tag 构建：
 >
@@ -327,7 +327,7 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
 - 预期：设备 / 规则 / 日志均能在界面上看到。
 - 失败判定：旧版本本身无法产生数据（先排除环境问题）。
 
-### M2 覆盖安装 v0.3.7
+### M2 覆盖安装 v0.4.0
 
 - 步骤：
   ```bash
@@ -350,21 +350,35 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
   sqlite3 /tmp/device_dashboard.db \
     "SELECT mac, platform, externalId, syncState, substr(id,1,8), deviceType, deviceTypeName, deviceGroup, advertisedName, aliasDirty FROM devices;"
   ```
-- 预期：`user_version = 6`；每条设备 `platform = android`、`externalId` 为规范化大写 MAC、`id` 非空 UUID、`syncState` 为 `pending`/`synced`；旧数据的 `deviceTypeName`、`deviceGroup`、`advertisedName` 为 NULL，`aliasDirty = 0`（列存在且历史行不丢）。
-- 失败判定：版本不是 6、旧字段为空、`externalId` 为小写或带空格、行数比升级前少、`aliasDirty` 列缺失。
+- 预期：`user_version = 7`；每条设备 `platform = android`、`externalId` 为规范化大写 MAC、`id` 非空 UUID、`syncState` 为 `pending`/`synced`；旧数据的 `deviceTypeName`、`deviceGroup`、`advertisedName` 为 NULL，`aliasDirty = 0`（列存在且历史行不丢）；`readings` 表存在且为空或仅含本次会话读数。
+- 失败判定：版本不是 7、旧字段为空、`externalId` 为小写或带空格、行数比升级前少、`aliasDirty` 列缺失、`readings` 表或索引缺失。
 
 ### M4 v5 → v6 迁移不丢数据（可选复验）
 
 - 步骤：
   1. 安装 v0.3.6 Debug 包（Room v5），扫描一台设备并编辑别名/分组，让 `name/deviceGroup/advertisedName` 落库；
-  2. 覆盖安装 v0.3.7，再导出数据库并查询：
+  2. 覆盖安装 v0.4.0，再导出数据库并查询：
      ```bash
      sqlite3 /tmp/device_dashboard.db "PRAGMA user_version;"
      sqlite3 /tmp/device_dashboard.db \
        "SELECT mac, name, deviceType, vendor, firmwareVersion, compatibility, deviceTypeName, deviceGroup, advertisedName, aliasDirty FROM devices;"
      ```
-- 预期：`user_version = 6`；设备行数与 v0.3.6 一致，原有字段逐列保留，新增 `aliasDirty = 0`。
+- 预期：`user_version = 7`；设备行数与 v0.3.6 一致，原有字段逐列保留，新增 `aliasDirty = 0`；`readings` 表已创建。
 - 失败判定：行数减少、旧字段变 NULL、启动时 `Room cannot verify the data integrity`。
+
+### M5 v6 → v7 迁移不丢数据（可选复验）
+
+- 步骤：
+  1. 安装 v0.3.7 Debug 包（Room v6），扫描一台设备并编辑别名/分组；
+  2. 覆盖安装 v0.4.0，导出数据库查询：
+     ```bash
+     sqlite3 /tmp/device_dashboard.db "PRAGMA user_version;"
+     sqlite3 /tmp/device_dashboard.db "SELECT COUNT(*) FROM devices;"
+     sqlite3 /tmp/device_dashboard.db "SELECT COUNT(*) FROM readings;"
+     ```
+  3. 连接设备产生读数，进入设备详情「数据」区。
+- 预期：`user_version = 7`；设备行数与升级前一致；升级瞬间 `readings` 为空（旧版本没有该表），连接后出现真实读数；详情页不崩溃。
+- 失败判定：启动崩溃、设备丢失、`readings` 表缺失、详情页图表崩溃。
 
 ### 7.2 离线缓存与分组验收（v0.3.5 新增）
 
@@ -424,6 +438,23 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
   6. **分组同样不复活**：清空分组 → 同步 → 再次扫描/同步，服务端 `group` 持续为 `""`（与 §7.4 第 5/6 步同口径）。
 - 失败判定：清空保存后仍显示旧别名、push 中 `"alias"` 被省略导致服务端保留旧值、扫描或拉取后旧别名复活、仅改分组却把别名清空。
 
+### 7.6 设备读数（readings）验收（v0.4.0 新增）
+
+前置：真机 + 至少一台支持以下任一 notify 特征的 BLE 设备（心率 `0x2A37`、电池 `0x2A19`、温度 `0x2A6E`、NUS TX `6E400003-…`）；后端为 PJGoIoT v0.4.0（含 readings 端点）；应用已授予「附近的设备」权限。
+
+- 步骤与预期：
+  1. **订阅与采集**：进入设备详情并连接；用 `adb logcat -s BleReadings` 观察，设备真实推送 notify 后应出现解析成功路径的读数，详情「数据」区出现对应指标 Chip；无数据时显示「连接设备后开始采集」，不得出现演示数据。
+  2. **解析正确性**：心率带读数与设备屏幕/官方 App 对比误差 ≤1 bpm；电池百分比与系统蓝牙设置中的电量一致；温度计读数与环境温度量级一致；NUS 设备按文本 `metric=value` 解析出正确指标。若无对应特征，该指标 Chip 不应凭空出现。
+  3. **非法报文不写脏数据**：用 nRF Connect 发送非数字/超长 NUS 文本或长度不足的报文；`logcat` 出现 `discard invalid reading`，详情页无新增异常值，App 不崩溃、连接不断开。
+  4. **本地保留 7 天**：连接产生读数后杀进程重开，最近记录仍在；把系统时间调快 8 天后重开 App，超过 7 天的本地读数应被清理，最近 7 天保留。
+  5. **同步与幂等**：联网执行「立即同步」，服务端 `GET /api/v1/my/devices/android/{externalId}/readings?limit=100` 返回倒序列表且 id 与本地一致；重复同步同一批不报 409，服务端 `skippedReadings` 增加、列表无重复。
+  6. **断网补传**：断网连接设备产生读数（`readings` 表 `syncState=pending`）；恢复网络后同步，`pending` 清零且服务端出现对应读数。
+  7. **汇总与离线标注**：`GET .../readings/summary?metric=&hours=24` 的 min/max/avg/last 与详情页汇总行一致；停掉网络/后端后重进详情，仍显示本地图表与最近记录，并出现「离线：本地数据」。
+  8. **图表边界**：0 条读数（新设备）显示空状态不崩溃；1 条读数时只画一个居中数据点；连续采集 60+ 条时折线、坐标轴、首尾时间正常，无越界或闪烁。
+  9. **权限空状态**：在系统设置撤销「附近的设备」权限后重进详情，「数据」区显示权限提示与「去应用设置」按钮，点击可跳到本应用设置页；恢复权限后读数恢复展示。
+- 失败判定：notify 已到达但无读数、读数与真实值明显不符、非法报文导致崩溃或写入脏数据、本地超过 7 天仍保留、重复同步报错/重复插入、断网读数丢失、离线仍显示远端数据、0/1/60 点图表崩溃、无权限时展示假数据或按钮无响应。
+- 说明：模拟器无法接收真实 BLE notify，本组必须真机执行；解析器的合法/非法/超长/非数字路径已由 `GattReadingParserTest` 覆盖，同步与查询契约由 e2e 覆盖。
+
 ---
 
 ## 8. Release 包安装与 R8 生效验证
@@ -450,7 +481,7 @@ adb install -r app/build/outputs/apk/release/app-release.apk
 adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versionCode"
 ```
 
-预期：安装成功；版本 `0.3.7 / 10`；能启动；五模块可进入；BLE 扫描/连接可用。
+预期：安装成功；版本 `0.4.0 / 11`；能启动；五模块可进入；BLE 扫描/连接可用。
 失败判定：`INSTALL_FAILED_NO_MATCHING_ABIS`、安装后闪退（多为 R8 裁剪过度或签名问题）。
 
 ### L3 签名验证
@@ -521,6 +552,10 @@ apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk
 | M1 | 旧数据准备 |  |  |  |
 | M2 | 覆盖安装 |  |  |  |
 | M3 | 数据库校验 |  |  |  |
+| S1 | 真实 notify 采集 |  |  |  |
+| S2 | 非法报文丢弃 |  |  |  |
+| S3 | 读数同步/离线补传 |  |  |  |
+| S4 | 0/1/60 点图表 |  |  |  |
 | L1 | Release 构建 |  |  |  |
 | L2 | Release 安装 |  |  |  |
 | L3 | 签名验证 |  |  |  |
@@ -533,6 +568,7 @@ apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk
 - 真实 BLE 扫描、RSSI 变化、GATT 连接与断开时序；
 - Android 16 两个受保护广播是否实际投递；
 - 各厂商 ROM 的权限弹窗行为与设置页跳转；
-- Room v1→v2→v3→v4→v5→v6 在真实旧数据上的迁移（本仓库已导出 schema，但未跑真机迁移）；
+- Room v1→v2→v3→v4→v5→v6→v7 在真实旧数据上的迁移（本仓库已导出 schema 与 v6→v7 SQLite 迁移测试，但未跑真机迁移）；
+- 真实 BLE notify 读数投递与各厂商固件字节格式（心率/电池/温度/NUS 的实际报文需按 §7.6 真机验收）；
 - WorkManager 在真实网络切换下的调度与退避；
 - 生产后端域名、真实账号体系与跨设备同步。

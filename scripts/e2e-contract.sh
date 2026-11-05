@@ -78,6 +78,8 @@ echo "[E2E] 启动 fixture 服务：${BASE_URL}（STORE=fixture）"
         ADDR="127.0.0.1:$PORT" \
         FIXTURES_DIR="$GO_DIR/fixtures" \
         LOG_LEVEL="${E2E_LOG_LEVEL:-warn}" \
+        RATE_LIMIT_PER_MINUTE="${E2E_RATE_LIMIT_PER_MINUTE:-600}" \
+        RATE_LIMIT_BURST="${E2E_RATE_LIMIT_BURST:-600}" \
         "$BIN"
 ) >"$LOG" 2>&1 &
 SERVICE_PID=$!

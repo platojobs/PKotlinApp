@@ -28,6 +28,7 @@ class SyncManager(
     private val statusStore: SyncStatusStore,
     private val tokenStore: TokenStore,
     private val cursorStore: SyncCursorStore,
+    private val readingSyncer: ReadingSyncer,
     scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
 ) {
 
@@ -65,6 +66,8 @@ class SyncManager(
         if (statusStore.state.value.authExpired) throw AuthExpiredException()
         try {
             val outcome = engine.syncAll()
+            // 设备先落服务端，再补传读数；同一 push 契约、独立 200/批的幂等批次。
+            readingSyncer.syncPending()
             statusStore.recordSuccess(
                 lastSyncAt = System.currentTimeMillis(),
                 conflicts = outcome.conflicts.size,
@@ -99,6 +102,7 @@ class SyncManager(
         statusStore.resetForRelogin()
         try {
             val outcome = engine.syncAll()
+            readingSyncer.syncPending()
             statusStore.recordSuccess(
                 lastSyncAt = System.currentTimeMillis(),
                 conflicts = outcome.conflicts.size,

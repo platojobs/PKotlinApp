@@ -2,6 +2,8 @@ package com.platojobs.pkotlinapp.data.local
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.ForeignKey
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 @Entity(tableName = "devices")
@@ -29,6 +31,37 @@ data class DeviceEntity(
     val advertisedName: String? = null,
     // 用户是否显式编辑过别名（含清空）。扫描永远不置位；置位后空别名也要上报。
     @ColumnInfo(defaultValue = "0") val aliasDirty: Boolean = false,
+)
+
+/**
+ * 设备读数：id 为客户端 UUID（服务端按 id 幂等）。
+ * 外键指向 devices.mac；7 天保留策略由仓库层清理。
+ */
+@Entity(
+    tableName = "readings",
+    foreignKeys = [
+        ForeignKey(
+            entity = DeviceEntity::class,
+            parentColumns = ["mac"],
+            childColumns = ["deviceId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [
+        Index("deviceId"),
+        Index("syncState"),
+        Index(value = ["deviceId", "metric", "recordedAt"]),
+    ],
+)
+data class ReadingEntity(
+    @PrimaryKey val id: String,
+    val deviceId: String,
+    val metric: String,
+    val value: Double,
+    val unit: String,
+    val recordedAt: Long,
+    @ColumnInfo(defaultValue = "'pending'") val syncState: String,
+    val rawSnapshot: String? = null,
 )
 
 @Entity(tableName = "rules")

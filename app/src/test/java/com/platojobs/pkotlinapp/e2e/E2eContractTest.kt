@@ -2,6 +2,9 @@ package com.platojobs.pkotlinapp.e2e
 
 import com.platojobs.pkotlinapp.data.remote.ApiClient
 import com.platojobs.pkotlinapp.data.remote.PushDeviceDto
+import com.platojobs.pkotlinapp.data.remote.PushReadingDto
+import com.platojobs.pkotlinapp.data.remote.ReadingPageResponse
+import com.platojobs.pkotlinapp.data.remote.ReadingSummaryResponse
 import com.platojobs.pkotlinapp.data.remote.Reported
 import com.platojobs.pkotlinapp.data.remote.SyncChangesResponse
 import com.platojobs.pkotlinapp.data.remote.SyncPushRequest
@@ -69,6 +72,8 @@ class E2eContractTest {
     private val pushRequestAdapter = moshi.adapter(SyncPushRequest::class.java)
     private val pushResponseAdapter = moshi.adapter(SyncPushResponse::class.java)
     private val changesResponseAdapter = moshi.adapter(SyncChangesResponse::class.java)
+    private val readingPageAdapter = moshi.adapter(ReadingPageResponse::class.java)
+    private val readingSummaryAdapter = moshi.adapter(ReadingSummaryResponse::class.java)
 
     @Test
     fun `contract against local go backend`() {
@@ -610,6 +615,145 @@ class E2eContractTest {
         }
 
         println("[E2E] SUMMARY: all contract cases passed")
+    }
+
+    /**
+     * 读数契约：推送（applied/skipped）、按 id 幂等、倒序分页查询、metric 过滤、
+     * 24h 汇总，以及 NaN 值必须被 400 拒绝。
+     */
+    @Test
+    fun `readings contract against local go backend`() {
+        val user = captureStep("readings: anonymous login") {
+            val result = post("/auth/anonymous")
+            assertEquals(201, result.code)
+            val body = parseMap(result.body)
+            UserSession(
+                userId = body["userId"] as? String ?: error("missing userId"),
+                token = body["token"] as? String ?: error("missing token"),
+            )
+        }
+        val externalId = "AA:BB:CC:00:00:02"
+        val now = System.currentTimeMillis()
+        val readings = listOf(
+            PushReadingDto(
+                id = UUID.randomUUID().toString(),
+                platform = "android",
+                externalId = externalId,
+                metric = "temperature",
+                value = 21.5,
+                unit = "°C",
+                recordedAt = Rfc3339.format(now - 60_000),
+            ),
+            PushReadingDto(
+                id = UUID.randomUUID().toString(),
+                platform = "android",
+                externalId = externalId,
+                metric = "temperature",
+                value = 22.0,
+                unit = "°C",
+                recordedAt = Rfc3339.format(now - 30_000),
+            ),
+            PushReadingDto(
+                id = UUID.randomUUID().toString(),
+                platform = "android",
+                externalId = externalId,
+                metric = "heart_rate",
+                value = 72.0,
+                unit = "bpm",
+                recordedAt = Rfc3339.format(now - 45_000),
+            ),
+        )
+        val request = SyncPushRequest(
+            clientId = "e2e-readings-client",
+            // 查询/汇总要求设备已存在；跟随设备一起推送，模拟真实同步顺序。
+            devices = listOf(
+                PushDeviceDto(
+                    id = UUID.randomUUID().toString(),
+                    platform = "android",
+                    externalId = externalId,
+                    mac = externalId.lowercase(),
+                    deviceType = "nordic_uart",
+                    updatedAt = Rfc3339.format(now),
+                ),
+            ),
+            readings = readings,
+        )
+        val json = pushRequestAdapter.toJson(request)
+        assertTrue(json.contains("\"readings\""))
+        assertFalse(json.contains("\"devices\":null"))
+
+        val applied = captureStep("readings: push three readings") {
+            val result = push(json, user.token, "e2e-readings-${UUID.randomUUID()}")
+            assertEquals(200, result.code)
+            val response = pushResponseAdapter.fromJson(result.body) ?: error("empty body")
+            assertEquals(3, response.appliedReadings)
+            assertEquals(0, response.skippedReadings)
+            response
+        }
+        assertEquals(3, applied.appliedReadings)
+
+        step("readings: duplicate ids are skipped, not errors") {
+            // 换一个 Idempotency-Key 重放同一批 id，验证服务端按 id 幂等。
+            val replay = push(json, user.token, "e2e-readings-${UUID.randomUUID()}")
+            assertEquals(200, replay.code)
+            val response = pushResponseAdapter.fromJson(replay.body) ?: error("empty body")
+            assertEquals(0, response.appliedReadings)
+            assertEquals(3, response.skippedReadings)
+        }
+
+        step("readings: list is newest first and filterable") {
+            val result = get(
+                "/my/devices/android/$externalId/readings?limit=100",
+                user.token,
+            )
+            assertEquals(200, result.code)
+            val page = readingPageAdapter.fromJson(result.body) ?: error("empty body")
+            val items = page.items.orEmpty()
+            assertEquals(3, items.size)
+            assertFalse(page.hasMore ?: false)
+            val times = items.mapNotNull { Rfc3339.parse(it.recordedAt.orEmpty()) }
+            assertEquals(times.sortedDescending(), times)
+            assertEquals(readings.map { it.id }.toSet(), items.mapNotNull { it.id }.toSet())
+
+            val filtered = get(
+                "/my/devices/android/$externalId/readings?metric=heart_rate&limit=100",
+                user.token,
+            )
+            assertEquals(200, filtered.code)
+            val filteredPage = readingPageAdapter.fromJson(filtered.body) ?: error("empty body")
+            assertEquals(1, filteredPage.items.orEmpty().size)
+            assertEquals("heart_rate", filteredPage.items.orEmpty().single().metric)
+        }
+
+        step("readings: 24h summary aggregates min max avg last") {
+            val result = get(
+                "/my/devices/android/$externalId/readings/summary?metric=temperature&hours=24",
+                user.token,
+            )
+            assertEquals(200, result.code)
+            val summary = readingSummaryAdapter.fromJson(result.body) ?: error("empty body")
+            assertEquals("temperature", summary.metric)
+            assertEquals(2, summary.count)
+            assertEquals(21.5, summary.min!!, 0.001)
+            assertEquals(22.0, summary.max!!, 0.001)
+            assertEquals(21.75, summary.avg!!, 0.001)
+            assertEquals(22.0, summary.last!!, 0.001)
+        }
+
+        step("readings: NaN value is rejected with 400") {
+            val invalidId = UUID.randomUUID().toString()
+            val body = """
+                {"clientId":"e2e-readings-client","devices":[],"readings":[
+                  {"id":"$invalidId","platform":"android","externalId":"$externalId",
+                   "metric":"temperature","value":NaN,"unit":"°C",
+                   "recordedAt":"${Rfc3339.format(now)}"}
+                ]}
+            """.trimIndent()
+            val result = push(body, user.token, "e2e-readings-invalid-${UUID.randomUUID()}")
+            assertEquals(400, result.code)
+        }
+
+        println("[E2E] SUMMARY: readings contract cases passed")
     }
 
     private data class UserSession(val userId: String, val token: String)

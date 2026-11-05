@@ -6,6 +6,21 @@
 
 ---
 
+## v0.4.0
+
+**主题：设备读数（readings）全链路 —— 采集 / 存储 / 同步 / 展示**
+
+- 采集：连接后发现 GATT 服务即订阅心率 `0x2A37`、电池 `0x2A19`、温度 `0x2A6E`、NUS TX `6E400003-B5A3-F393-E0A9-E50E24DCCA9E` 的 notify/indicate，并写 CCCD；可读特征主动读取一次。心率按 flags 取 uint8/uint16，电池取百分比，温度先按 sint16/0.01℃（-40..125℃）解析、失败回退 IEEE-754 half，NUS 支持 `metric=value` 与纯数字文本行。解析失败只记 `BleReadings` 本地日志，静默丢弃，不写库、不崩溃。
+- 存储：Room 升级到 v7，新增 `readings` 表（UUID 主键、`deviceId` 外键 CASCADE、metric/value/unit/recordedAt/syncState/rawSnapshot）与 3 个索引，`MIGRATION_6_7` 只建表建索引；指标白名单 `temperature/humidity/battery/heart_rate/co2/pressure/other`，未知指标归一为 `other` 并保留原始快照；本地保留 7 天，在启动与每次同步后清理。
+- 同步：`ReadingSyncer` 复用 `/api/v1/sync/push`，≤200/批，成功标记 `synced`；幂等键按 id 排序哈希整批读数（`readings-` 前缀），失败重试复用同一幂等体；服务端按 id 去重并返回 `appliedReadings/skippedReadings`。断网继续本地累积，恢复后补传。
+- 展示：设备详情新增「数据」区：指标 Chip 来自真实已有读数；最近 60 点用自绘 `ReadingChartView`（`onDraw` 画坐标轴/网格/折线/数据点/首尾时间，0/1/60 点均安全）；24h 汇总行（min/max/avg/last，远端优先失败回退本地）；最近记录最多 10 条。无读数「连接设备后开始采集」、无权限「去应用设置」、离线「离线：本地数据」，不放假数据。
+- 测试：新增 `GattReadingParserTest`、`ReadingIdempotencyKeysTest`、`ReadingRepositoryTest`（含 7 天清理）、`ReadingMigrationTest`（真实 SQLite v6→v7）、`ReadingChartGeometryTest`（0/1/60 点），单测共 73 个；`E2eContractTest` 新增读数契约 6 项（推送/重复 id skipped/倒序查询/metric 过滤/summary/NaN 400）；e2e 脚本提高限流阈值以容纳新增用例。
+- 文档：README 新增「6.1 数据采集（readings）」；验收清单升级到 v0.4.0 并新增 §7.6 真机读数验收（明确模拟器无法验证真实 notify）。
+
+版本：`versionCode = 11`、`versionName = 0.4.0`。
+
+---
+
 ## v0.3.7
 
 **主题：修复清空别名无效 + lint 清零**

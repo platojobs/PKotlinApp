@@ -4,9 +4,17 @@ import android.annotation.SuppressLint
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGattCallback
+import android.bluetooth.BluetoothGattCharacteristic
+import android.bluetooth.BluetoothGattDescriptor
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
+import android.bluetooth.BluetoothStatusCodes
 import android.content.Context
+import android.os.Build
+import android.util.Log
+import com.platojobs.pkotlinapp.domain.reading.GattReadingParser
+import com.platojobs.pkotlinapp.domain.reading.ReadingSample
+import com.platojobs.pkotlinapp.domain.reading.ReadingUuids
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -17,7 +25,11 @@ import kotlinx.coroutines.flow.asStateFlow
  * 必须由用户点击“已重新配对，重试连接”后才会解除。
  */
 @SuppressLint("MissingPermission")
-class BleConnectionManager(private val context: Context) {
+class BleConnectionManager(
+    private val context: Context,
+    /** 解析成功的读数回调；失败路径在本地丢弃并记录日志，绝不回调脏数据。 */
+    private val onReading: (deviceId: String, sample: ReadingSample) -> Unit = { _, _ -> },
+) {
 
     private val _state = MutableStateFlow<BleConnectionState>(BleConnectionState.Idle)
     val state: StateFlow<BleConnectionState> = _state.asStateFlow()
@@ -27,6 +39,16 @@ class BleConnectionManager(private val context: Context) {
 
     private var gatt: BluetoothGatt? = null
     private val blockedMacs = mutableSetOf<String>()
+
+    /** GATT 同一时刻只允许一个操作：CCCD 写入与初始读取串行执行，避免连续写被丢弃。 */
+    private val descriptorQueue = ArrayDeque<DescriptorWrite>()
+    private val readQueue = ArrayDeque<BluetoothGattCharacteristic>()
+    private var operationInFlight = false
+
+    private data class DescriptorWrite(
+        val descriptor: BluetoothGattDescriptor,
+        val payload: ByteArray,
+    )
 
     private val callback = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
@@ -42,6 +64,7 @@ class BleConnectionManager(private val context: Context) {
                     if (this@BleConnectionManager.gatt === gatt) {
                         this@BleConnectionManager.gatt = null
                     }
+                    resetReadingQueues()
                     _rssi.value = null
                     _state.value = if (blockedMacs.contains(mac)) {
                         BleConnectionState.KeyMissing(mac)
@@ -57,6 +80,196 @@ class BleConnectionManager(private val context: Context) {
                 _rssi.value = rssi
             }
         }
+
+        override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
+            if (status == BluetoothGatt.GATT_SUCCESS) {
+                subscribeToReadings(gatt)
+            }
+        }
+
+        /** API 33+ 的新回调；直接拿 value，避免再读 characteristic.value。 */
+        override fun onCharacteristicChanged(
+            gatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic,
+            value: ByteArray,
+        ) {
+            dispatchReading(gatt.device.address, characteristic.uuid.toString(), value)
+        }
+
+        @Deprecated("Deprecated in API 33")
+        @Suppress("DEPRECATION")
+        override fun onCharacteristicChanged(
+            gatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic,
+        ) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) return
+            dispatchReading(
+                gatt.device.address,
+                characteristic.uuid.toString(),
+                characteristic.value ?: return,
+            )
+        }
+
+        /** 心率/电池/温度/NUS TX 订阅：逐个写 CCCD，写完再串行读取可读特征。 */
+        override fun onDescriptorWrite(
+            gatt: BluetoothGatt,
+            descriptor: BluetoothGattDescriptor,
+            status: Int,
+        ) {
+            operationInFlight = false
+            if (status != BluetoothGatt.GATT_SUCCESS) {
+                Log.w(TAG, "descriptor write failed uuid=${descriptor.uuid} status=$status")
+            }
+            writeNextDescriptor()
+        }
+
+        /** 电池/温度等可读特征在订阅后主动读一次，拿到初始值。 */
+        override fun onCharacteristicRead(
+            gatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic,
+            value: ByteArray,
+            status: Int,
+        ) {
+            if (status == BluetoothGatt.GATT_SUCCESS) {
+                dispatchReading(gatt.device.address, characteristic.uuid.toString(), value)
+            }
+            operationInFlight = false
+            startNextRead()
+        }
+
+        @Deprecated("Deprecated in API 33")
+        @Suppress("DEPRECATION")
+        override fun onCharacteristicRead(
+            gatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic,
+            status: Int,
+        ) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) return
+            val value = characteristic.value
+            if (status == BluetoothGatt.GATT_SUCCESS && value != null) {
+                dispatchReading(gatt.device.address, characteristic.uuid.toString(), value)
+            }
+            operationInFlight = false
+            startNextRead()
+        }
+    }
+
+    /**
+     * 心率/电池/温度/NUS TX：开启 notify（有 indicate 则退回 indicate），并写 CCCD。
+     * 不支持 notify 的只尝试 read；所有 GATT 操作通过队列串行执行，单个失败不影响其余特征。
+     */
+    private fun subscribeToReadings(gatt: BluetoothGatt) {
+        val characteristics = gatt.services
+            .flatMap { it.characteristics }
+            .filter { ReadingUuids.normalize(it.uuid.toString()) in ReadingUuids.supported }
+        val reads = mutableListOf<BluetoothGattCharacteristic>()
+        characteristics.forEach { characteristic ->
+            val uuid = ReadingUuids.normalize(characteristic.uuid.toString())
+            val properties = characteristic.properties
+            val notify = properties and BluetoothGattCharacteristic.PROPERTY_NOTIFY != 0
+            val indicate = properties and BluetoothGattCharacteristic.PROPERTY_INDICATE != 0
+            if (notify || indicate) {
+                val descriptor = characteristic.getDescriptor(CCCD_UUID)
+                if (descriptor != null) {
+                    val payload = if (notify) {
+                        BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                    } else {
+                        BluetoothGattDescriptor.ENABLE_INDICATION_VALUE
+                    }
+                    if (runCatching { gatt.setCharacteristicNotification(characteristic, true) }
+                            .getOrDefault(false)
+                    ) {
+                        descriptorQueue.addLast(DescriptorWrite(descriptor, payload))
+                    } else {
+                        Log.w(TAG, "setNotification failed uuid=$uuid")
+                    }
+                }
+            }
+            if (properties and BluetoothGattCharacteristic.PROPERTY_READ != 0) {
+                reads += characteristic
+            }
+        }
+        readQueue.addAll(reads)
+        if (descriptorQueue.isEmpty()) {
+            startNextRead()
+        } else {
+            writeNextDescriptor()
+        }
+    }
+
+    private fun writeNextDescriptor() {
+        val current = gatt ?: run {
+            resetReadingQueues()
+            return
+        }
+        val next = descriptorQueue.removeFirstOrNull()
+        if (next == null) {
+            startNextRead()
+            return
+        }
+        operationInFlight = true
+        val started = runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                current.writeDescriptor(next.descriptor, next.payload) ==
+                    BluetoothStatusCodes.SUCCESS
+            } else {
+                writeDescriptorCompat(current, next.descriptor, next.payload)
+            }
+        }.getOrDefault(false)
+        if (!started) {
+            // 写入未受理：继续下一个，避免整个订阅队列卡死。
+            operationInFlight = false
+            writeNextDescriptor()
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun writeDescriptorCompat(
+        gatt: BluetoothGatt,
+        descriptor: BluetoothGattDescriptor,
+        payload: ByteArray,
+    ): Boolean {
+        descriptor.value = payload
+        return gatt.writeDescriptor(descriptor)
+    }
+
+    private fun startNextRead() {
+        if (operationInFlight) return
+        val current = gatt ?: run {
+            resetReadingQueues()
+            return
+        }
+        val next = readQueue.removeFirstOrNull() ?: return
+        operationInFlight = true
+        val started = runCatching { current.readCharacteristic(next) }.getOrDefault(false)
+        if (!started) {
+            operationInFlight = false
+            startNextRead()
+        }
+    }
+
+    private fun resetReadingQueues() {
+        descriptorQueue.clear()
+        readQueue.clear()
+        operationInFlight = false
+    }
+
+    private fun dispatchReading(deviceId: String, uuid: String, value: ByteArray) {
+        val sample = runCatching {
+            GattReadingParser.parse(uuid, value, System.currentTimeMillis())
+        }.onFailure {
+            Log.w(TAG, "parser crashed uuid=$uuid len=${value.size}", it)
+        }.getOrNull()
+        if (sample == null) {
+            // 静默丢弃：只留本地日志，不写 Room，不影响 UI/连接状态。
+            Log.w(
+                TAG,
+                "discard invalid reading uuid=${ReadingUuids.normalize(uuid)} " +
+                    "len=${value.size} snapshot=${GattReadingParser.byteSnapshot(value)}",
+            )
+            return
+        }
+        onReading(deviceId, sample)
     }
 
     fun connect(mac: String): Boolean {
@@ -100,6 +313,7 @@ class BleConnectionManager(private val context: Context) {
         gatt?.let { runCatching { it.disconnect() } }
         gatt?.let { runCatching { it.close() } }
         gatt = null
+        resetReadingQueues()
         _rssi.value = null
     }
 
@@ -121,5 +335,12 @@ class BleConnectionManager(private val context: Context) {
             runCatching { current.close() }
         }
         gatt = null
+        resetReadingQueues()
+    }
+
+    private companion object {
+        const val TAG = "BleReadings"
+        val CCCD_UUID: java.util.UUID =
+            java.util.UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
     }
 }

@@ -2,6 +2,7 @@ package com.platojobs.pkotlinapp.data.local
 
 import androidx.room.Dao
 import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
@@ -83,6 +84,53 @@ interface DeviceDao {
 
     @Query("DELETE FROM devices WHERE externalId = :externalId")
     suspend fun deleteByExternalId(externalId: String)
+}
+
+@Dao
+interface ReadingDao {
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insert(reading: ReadingEntity): Long
+
+    /** 该设备真实出现过的指标（用于动态 Chip，不造假分类）。 */
+    @Query(
+        "SELECT DISTINCT metric FROM readings WHERE deviceId = :deviceId ORDER BY metric ASC",
+    )
+    fun observeMetrics(deviceId: String): Flow<List<String>>
+
+    @Query(
+        "SELECT * FROM readings WHERE deviceId = :deviceId AND metric = :metric " +
+            "ORDER BY recordedAt DESC LIMIT :limit",
+    )
+    fun observeRecent(deviceId: String, metric: String, limit: Int): Flow<List<ReadingEntity>>
+
+    @Query(
+        "SELECT * FROM readings WHERE deviceId = :deviceId AND metric = :metric " +
+            "ORDER BY recordedAt DESC LIMIT :limit",
+    )
+    suspend fun getRecent(deviceId: String, metric: String, limit: Int): List<ReadingEntity>
+
+    @Query(
+        "SELECT * FROM readings WHERE deviceId = :deviceId AND metric = :metric " +
+            "AND recordedAt >= :from ORDER BY recordedAt ASC",
+    )
+    suspend fun getSince(deviceId: String, metric: String, from: Long): List<ReadingEntity>
+
+    @Query(
+        "SELECT * FROM readings WHERE syncState = 'pending' " +
+            "ORDER BY recordedAt ASC, id ASC LIMIT :limit",
+    )
+    suspend fun pending(limit: Int): List<ReadingEntity>
+
+    @Query("SELECT COUNT(*) FROM readings WHERE syncState = 'pending'")
+    suspend fun pendingCount(): Int
+
+    @Query("UPDATE readings SET syncState = 'synced' WHERE id IN (:ids)")
+    suspend fun markSynced(ids: List<String>)
+
+    /** 本地只保留 7 天；服务端保留 90 天。 */
+    @Query("DELETE FROM readings WHERE recordedAt < :cutoff")
+    suspend fun deleteOlderThan(cutoff: Long)
 }
 
 @Dao

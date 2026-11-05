@@ -167,6 +167,39 @@ data class ReadingSummaryResponse(
     val windowEnd: String? = null,
 )
 
+/** GET .../readings/series 的单个桶；服务端只返回 count > 0 的桶。 */
+data class ReadingBucketDto(
+    val start: String? = null,
+    val end: String? = null,
+    val count: Long? = null,
+    val min: Double? = null,
+    val max: Double? = null,
+    val avg: Double? = null,
+    val last: Double? = null,
+)
+
+data class ReadingSeriesResponse(
+    val metric: String? = null,
+    val unit: String? = null,
+    val bucket: String? = null,
+    val from: String? = null,
+    val to: String? = null,
+    val buckets: List<ReadingBucketDto>? = null,
+)
+
+/** GET .../readings/metrics 的单项；unit 为该指标最新一条读数的单位。 */
+data class ReadingMetricDto(
+    val metric: String? = null,
+    val unit: String? = null,
+    val count: Long? = null,
+    val firstAt: String? = null,
+    val lastAt: String? = null,
+)
+
+data class ReadingMetricsResponse(
+    val items: List<ReadingMetricDto>? = null,
+)
+
 data class AppliedChangeDto(
     val id: String? = null,
     val platform: String? = null,
@@ -240,4 +273,24 @@ interface SyncApi {
         @Query("metric") metric: String,
         @Query("hours") hours: Int,
     ): ReadingSummaryResponse
+
+    /** 长周期分桶：from/to 为 UTC RFC3339，bucket 只能是 1m/1h/1d。 */
+    @GET("api/v1/my/devices/{platform}/{externalId}/readings/series")
+    suspend fun readingsSeries(
+        @Header("Authorization") authorization: String,
+        @Path("platform") platform: String,
+        @Path("externalId") externalId: String,
+        @Query("metric") metric: String,
+        @Query("from") from: String,
+        @Query("to") to: String,
+        @Query("bucket") bucket: String,
+    ): ReadingSeriesResponse
+
+    /** 指标清单，服务端按 lastAt 倒序返回。 */
+    @GET("api/v1/my/devices/{platform}/{externalId}/readings/metrics")
+    suspend fun readingsMetrics(
+        @Header("Authorization") authorization: String,
+        @Path("platform") platform: String,
+        @Path("externalId") externalId: String,
+    ): ReadingMetricsResponse
 }

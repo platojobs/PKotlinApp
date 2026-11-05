@@ -462,6 +462,26 @@
                         android:textColor="@color/text_secondary"
                         android:visibility="gone" />
 
+                    <TextView
+                        android:id="@+id/readingsRangeTitle"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="@string/readings_range_title"
+                        android:textAppearance="?attr/textAppearanceBodySmall"
+                        android:textColor="@color/text_secondary"
+                        android:visibility="gone" />
+
+                    <com.google.android.material.chip.ChipGroup
+                        android:id="@+id/readingsRangeChips"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:visibility="gone"
+                        app:selectionRequired="true"
+                        app:singleLine="false"
+                        app:singleSelection="true" />
+
                     <HorizontalScrollView
                         android:id="@+id/readingsChipScroll"
                         android:layout_width="match_parent"
@@ -485,6 +505,16 @@
                         android:layout_width="match_parent"
                         android:layout_height="160dp"
                         android:layout_marginTop="8dp"
+                        android:visibility="gone" />
+
+                    <TextView
+                        android:id="@+id/readingsSeriesEmptyHint"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="@string/readings_series_empty"
+                        android:textAppearance="?attr/textAppearanceBodySmall"
+                        android:textColor="@color/text_secondary"
                         android:visibility="gone" />
 
                     <TextView

@@ -1,10 +1,12 @@
 package com.platojobs.pkotlinapp.ui.chart
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
 import android.util.AttributeSet
+import android.util.TypedValue
 import android.view.View
 import androidx.core.content.ContextCompat
 import com.platojobs.pkotlinapp.R
@@ -13,8 +15,11 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * 代码自绘折线图：onDraw 直接绘制坐标轴、网格、折线与数据点，不依赖第三方图表库。
- * 几何计算委托给 [ReadingChartGeometry]，0/1/60 个点都不会除零或越界。
+ * 代码自绘长周期折线图：
+ * - 按桶 `start` 的真实时间比例定位 X 轴；
+ * - 缺口处折线断开，不跨越空桶连线；
+ * - 每个桶画 avg 折线，并用浅色区间带标出 min–max；
+ * - 几何计算委托给 [ReadingChartGeometry]，空数据/单桶/缺口均安全。
  */
 class ReadingChartView @JvmOverloads constructor(
     context: Context,
@@ -24,19 +29,25 @@ class ReadingChartView @JvmOverloads constructor(
 
     private val gridPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val axisPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val bandPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val pointPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val linePath = Path()
     private val timeFormatter = SimpleDateFormat("HH:mm", Locale.getDefault())
+    private val dayFormatter = SimpleDateFormat("MM-dd", Locale.getDefault())
 
-    private var points: List<ChartPoint> = emptyList()
+    private var buckets: List<ChartBucket> = emptyList()
+    private var from: Long = 0L
+    private var to: Long = 0L
+    private var unit: String = ""
 
     init {
         gridPaint.color = ContextCompat.getColor(context, R.color.chart_grid)
         gridPaint.strokeWidth = 1.dp
         axisPaint.color = ContextCompat.getColor(context, R.color.chart_axis)
         axisPaint.strokeWidth = 1.dp
+        bandPaint.color = ContextCompat.getColor(context, R.color.chart_band)
         linePaint.color = ContextCompat.getColor(context, R.color.chart_line)
         linePaint.strokeWidth = 2.dp
         linePaint.strokeCap = Paint.Cap.ROUND
@@ -46,12 +57,21 @@ class ReadingChartView @JvmOverloads constructor(
         updateContentDescription()
     }
 
-    fun setPoints(values: List<ChartPoint>) {
-        points = values
+    fun setSeries(
+        values: List<ChartBucket>,
+        fromMillis: Long,
+        toMillis: Long,
+        unitLabel: String,
+    ) {
+        buckets = values
+        from = fromMillis
+        to = toMillis
+        unit = unitLabel
         updateContentDescription()
         invalidate()
     }
 
+    @SuppressLint("DrawAllocation")
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val left = paddingLeft + LABEL_WIDTH_DP.dp
@@ -68,30 +88,32 @@ class ReadingChartView @JvmOverloads constructor(
         canvas.drawLine(left, top, left, bottom, axisPaint)
         canvas.drawLine(left, bottom, right, bottom, axisPaint)
 
-        val plot = ReadingChartGeometry.plot(points, left, top, right, bottom)
+        val plot = ReadingChartGeometry.plot(buckets, from, to, left, top, right, bottom)
         if (plot.isEmpty) return
 
-        // Y 轴上下界标签，便于读数量级；时间标签只标首尾。
+        // Y 轴上下界标签带真实单位；X 轴只标区间首尾。
         canvas.drawText(
-            formatValue(plot.maxValue),
+            formatValue(plot.maxValue) + unit,
             paddingLeft.toFloat(),
             top + labelPaint.textSize,
             labelPaint,
         )
         canvas.drawText(
-            formatValue(plot.minValue),
+            formatValue(plot.minValue) + unit,
             paddingLeft.toFloat(),
             bottom,
             labelPaint,
         )
-        if (points.size >= 2) {
+        if (from > 0L && to > from) {
+            val spanHours = (to - from) / 3_600_000L
+            val formatter = if (spanHours > 48) dayFormatter else timeFormatter
             canvas.drawText(
-                formatTime(points.first().recordedAt),
+                formatter.format(Date(from)),
                 left,
                 (height - paddingBottom).toFloat(),
                 labelPaint,
             )
-            val last = formatTime(points.last().recordedAt)
+            val last = formatter.format(Date(to))
             canvas.drawText(
                 last,
                 right - labelPaint.measureText(last),
@@ -100,20 +122,27 @@ class ReadingChartView @JvmOverloads constructor(
             )
         }
 
-        if (plot.xs.size == 1) {
-            // 单点：只画数据点，不画折线。
-            canvas.drawCircle(plot.xs[0], plot.ys[0], POINT_RADIUS_DP.dp, pointPaint)
-            return
+        // min–max 区间带：先铺浅色带，再画 avg 折线与数据点。
+        plot.buckets.forEach { point ->
+            val bandLeft = point.xStart
+            val bandRight = point.xEnd.coerceAtLeast(bandLeft + 1f)
+            canvas.drawRect(bandLeft, point.yMax, bandRight, point.yMin, bandPaint)
         }
 
-        linePath.reset()
-        linePath.moveTo(plot.xs[0], plot.ys[0])
-        for (index in 1 until plot.xs.size) {
-            linePath.lineTo(plot.xs[index], plot.ys[index])
+        plot.segments.forEach { segment ->
+            if (segment.xs.size == 1) {
+                canvas.drawCircle(segment.xs[0], segment.ys[0], POINT_RADIUS_DP.dp, pointPaint)
+                return@forEach
+            }
+            linePath.reset()
+            linePath.moveTo(segment.xs[0], segment.ys[0])
+            for (index in 1 until segment.xs.size) {
+                linePath.lineTo(segment.xs[index], segment.ys[index])
+            }
+            canvas.drawPath(linePath, linePaint)
         }
-        canvas.drawPath(linePath, linePaint)
-        for (index in plot.xs.indices) {
-            canvas.drawCircle(plot.xs[index], plot.ys[index], POINT_RADIUS_DP.dp, pointPaint)
+        plot.buckets.forEach { point ->
+            canvas.drawCircle(point.xStart, point.yAvg, POINT_RADIUS_DP.dp, pointPaint)
         }
     }
 
@@ -124,21 +153,22 @@ class ReadingChartView @JvmOverloads constructor(
             String.format(Locale.US, "%.1f", value)
         }
 
-    private fun formatTime(timestamp: Long): String =
-        if (timestamp <= 0L) "" else timeFormatter.format(Date(timestamp))
-
     private fun updateContentDescription() {
-        contentDescription = context.getString(R.string.readings_chart_desc, points.size)
+        contentDescription = context.getString(R.string.readings_chart_desc, buckets.size)
     }
 
     private val Int.dp: Float
         get() = this * resources.displayMetrics.density
 
     private val Int.sp: Float
-        get() = this * resources.displayMetrics.scaledDensity
+        get() = TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_SP,
+            toFloat(),
+            resources.displayMetrics,
+        )
 
     private companion object {
-        const val LABEL_WIDTH_DP = 34
+        const val LABEL_WIDTH_DP = 40
         const val LABEL_HEIGHT_DP = 16
         const val GRID_LINES = 3
         const val POINT_RADIUS_DP = 3

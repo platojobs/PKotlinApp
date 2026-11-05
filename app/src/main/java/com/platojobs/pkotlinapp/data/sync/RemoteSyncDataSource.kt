@@ -15,10 +15,13 @@ import com.platojobs.pkotlinapp.domain.model.PLATFORM_ANDROID
 import com.platojobs.pkotlinapp.domain.model.SyncState
 import com.platojobs.pkotlinapp.domain.model.normalizeExternalId
 import com.platojobs.pkotlinapp.domain.reading.Reading
+import com.platojobs.pkotlinapp.domain.reading.ReadingBucket
+import com.platojobs.pkotlinapp.domain.reading.ReadingMetric
 import com.platojobs.pkotlinapp.domain.reading.ReadingMetrics
 import com.platojobs.pkotlinapp.domain.reading.ReadingPage
 import com.platojobs.pkotlinapp.domain.reading.ReadingPushAck
 import com.platojobs.pkotlinapp.domain.reading.ReadingRemote
+import com.platojobs.pkotlinapp.domain.reading.ReadingSeries
 import com.platojobs.pkotlinapp.domain.reading.ReadingSummary
 import com.platojobs.pkotlinapp.domain.reading.RemoteReading
 import com.platojobs.pkotlinapp.domain.sync.AuthExpiredException
@@ -153,6 +156,73 @@ class RemoteSyncDataSource(
             windowEnd = Rfc3339.parse(response.windowEnd) ?: 0L,
         )
     }
+
+    override suspend fun series(
+        deviceId: String,
+        metric: String,
+        from: Long,
+        to: Long,
+        bucket: String,
+    ): ReadingSeries = withToken { authorization ->
+        val externalId = normalizeExternalIdForPlatform(PLATFORM_ANDROID, deviceId)
+        val response = api.readingsSeries(
+            authorization = authorization,
+            platform = PLATFORM_ANDROID,
+            externalId = externalId,
+            metric = metric,
+            from = Rfc3339.format(from),
+            to = Rfc3339.format(to),
+            bucket = bucket,
+        )
+        ReadingSeries(
+            metric = response.metric?.takeIf { it.isNotBlank() } ?: metric,
+            unit = response.unit ?: ReadingMetrics.unit(metric),
+            bucket = response.bucket?.takeIf { it.isNotBlank() } ?: bucket,
+            from = Rfc3339.parse(response.from) ?: from,
+            to = Rfc3339.parse(response.to) ?: to,
+            buckets = response.buckets.orEmpty().mapNotNull { item ->
+                val start = Rfc3339.parse(item.start) ?: return@mapNotNull null
+                val end = Rfc3339.parse(item.end) ?: return@mapNotNull null
+                val count = item.count ?: return@mapNotNull null
+                val avg = item.avg ?: return@mapNotNull null
+                val min = item.min ?: avg
+                val max = item.max ?: avg
+                val last = item.last ?: avg
+                if (!avg.isFinite() || !min.isFinite() || !max.isFinite() || !last.isFinite()) {
+                    return@mapNotNull null
+                }
+                ReadingBucket(
+                    start = start,
+                    end = end,
+                    count = count,
+                    min = min,
+                    max = max,
+                    avg = avg,
+                    last = last,
+                )
+            }.sortedBy { it.start },
+        )
+    }
+
+    override suspend fun metrics(deviceId: String): List<ReadingMetric> =
+        withToken { authorization ->
+            val externalId = normalizeExternalIdForPlatform(PLATFORM_ANDROID, deviceId)
+            val response = api.readingsMetrics(
+                authorization = authorization,
+                platform = PLATFORM_ANDROID,
+                externalId = externalId,
+            )
+            response.items.orEmpty().mapNotNull { item ->
+                val metric = item.metric?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                ReadingMetric(
+                    metric = metric,
+                    unit = item.unit.orEmpty().ifBlank { ReadingMetrics.unit(metric) },
+                    count = item.count ?: 0L,
+                    firstAt = Rfc3339.parse(item.firstAt) ?: 0L,
+                    lastAt = Rfc3339.parse(item.lastAt) ?: 0L,
+                )
+            }
+        }
 
     /**
      * 401 与 iOS 保持一致：不自动重新匿名登录（自动重登会切换到另一个账号，

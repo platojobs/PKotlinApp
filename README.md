@@ -410,9 +410,9 @@ Debug / Release 都可通过 `apiBaseUrl` 切换；发布前请传入正式域�
 - 设备列表：每行展示「分组：X / 未分组」，标题旁统计「共 N 台设备 · M 个分组」，数据全部来自 Room，离线一致。
 - 同步：连续失败 3 次进入纯本地模式，主界面横幅 +「我的」同步卡片提示；Room 数据（首页、设备、日志）不依赖网络。
 - 首页 / 设备 / 我的：本地 Room 数据不依赖网络，断网仍可用。
-- 离线验收步骤见 [真机验收清单 §7.2](docs/acceptance.md#72-离线缓存与分组验收v035-新增)；别名/广播名与分组三态验收见 [§7.4](docs/acceptance.md#74-别名--广播名与分组三态验收v036-新增)；清空别名验收见 [§7.5](docs/acceptance.md#75-清空别名验收v037-新增)；读数采集验收见 [§7.6](docs/acceptance.md#76-设备读数readings验收v040-新增)。
+- 离线验收步骤见 [真机验收清单 §7.2](docs/acceptance.md#72-离线缓存与分组验收v035-新增)；别名/广播名与分组三态验收见 [§7.4](docs/acceptance.md#74-别名--广播名与分组三态验收v036-新增)；清空别名验收见 [§7.5](docs/acceptance.md#75-清空别名验收v037-新增)；读数采集验收见 [§7.6](docs/acceptance.md#76-设备读数readings验收v040-新增)；长周期图表与区间验收见 [§7.7](docs/acceptance.md#77-长周期图表与区间验收v050-新增)。
 
-### 6.1 数据采集（readings，v0.4.1 统一解析口径）
+### 6.1 数据采集与长周期图表（readings，v0.5.0）
 
 设备连接并发现 GATT 服务后，App 会订阅以下 notify/indicate 特征，并把解析成功的读数写入 Room、随后随同步批次推送到服务端：
 
@@ -455,13 +455,28 @@ Debug / Release 都可通过 `apiBaseUrl` 切换；发布前请传入正式域�
 - 读数使用独立的 `ReadingSyncer`，复用同一个 `POST /api/v1/sync/push`：每批最多 **200** 条，成功后将对应行标为 `synced`，循环直到不足一批。
 - 幂等：批次 `Idempotency-Key` 由按 `id` 排序后的 `id/deviceId/metric/value/unit/recordedAt` 做 SHA-256（前缀 `readings-`）；失败重试复用同一幂等体，服务端再按 `id` 去重，重复 id 计入 `skippedReadings` 而不报错。
 - 断网时读数继续本地累积（`pending`），网络恢复后由常规同步/重试路径补传；设备与读数可以同批推送，服务端响应新增 `appliedReadings` / `skippedReadings`。
-- 远端查询：`GET /api/v1/my/devices/{platform}/{externalId}/readings`（倒序游标分页、可按 metric/时间过滤）与 `/readings/summary?metric=&hours=24`（min/max/avg/last）。详情页 24h 汇总优先远端，失败或为空时回退本地并显示「离线：本地数据」。
+- 远端查询：`GET /api/v1/my/devices/{platform}/{externalId}/readings`（倒序游标分页、可按 metric/时间过滤）、`/readings/summary?metric=&hours=24`（min/max/avg/last）、`/readings/series?metric=&from=&to=&bucket=`（长周期分桶）与 `/readings/metrics`（指标清单）。详情页 24h 汇总优先远端，失败或为空时回退本地并显示「离线：本地数据」。
 
 **详情页「数据」区**
 
-- 指标 Chip 只来自该设备真实出现过的读数（Room Flow），按白名单顺序排列；没有读数时显示「连接设备后开始采集」，没有蓝牙连接权限时显示提示并提供「去应用设置」。
-- 最近 60 个点使用自绘 `ReadingChartView`：`onDraw` 画坐标轴、网格、折线、数据点与首尾时间；几何计算在纯 Kotlin `ReadingChartGeometry`，0 点/单点/同值都有确定结果，不除零、不越界。
-- 汇总行展示 24h 的最小/最大/平均/最新；「最近记录」展示最新 10 条（值 + 相对时间）。所有数值均来自真实 Room/远端数据，不放演示假数据。
+- 指标 Chip 来源为服务端 `GET .../readings/metrics`，展示「指标名 · N 条」并按 `lastAt` 倒序；`unit` 取该指标最新一条读数。网络失败时才回退本地聚合，无指标时显示「连接设备后开始采集」，没有蓝牙连接权限时显示提示并提供「去应用设置」。
+- 区间 Chip：**1 小时 / 24 小时 / 7 天 / 30 天**，默认 24 小时；切换后立即重新查询并重绘。长周期使用自绘 `ReadingChartView`：按桶 `start` 的真实时间比例定位 X 轴，桶间缺口断线，每个桶画 avg 折线并用浅色带标出 min–max；几何计算全部在纯 Kotlin `ReadingChartGeometry`，不依赖 Android 运行时。
+- 汇总行固定展示**最近 24 小时**的最小/最大/平均/最新，不随区间切换；单位与当前选中指标一致。「最近记录」展示最新 10 条（值 + 相对时间）。所有数值均来自真实 Room/远端数据，不放演示假数据。
+
+**区间与分桶（v0.5.0）**
+
+| 区间 | bucket | 理论桶数（≤500） | 说明 |
+| --- | --- | --- | --- |
+| 1 小时 | `1m` | 60 | 分钟级细节 |
+| 24 小时 | `1h` | 24 | 默认区间 |
+| 7 天 | `1h` | 168 | 小时级趋势 |
+| 30 天 | `1d` | 30 | 日级趋势 |
+
+- 请求：`GET /api/v1/my/devices/{platform}/{externalId}/readings/series?metric=&from=&to=&bucket=`，`from`/`to` 为 **UTC RFC3339**。若首选粒度会超过 500 桶，`ReadingRange.chooseBucket` 会自动退到更粗的粒度（`1m → 1h → 1d`）。
+- **UTC 网格**：`1m` 对齐整分钟、`1h` 对齐整点、`1d` 对齐 UTC 零点，与服务端 `BucketStart` 完全一致，因此离线本地分桶与在线图表落在同一时间轴。
+- **服务端只返回有数据的桶**（空桶不返回、不补零）。客户端必须按 `start` 的真实时间比例定位，绝不能按数组下标等距绘制；当 `bucket.start > previous.end` 时视为缺口，折线**断开**，不得跨越空桶连线。这是长周期图最常见的画错点，`ReadingChartGeometryTest` 有专门用例固化。
+- 网络失败时回退本地（Room 仅保留 7 天）：本地读数按同一 UTC 网格聚合，30 天区间标注「离线：仅本地 7 天数据」，数据集中在时间轴右侧；其余区间标注「离线：本地数据」。
+- Y 轴按区间内真实 min/max 自适应；单桶或同值时自动展开固定范围，标签带当前指标单位。
 
 **限制**：模拟器无法验证真实 BLE notify 投递与厂商固件字节格式；解析规则已用单测覆盖，但真实心率带/温湿度计/NUS 设备需按 [§7.6](docs/acceptance.md#76-设备读数readings验收v040-新增) 真机验收。
 
@@ -474,7 +489,7 @@ export JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk-21.jdk/Contents/Home
 
 ./gradlew assembleDebug        # Debug APK
 ./gradlew lintDebug            # Lint
-./gradlew testDebugUnitTest    # 单元测试：79 个（含读数解析/同步/迁移/图表/黄金字节表）
+./gradlew testDebugUnitTest    # 单元测试：96 个（含读数解析/同步/迁移/区间分桶/缺口几何/黄金字节表）
 ./gradlew assembleRelease      # 签名 Release APK
 ./gradlew bundleRelease        # 签名 Release AAB
 
@@ -605,6 +620,7 @@ release {
 
 ## 11. 版本记录
 
+- `v0.5.0`：详情页数据区升级为产品级长周期图表。新增区间切换（1 小时 / 24 小时 / 7 天 / 30 天，默认 24 小时）与 `1m/1h/1d` 分桶映射、500 桶自动降级；接入 `GET .../readings/series`（UTC RFC3339 网格）与 `GET .../readings/metrics`（count/lastAt/unit，倒序）。图表按桶 `start` 的真实时间比例定位，空桶不返回时折线断开不连线，每个桶画 avg 折线 + min–max 区间带，Y 轴与单位自适应；网络失败回退本地分桶，30 天提示「离线：仅本地 7 天数据」。指标 Chip 改为服务端真值并展示「指标名 · N 条」，24h 汇总固定窗口、单位随指标。单测 96 个（新增区间映射/分桶/缺口几何/Y 轴/离线降级/指标排序），e2e 新增 series/metrics/空区间/非法 bucket 4 项。
 - `v0.4.1`：与 iOS 统一读数解析口径：NUS 改为按 `\n` 逐行解析（整包 ≤256 字节、单行 ≤64 字符，单行失败只丢该行）；温度 2 字节优先 sint16 × 0.01℃、否则回退 IEEE-754 half，4 字节走 float32，范围统一 −50..150℃；心率 uint16 明确小端；电池 0% 视为合法。清理逻辑修正为只删除 `syncState = 'synced'` 且超过 7 天的记录，pending 无论多旧都保留。新增黄金字节表单测（总单测 79 个），lint 0 issue。
 - `v0.4.0`：接入设备读数全链路：GATT 订阅心率 `0x2A37`、电池 `0x2A19`、温度 `0x2A6E`、NUS TX `6E400003-…` 并按特征解析（失败静默丢弃 + 本地日志）；Room v7 新增 `readings` 表（`MIGRATION_6_7`），指标白名单 + 未知指标 `other` + 原始快照，本地保留 7 天（服务端 90 天）；读数以 ≤200/批复用 `/sync/push` 按 id 幂等同步，断网累积、恢复补传；详情页新增「数据」区（真实指标 Chip、自绘 60 点折线图、24h min/max/avg/last、最近记录、离线/空状态/权限引导）。单测 73 个、e2e 新增读数契约 6 项（推送/重复 skipped/倒序查询/summary/NaN 400）。
 - `v0.3.7`：修复「清空别名无效」：Room v6 新增 `aliasDirty`（`MIGRATION_5_6`），详情页显式清空别名时上报 `"alias":""`，扫描路径永不置脏，服务端空别名拉回后清空本地并按广播名展示；复核分组 `NULL`/`""` 三态链路不复活；`lintDebug` 从 62 条 warning 清理到 0（硬编码文案抽 strings、未用资源删除、KTX/无障碍/备份规则修复，仅 4 个版本提示类检查在 `lint.xml` 显式抑制并写明理由）；新增 `DeviceAliasPersistenceTest`、v5→v6 迁移测试与 e2e 清空别名断言（e2e 扩到 24 项），单测 51 个。

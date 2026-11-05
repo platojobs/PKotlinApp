@@ -6,6 +6,24 @@
 
 ---
 
+## v0.5.0
+
+**主题：详情页数据区升级为可切换长周期的产品级图表（对齐 PJGoIoT v0.5.0）**
+
+- 区间切换：详情「数据」区新增 **1 小时 / 24 小时 / 7 天 / 30 天** Chip，默认 24 小时；映射 `1m / 1h / 1h / 1d`，任一区间理论桶数 ≤500，超限时 `chooseBucket` 自动加粗到下一档。
+- 接入 `GET /api/v1/my/devices/{platform}/{externalId}/readings/series?metric=&from=&to=&bucket=`：`from/to` 使用 UTC RFC3339，桶起点与服务端 UTC 网格一致（整分钟 / 整点 / UTC 零点）。
+- 图表几何重写：X 轴按桶 `start` 的真实时间比例定位（非数组下标）；服务端空桶不返回时，`bucket.start > previous.end` 即断线，不跨越缺口连线；每个桶绘制 avg 折线 + min–max 浅色区间带；Y 轴按区间真实 min/max 自适应并带当前单位；NaN/Inf 桶过滤，min/max 缺失回退 avg。
+- 指标清单改为服务端真值：`GET .../readings/metrics` 提供 `count / lastAt / unit`，Chip 展示「指标名 · N 条」并按 `lastAt` 倒序；单位随所选指标更新 Y 轴与汇总行。网络失败才用本地聚合兜底。
+- 离线降级：series 请求失败时把 Room 读数按同一 UTC 网格聚合；30 天区间显示「离线：仅本地 7 天数据」，数据集中在时间轴右侧；其余区间显示「离线：本地数据」。
+- 24h 汇总保留固定窗口（不受区间切换影响），文案明确「最近 24 小时」。
+- 测试：新增 `ReadingRangeTest`（映射/500 桶/自动降桶/UTC 对齐）、`ReadingSeriesBucketingTest`（聚合/排序/异常值/30 天仅本地 7 天）、重写 `ReadingChartGeometryTest`（空数据/单桶/等距/缺口断线/时间比例/30 天 24 桶/Y 轴/异常值），仓储新增本地指标与 `readingsSince` 用例；单测 79 → 96。
+- e2e：真实后端新增 series 升序与桶内 count、空区间 `[]`、非法 bucket `400`、metrics 倒序/计数/单位 4 项。
+- 文档：README §6.1 新增「区间与分桶」章节（UTC 网格与缺口不连线原因）；验收清单升级 v0.5.0（versionCode 13）并新增 §7.7。
+
+版本：`versionCode = 13`、`versionName = 0.5.0`。
+
+---
+
 ## v0.4.1
 
 **主题：读数解析口径与 iOS 对齐（黄金字节表）+ 修复 pending 读数被 7 天清理误删**

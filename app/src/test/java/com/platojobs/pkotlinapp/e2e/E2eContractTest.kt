@@ -3,7 +3,9 @@ package com.platojobs.pkotlinapp.e2e
 import com.platojobs.pkotlinapp.data.remote.ApiClient
 import com.platojobs.pkotlinapp.data.remote.PushDeviceDto
 import com.platojobs.pkotlinapp.data.remote.PushReadingDto
+import com.platojobs.pkotlinapp.data.remote.ReadingMetricsResponse
 import com.platojobs.pkotlinapp.data.remote.ReadingPageResponse
+import com.platojobs.pkotlinapp.data.remote.ReadingSeriesResponse
 import com.platojobs.pkotlinapp.data.remote.ReadingSummaryResponse
 import com.platojobs.pkotlinapp.data.remote.Reported
 import com.platojobs.pkotlinapp.data.remote.SyncChangesResponse
@@ -74,6 +76,8 @@ class E2eContractTest {
     private val changesResponseAdapter = moshi.adapter(SyncChangesResponse::class.java)
     private val readingPageAdapter = moshi.adapter(ReadingPageResponse::class.java)
     private val readingSummaryAdapter = moshi.adapter(ReadingSummaryResponse::class.java)
+    private val readingSeriesAdapter = moshi.adapter(ReadingSeriesResponse::class.java)
+    private val readingMetricsAdapter = moshi.adapter(ReadingMetricsResponse::class.java)
 
     @Test
     fun `contract against local go backend`() {
@@ -751,6 +755,72 @@ class E2eContractTest {
             """.trimIndent()
             val result = push(body, user.token, "e2e-readings-invalid-${UUID.randomUUID()}")
             assertEquals(400, result.code)
+        }
+
+        step("readings: series returns ascending non-empty UTC buckets") {
+            val from = Rfc3339.format(now - 2 * 3_600_000L)
+            val to = Rfc3339.format(now + 3_600_000L)
+            val result = get(
+                "/my/devices/android/$externalId/readings/series" +
+                    "?metric=temperature&from=$from&to=$to&bucket=1h",
+                user.token,
+            )
+            assertEquals(200, result.code)
+            val series = readingSeriesAdapter.fromJson(result.body) ?: error("empty body")
+            assertEquals("temperature", series.metric)
+            assertEquals("1h", series.bucket)
+            assertEquals("°C", series.unit)
+            val buckets = series.buckets.orEmpty()
+            assertTrue(buckets.isNotEmpty())
+            val starts = buckets.mapNotNull { Rfc3339.parse(it.start.orEmpty()) }
+            assertEquals(starts.sorted(), starts)
+            // 服务端只返回有数据的桶：两条温度读数合计应落在桶内 count 之和。
+            assertEquals(2L, buckets.sumOf { it.count ?: 0L })
+            assertTrue(buckets.all { (it.count ?: 0L) > 0L })
+        }
+
+        step("readings: empty series range returns []") {
+            val from = Rfc3339.format(now + 24 * 3_600_000L)
+            val to = Rfc3339.format(now + 25 * 3_600_000L)
+            val result = get(
+                "/my/devices/android/$externalId/readings/series" +
+                    "?metric=temperature&from=$from&to=$to&bucket=1h",
+                user.token,
+            )
+            assertEquals(200, result.code)
+            val series = readingSeriesAdapter.fromJson(result.body) ?: error("empty body")
+            assertTrue(series.buckets.orEmpty().isEmpty())
+        }
+
+        step("readings: invalid bucket is rejected with 400") {
+            val from = Rfc3339.format(now - 3_600_000L)
+            val to = Rfc3339.format(now)
+            val result = get(
+                "/my/devices/android/$externalId/readings/series" +
+                    "?metric=temperature&from=$from&to=$to&bucket=5m",
+                user.token,
+            )
+            assertEquals(400, result.code)
+        }
+
+        step("readings: metrics are newest first with counts and units") {
+            val result = get(
+                "/my/devices/android/$externalId/readings/metrics",
+                user.token,
+            )
+            assertEquals(200, result.code)
+            val metrics = readingMetricsAdapter.fromJson(result.body) ?: error("empty body")
+            val items = metrics.items.orEmpty()
+            assertEquals(2, items.size)
+            // temperature 最新一条在 now-30s，heart_rate 在 now-45s → 温度在前。
+            assertEquals("temperature", items[0].metric)
+            assertEquals("heart_rate", items[1].metric)
+            assertEquals(2L, items[0].count)
+            assertEquals(1L, items[1].count)
+            assertEquals("°C", items[0].unit)
+            assertEquals("bpm", items[1].unit)
+            val lastAts = items.mapNotNull { Rfc3339.parse(it.lastAt.orEmpty()) }
+            assertEquals(lastAts.sortedDescending(), lastAts)
         }
 
         println("[E2E] SUMMARY: readings contract cases passed")

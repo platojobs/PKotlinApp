@@ -13,12 +13,16 @@ import com.platojobs.pkotlinapp.domain.model.DeviceInfo
 import com.platojobs.pkotlinapp.domain.model.toOfflineDeviceInfo
 import com.platojobs.pkotlinapp.domain.reading.Reading
 import com.platojobs.pkotlinapp.domain.reading.ReadingMetrics
+import com.platojobs.pkotlinapp.domain.reading.ReadingRange
 import com.platojobs.pkotlinapp.domain.reading.ReadingRemote
+import com.platojobs.pkotlinapp.domain.reading.ReadingSeries
+import com.platojobs.pkotlinapp.domain.reading.ReadingSeriesBucketing
 import com.platojobs.pkotlinapp.domain.reading.ReadingSummary
 import com.platojobs.pkotlinapp.domain.repository.DeviceInfoRepository
 import com.platojobs.pkotlinapp.domain.repository.DeviceRepository
 import com.platojobs.pkotlinapp.domain.repository.ReadingRepository
 import com.platojobs.pkotlinapp.domain.rule.RuleEngine
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -35,15 +39,30 @@ data class EncryptionInfo(
     val timestamp: Long,
 )
 
-/** 详情页「数据」区状态；列表/图表只来自本地 Room，汇总可优先用服务端。 */
+/** 指标 Chip 的展示项：指标名 · N 条；unit 为响应中最新一条读数的单位。 */
+data class MetricItem(
+    val metric: String,
+    val unit: String,
+    val count: Long,
+    val lastAt: Long,
+)
+
+/**
+ * 详情页「数据」区状态。
+ * 指标与长周期序列以服务端真值为准；网络失败时回退本地（本地仅 7 天）。
+ */
 data class ReadingsState(
-    val metrics: List<String> = emptyList(),
+    val metrics: List<MetricItem> = emptyList(),
     val selectedMetric: String? = null,
-    val points: List<Reading> = emptyList(),
+    val selectedRange: ReadingRange = ReadingRange.DEFAULT,
+    val series: ReadingSeries? = null,
     val summary: ReadingSummary? = null,
     val recent: List<Reading> = emptyList(),
+    val loadingMetrics: Boolean = true,
+    val loadingSeries: Boolean = false,
     val offlineLocal: Boolean = false,
-    val loading: Boolean = true,
+    /** 30 天区间离线时只有本地 7 天数据。 */
+    val offlineOnlyLocal7d: Boolean = false,
 )
 
 class DeviceDetailViewModel(
@@ -56,6 +75,7 @@ class DeviceDetailViewModel(
     private val syncScheduler: SyncScheduler,
     private val readingRepository: ReadingRepository,
     private val readingRemote: ReadingRemote,
+    private val now: () -> Long = System::currentTimeMillis,
 ) : ViewModel() {
 
     val connectionState: StateFlow<BleConnectionState> = bleConnectionManager.state
@@ -70,9 +90,13 @@ class DeviceDetailViewModel(
     private val _readings = MutableStateFlow(ReadingsState())
     val readings: StateFlow<ReadingsState> = _readings.asStateFlow()
 
+    private var metricsJob: Job? = null
+    private var seriesJob: Job? = null
+
     init {
         viewModelScope.launch { ruleEngine.refresh() }
         observeReadings()
+        refreshMetrics()
 
         viewModelScope.launch {
             connectionState.collectLatest { state ->
@@ -103,30 +127,31 @@ class DeviceDetailViewModel(
     }
 
     fun selectMetric(metric: String) {
-        _readings.update {
-            if (it.selectedMetric == metric) it else it.copy(selectedMetric = metric)
-        }
+        if (_readings.value.selectedMetric == metric) return
+        _readings.update { it.copy(selectedMetric = metric) }
+        reloadSeries()
+        viewModelScope.launch { refreshSummary(metric) }
+    }
+
+    fun selectRange(range: ReadingRange) {
+        if (_readings.value.selectedRange == range) return
+        _readings.update { it.copy(selectedRange = range) }
+        reloadSeries()
     }
 
     /**
-     * 指标 Chip 只来自该设备真实出现过的读数；
-     * 图表/最近记录订阅本地 Flow，汇总优先远端、失败回退本地。
+     * 指标清单来自服务端 `/readings/metrics`（按 lastAt 倒序）；
+     * 仅当网络失败时使用本地聚合兜底。本地指标名变化时重新拉取，保证新指标能出现。
      */
     private fun observeReadings() {
         viewModelScope.launch {
-            readingRepository.observeMetrics(mac).collect { metrics ->
-                val ordered = metrics.sortedBy { metricOrder(it) }
-                val selected = _readings.value.selectedMetric
-                    ?.takeIf { it in ordered }
-                    ?: ordered.firstOrNull()
-                _readings.update {
-                    it.copy(
-                        metrics = ordered,
-                        selectedMetric = selected,
-                        loading = false,
-                    )
+            readingRepository.observeMetrics(mac)
+                .map { it.sorted() }
+                .distinctUntilChanged()
+                .collect {
+                    delay(METRICS_DEBOUNCE_MS)
+                    refreshMetrics()
                 }
-            }
         }
 
         viewModelScope.launch {
@@ -134,40 +159,115 @@ class DeviceDetailViewModel(
                 .distinctUntilChanged()
                 .collectLatest { metric ->
                     if (metric == null) {
-                        _readings.update {
-                            it.copy(points = emptyList(), recent = emptyList(), summary = null)
-                        }
+                        _readings.update { it.copy(recent = emptyList(), summary = null) }
                         return@collectLatest
                     }
-                    readingRepository.observeRecent(mac, metric, CHART_POINTS).collectLatest { rows ->
-                        // DAO 按时间倒序返回：图表需要正序，最近记录保持最新在前。
-                        _readings.update {
-                            it.copy(
-                                points = rows.asReversed(),
-                                recent = rows.take(RECENT_ROWS),
-                            )
-                        }
-                        // 新读数连续到达时做轻微防抖，避免频繁请求 summary。
-                        delay(SUMMARY_DEBOUNCE_MS)
+                    readingRepository.observeRecent(mac, metric, RECENT_ROWS).collectLatest { rows ->
+                        // 最近记录保持最新在前；图表由服务端分桶序列提供。
+                        _readings.update { it.copy(recent = rows) }
+                        // 新读数连续到达时做轻微防抖，避免频繁请求 summary/series。
+                        delay(REFRESH_DEBOUNCE_MS)
                         refreshSummary(metric)
+                        reloadSeries()
                     }
                 }
         }
     }
 
+    private fun refreshMetrics() {
+        metricsJob?.cancel()
+        metricsJob = viewModelScope.launch {
+            _readings.update { it.copy(loadingMetrics = true) }
+            val remote = runCatching { readingRemote.metrics(mac) }.getOrNull()
+            val items = if (remote != null) {
+                remote.map { MetricItem(it.metric, it.unit, it.count, it.lastAt) }
+            } else {
+                runCatching { readingRepository.localMetrics(mac) }
+                    .getOrDefault(emptyList())
+                    .map { MetricItem(it.metric, it.unit, it.count, it.lastAt) }
+            }
+            val previous = _readings.value.selectedMetric
+            val selected = previous?.takeIf { metric -> items.any { it.metric == metric } }
+                ?: items.firstOrNull()?.metric
+            _readings.update {
+                it.copy(
+                    metrics = items,
+                    selectedMetric = selected,
+                    loadingMetrics = false,
+                )
+            }
+            if (selected != previous) {
+                if (selected == null) {
+                    seriesJob?.cancel()
+                    _readings.update { it.copy(series = null, loadingSeries = false) }
+                } else {
+                    reloadSeries()
+                }
+            }
+        }
+    }
+
+    /**
+     * 长周期序列：优先服务端 series；失败时把本地读数按同一 UTC 网格聚合。
+     * 30 天区间离线时本地只有 7 天，标记 [ReadingsState.offlineOnlyLocal7d]。
+     */
+    private fun reloadSeries() {
+        val metric = _readings.value.selectedMetric ?: return
+        val range = _readings.value.selectedRange
+        seriesJob?.cancel()
+        seriesJob = viewModelScope.launch {
+            val to = now()
+            val from = to - range.windowMillis
+            _readings.update { it.copy(loadingSeries = true, offlineOnlyLocal7d = false) }
+            val remote = runCatching {
+                readingRemote.series(mac, metric, from, to, range.effectiveBucket())
+            }.getOrNull()
+            if (remote != null) {
+                _readings.update {
+                    it.copy(
+                        series = remote,
+                        loadingSeries = false,
+                        offlineLocal = false,
+                        offlineOnlyLocal7d = false,
+                    )
+                }
+                return@launch
+            }
+
+            val local = runCatching { readingRepository.readingsSince(mac, metric, from) }
+                .getOrDefault(emptyList())
+            val buckets = ReadingSeriesBucketing.aggregate(local, range.effectiveBucket())
+            val unit = local.lastOrNull()?.unit?.takeIf { it.isNotBlank() }
+                ?: ReadingMetrics.unit(metric)
+            _readings.update {
+                it.copy(
+                    series = ReadingSeries(
+                        metric = metric,
+                        unit = unit,
+                        bucket = range.effectiveBucket(),
+                        from = from,
+                        to = to,
+                        buckets = buckets,
+                    ),
+                    loadingSeries = false,
+                    offlineLocal = true,
+                    offlineOnlyLocal7d = range == ReadingRange.DAY_30,
+                )
+            }
+        }
+    }
+
+    /** 汇总固定 24 小时，不随区间切换；单位取该指标最新读数。 */
     private suspend fun refreshSummary(metric: String) {
         val local = runCatching { readingRepository.summary(mac, metric, 24) }
             .getOrNull() ?: return
         val remote = runCatching { readingRemote.remoteSummary(mac, metric, 24) }.getOrNull()
-        // 远端为空但本地有未同步数据时不覆盖本地；远端失败则标注离线本地数据。
+        // 远端为空但本地有未同步数据时不覆盖本地。
         val summary = remote?.takeIf { it.count > 0 } ?: local
         _readings.update {
-            it.copy(summary = summary, offlineLocal = remote == null)
+            it.copy(summary = summary)
         }
     }
-
-    private fun metricOrder(metric: String): Int =
-        ReadingMetrics.ALL.indexOf(metric).let { if (it < 0) ReadingMetrics.ALL.size else it }
 
     fun connect(): Boolean = bleConnectionManager.connect(mac)
 
@@ -254,9 +354,9 @@ class DeviceDetailViewModel(
 
     companion object {
         private const val RSSI_POLL_INTERVAL_MS = 2_000L
-        private const val CHART_POINTS = 60
         private const val RECENT_ROWS = 10
-        private const val SUMMARY_DEBOUNCE_MS = 500L
+        private const val REFRESH_DEBOUNCE_MS = 1_000L
+        private const val METRICS_DEBOUNCE_MS = 600L
 
         fun factory(
             app: PKotlinApplication,

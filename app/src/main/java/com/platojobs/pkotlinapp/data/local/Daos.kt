@@ -86,6 +86,15 @@ interface DeviceDao {
     suspend fun deleteByExternalId(externalId: String)
 }
 
+/** 指标聚合行：离线时替代服务端 `/readings/metrics` 的本地兜底。 */
+data class ReadingMetricRow(
+    val metric: String,
+    val unit: String,
+    val count: Long,
+    val firstAt: Long,
+    val lastAt: Long,
+)
+
 @Dao
 interface ReadingDao {
 
@@ -115,6 +124,27 @@ interface ReadingDao {
             "AND recordedAt >= :from ORDER BY recordedAt ASC",
     )
     suspend fun getSince(deviceId: String, metric: String, from: Long): List<ReadingEntity>
+
+    /**
+     * 指标清单的本地兜底：按 lastAt 倒序、同一时刻按 metric 升序，与服务端口径一致；
+     * unit 取该指标 recordedAt 最大的一条（历史读数可能换过单位）。
+     */
+    @Query(
+        """
+        SELECT metric,
+               (SELECT r2.unit FROM readings r2
+                 WHERE r2.deviceId = readings.deviceId AND r2.metric = readings.metric
+                 ORDER BY r2.recordedAt DESC, r2.id DESC LIMIT 1) AS unit,
+               COUNT(*) AS count,
+               MIN(recordedAt) AS firstAt,
+               MAX(recordedAt) AS lastAt
+        FROM readings
+        WHERE deviceId = :deviceId
+        GROUP BY metric
+        ORDER BY lastAt DESC, metric ASC
+        """,
+    )
+    suspend fun metricAggregates(deviceId: String): List<ReadingMetricRow>
 
     @Query(
         "SELECT * FROM readings WHERE syncState = 'pending' " +

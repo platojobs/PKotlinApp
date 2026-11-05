@@ -1,47 +1,83 @@
 package com.platojobs.pkotlinapp.ui.chart
 
-/** 图表数据点；只保留有限值。 */
-data class ChartPoint(val value: Double, val recordedAt: Long)
+import kotlin.math.max
+import kotlin.math.min
+
+/** 图表桶：与服务端 series 响应对应，已按 start 升序。 */
+data class ChartBucket(
+    val start: Long,
+    val end: Long,
+    val min: Double,
+    val max: Double,
+    val avg: Double,
+)
 
 /**
- * 折线图几何计算（纯 Kotlin，无 Android 依赖）：
- * - 0 个点时返回空；
- * - 1 个点或所有点同值时，纵向范围围绕该值展开，避免除零；
- * - 横坐标按序号等距分布，单点居中。
+ * 长周期折线图几何（纯 Kotlin，无 Android 依赖）。
+ *
+ * 关键口径：
+ * - X 轴按桶 `start` 在 [from, to] 中的**真实时间比例**定位，不按数组下标等距；
+ * - 服务端只返回有数据的桶，桶间存在缺口时折线必须**断开**，不能跨越空桶连线；
+ * - Y 轴按区间内真实 min/max 自适应；
+ * - 非有限值（NaN/Inf）桶直接丢弃，缺 min/max 时回退到 avg。
  */
 object ReadingChartGeometry {
 
+    /** 一个桶在画布上的几何位置；[yMin]/[yMax] 用于绘制 min–max 区间带。 */
+    data class PlottedBucket(
+        val bucket: ChartBucket,
+        val xStart: Float,
+        val xEnd: Float,
+        val yAvg: Float,
+        val yMin: Float,
+        val yMax: Float,
+    )
+
+    /** 连续桶组成的一段折线；缺口两侧分属不同 segment。 */
+    data class Segment(val xs: List<Float>, val ys: List<Float>)
+
     data class Plot(
-        val xs: List<Float>,
-        val ys: List<Float>,
+        val buckets: List<PlottedBucket>,
+        val segments: List<Segment>,
         val minValue: Double,
         val maxValue: Double,
     ) {
-        val isEmpty: Boolean get() = xs.isEmpty()
+        val isEmpty: Boolean get() = buckets.isEmpty()
     }
 
     private const val EPSILON = 1e-9
     private const val MIN_SPAN = 1.0
 
     fun plot(
-        points: List<ChartPoint>,
+        buckets: List<ChartBucket>,
+        from: Long,
+        to: Long,
         left: Float,
         top: Float,
         right: Float,
         bottom: Float,
     ): Plot {
-        val values = points.map { it.value }.filter { it.isFinite() }
-        if (values.isEmpty() || right <= left || bottom <= top) {
-            return Plot(emptyList(), emptyList(), 0.0, 0.0)
-        }
+        val empty = Plot(emptyList(), emptyList(), 0.0, 0.0)
+        if (right <= left || bottom <= top || to <= from) return empty
 
-        var lo = values.first()
-        var hi = values.first()
-        values.forEach {
-            if (it < lo) lo = it
-            if (it > hi) hi = it
+        val valid = buckets
+            .filter { it.avg.isFinite() && it.start > 0L && it.end >= it.start }
+            .sortedBy { it.start }
+            .map { bucket ->
+                // min/max 缺失或非有限时回退到 avg，避免画出 NaN。
+                val lo = if (bucket.min.isFinite()) min(bucket.min, bucket.avg) else bucket.avg
+                val hi = if (bucket.max.isFinite()) max(bucket.max, bucket.avg) else bucket.avg
+                bucket.copy(min = lo, max = hi)
+            }
+        if (valid.isEmpty()) return empty
+
+        var lo = valid.first().min
+        var hi = valid.first().max
+        valid.forEach {
+            if (it.min < lo) lo = it.min
+            if (it.max > hi) hi = it.max
         }
-        // 同值或单点：围绕该值展开固定范围，轴线仍然可绘制。
+        // 同值或单桶：围绕该值展开固定范围，轴线仍然可绘制。
         if (hi - lo < EPSILON) {
             val halfSpan = maxOf(kotlin.math.abs(lo) * 0.1, MIN_SPAN / 2.0)
             lo -= halfSpan
@@ -49,19 +85,45 @@ object ReadingChartGeometry {
         }
 
         val span = hi - lo
-        val count = values.size
-        val xs = ArrayList<Float>(count)
-        val ys = ArrayList<Float>(count)
-        values.forEachIndexed { index, value ->
-            val x = if (count == 1) {
-                (left + right) / 2f
-            } else {
-                left + (right - left) * index / (count - 1)
-            }
-            val y = bottom - ((value - lo) / span).toFloat() * (bottom - top)
-            xs += x
-            ys += y
+        val window = (to - from).toFloat()
+        val width = right - left
+
+        fun xOf(time: Long): Float {
+            val ratio = (time - from).toFloat() / window
+            return (left + ratio * width).coerceIn(left, right)
         }
-        return Plot(xs, ys, lo, hi)
+
+        fun yOf(value: Double): Float {
+            val ratio = ((value - lo) / span).toFloat()
+            return (bottom - ratio * (bottom - top)).coerceIn(top, bottom)
+        }
+
+        val plotted = valid.map { bucket ->
+            PlottedBucket(
+                bucket = bucket,
+                xStart = xOf(bucket.start),
+                xEnd = xOf(bucket.end),
+                yAvg = yOf(bucket.avg),
+                yMin = yOf(bucket.min),
+                yMax = yOf(bucket.max),
+            )
+        }
+
+        // 缺口判定：上一桶的 end 与下一桶的 start 不连续时断开。
+        val segments = mutableListOf<Segment>()
+        var xs = mutableListOf<Float>()
+        var ys = mutableListOf<Float>()
+        plotted.forEachIndexed { index, point ->
+            if (index > 0 && point.bucket.start > plotted[index - 1].bucket.end) {
+                segments += Segment(xs, ys)
+                xs = mutableListOf()
+                ys = mutableListOf()
+            }
+            xs += point.xStart
+            ys += point.yAvg
+        }
+        if (xs.isNotEmpty()) segments += Segment(xs, ys)
+
+        return Plot(plotted, segments, lo, hi)
     }
 }

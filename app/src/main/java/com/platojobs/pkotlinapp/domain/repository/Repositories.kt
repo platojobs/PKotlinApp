@@ -9,6 +9,7 @@ import com.platojobs.pkotlinapp.domain.model.RuleEvent
 import com.platojobs.pkotlinapp.domain.model.RuleType
 import com.platojobs.pkotlinapp.domain.model.ScanLog
 import com.platojobs.pkotlinapp.domain.reading.Reading
+import com.platojobs.pkotlinapp.domain.reading.ReadingMetric
 import com.platojobs.pkotlinapp.domain.reading.ReadingSample
 import com.platojobs.pkotlinapp.domain.reading.ReadingSummary
 import kotlinx.coroutines.flow.Flow
@@ -77,6 +78,12 @@ interface ReadingRepository {
 
     /** 本地 24h 汇总（离线可用）。 */
     suspend fun summary(deviceId: String, metric: String, hours: Int = 24): ReadingSummary
+
+    /** 本地指标清单（离线兜底）：按 lastAt 倒序，unit 取最新一条。 */
+    suspend fun localMetrics(deviceId: String): List<ReadingMetric>
+
+    /** 指定时间之后的本地读数（正序），供离线分桶兜底。 */
+    suspend fun readingsSince(deviceId: String, metric: String, from: Long): List<Reading>
 
     /** 清理 7 天前数据；启动与同步后调用。 */
     suspend fun cleanup()

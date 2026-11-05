@@ -7,4 +7,5 @@
     <color name="chart_point">#1F2937</color>
     <color name="chart_grid">#E5E7EB</color>
     <color name="chart_axis">#9CA3AF</color>
+    <color name="chart_band">#223F51B5</color>
 </resources>

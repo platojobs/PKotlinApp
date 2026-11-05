@@ -1,7 +1,9 @@
 package com.platojobs.pkotlinapp.data.sync
 
 import com.platojobs.pkotlinapp.data.remote.AnonymousLoginResponse
+import com.platojobs.pkotlinapp.data.remote.ReadingMetricsResponse
 import com.platojobs.pkotlinapp.data.remote.ReadingPageResponse
+import com.platojobs.pkotlinapp.data.remote.ReadingSeriesResponse
 import com.platojobs.pkotlinapp.data.remote.ReadingSummaryResponse
 import com.platojobs.pkotlinapp.data.remote.SyncApi
 import com.platojobs.pkotlinapp.data.remote.SyncChangesResponse
@@ -80,6 +82,22 @@ class RemoteSyncTokenTest {
             metric: String,
             hours: Int,
         ): ReadingSummaryResponse = ReadingSummaryResponse()
+
+        override suspend fun readingsSeries(
+            authorization: String,
+            platform: String,
+            externalId: String,
+            metric: String,
+            from: String,
+            to: String,
+            bucket: String,
+        ): ReadingSeriesResponse = ReadingSeriesResponse()
+
+        override suspend fun readingsMetrics(
+            authorization: String,
+            platform: String,
+            externalId: String,
+        ): ReadingMetricsResponse = ReadingMetricsResponse()
     }
 
     private fun httpError(code: Int) = HttpException(

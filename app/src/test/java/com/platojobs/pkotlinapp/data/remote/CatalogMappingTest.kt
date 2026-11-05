@@ -64,6 +64,22 @@ class CatalogMappingTest {
             metric: String,
             hours: Int,
         ): ReadingSummaryResponse = ReadingSummaryResponse()
+
+        override suspend fun readingsSeries(
+            authorization: String,
+            platform: String,
+            externalId: String,
+            metric: String,
+            from: String,
+            to: String,
+            bucket: String,
+        ): ReadingSeriesResponse = ReadingSeriesResponse()
+
+        override suspend fun readingsMetrics(
+            authorization: String,
+            platform: String,
+            externalId: String,
+        ): ReadingMetricsResponse = ReadingMetricsResponse()
     }
 
     private class FakeApi(

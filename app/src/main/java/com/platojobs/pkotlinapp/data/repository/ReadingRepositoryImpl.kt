@@ -3,6 +3,7 @@ package com.platojobs.pkotlinapp.data.repository
 import com.platojobs.pkotlinapp.data.local.ReadingDao
 import com.platojobs.pkotlinapp.data.local.ReadingEntity
 import com.platojobs.pkotlinapp.domain.reading.Reading
+import com.platojobs.pkotlinapp.domain.reading.ReadingMetric
 import com.platojobs.pkotlinapp.domain.reading.ReadingMetrics
 import com.platojobs.pkotlinapp.domain.reading.ReadingSample
 import com.platojobs.pkotlinapp.domain.reading.ReadingSummary
@@ -45,6 +46,23 @@ class ReadingRepositoryImpl(
 
     override suspend fun getRecent(deviceId: String, metric: String, limit: Int): List<Reading> =
         dao.getRecent(deviceId, metric, limit).map(ReadingEntity::toDomain)
+
+    override suspend fun localMetrics(deviceId: String): List<ReadingMetric> =
+        dao.metricAggregates(deviceId).map { row ->
+            ReadingMetric(
+                metric = row.metric,
+                unit = row.unit.ifBlank { ReadingMetrics.unit(row.metric) },
+                count = row.count,
+                firstAt = row.firstAt,
+                lastAt = row.lastAt,
+            )
+        }
+
+    override suspend fun readingsSince(
+        deviceId: String,
+        metric: String,
+        from: Long,
+    ): List<Reading> = dao.getSince(deviceId, metric, from).map(ReadingEntity::toDomain)
 
     override suspend fun summary(deviceId: String, metric: String, hours: Int): ReadingSummary {
         val end = now()

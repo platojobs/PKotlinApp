@@ -1,9 +1,9 @@
-# 真机验收清单（v0.4.1）
+# 真机验收清单（v0.5.0）
 
 本清单用于「执行人不在开发现场」时也能照着做完验收。每项都写明**操作步骤、预期现象、失败判定**。
 所有结果请记录到文末的「验收记录表」；未实际执行的项不要填 PASS。
 
-- 适用版本：`versionName = 0.4.1`（`versionCode = 12`）
+- 适用版本：`versionName = 0.5.0`（`versionCode = 13`）
 - 应用包名：`com.platojobs.pkotlinapp`
 - 主界面：`com.platojobs.pkotlinapp.ui.MainActivity`
 - 设备详情：`com.platojobs.pkotlinapp.ui.detail.DeviceDetailActivity`
@@ -55,7 +55,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versionCode"
 ```
 
-预期：`versionName=0.4.1`、`versionCode=12`。
+预期：`versionName=0.5.0`、`versionCode=13`。
 
 ---
 
@@ -111,9 +111,9 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
   - 权限自检三项（扫描 / 连接 / 定位）与系统授权状态一致；
   - 扫描日志有真实记录，可清空；
   - 主题切换立即生效并持久化（杀进程重开仍生效）；
-  - 版本信息显示「版本 0.4.1」「构建类型：debug」；
+  - 版本信息显示「版本 0.5.0」「构建类型：debug」；
   - 项目仓库链接可打开 GitHub。
-- 失败判定：同步卡片空白、权限状态与实际不一致、版本号不是 0.4.1、主题重启后丢失。
+- 失败判定：同步卡片空白、权限状态与实际不一致、版本号不是 0.5.0、主题重启后丢失。
 
 ---
 
@@ -327,7 +327,7 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
 - 预期：设备 / 规则 / 日志均能在界面上看到。
 - 失败判定：旧版本本身无法产生数据（先排除环境问题）。
 
-### M2 覆盖安装 v0.4.1
+### M2 覆盖安装 v0.5.0
 
 - 步骤：
   ```bash
@@ -357,7 +357,7 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
 
 - 步骤：
   1. 安装 v0.3.6 Debug 包（Room v5），扫描一台设备并编辑别名/分组，让 `name/deviceGroup/advertisedName` 落库；
-  2. 覆盖安装 v0.4.1，再导出数据库并查询：
+  2. 覆盖安装 v0.5.0，再导出数据库并查询：
      ```bash
      sqlite3 /tmp/device_dashboard.db "PRAGMA user_version;"
      sqlite3 /tmp/device_dashboard.db \
@@ -370,7 +370,7 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
 
 - 步骤：
   1. 安装 v0.3.7 Debug 包（Room v6），扫描一台设备并编辑别名/分组；
-  2. 覆盖安装 v0.4.1，导出数据库查询：
+  2. 覆盖安装 v0.5.0，导出数据库查询：
      ```bash
      sqlite3 /tmp/device_dashboard.db "PRAGMA user_version;"
      sqlite3 /tmp/device_dashboard.db "SELECT COUNT(*) FROM devices;"
@@ -450,10 +450,26 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
   5. **同步与幂等**：联网执行「立即同步」，服务端 `GET /api/v1/my/devices/android/{externalId}/readings?limit=100` 返回倒序列表且 id 与本地一致；重复同步同一批不报 409，服务端 `skippedReadings` 增加、列表无重复。
   6. **断网补传**：断网连接设备产生读数（`readings` 表 `syncState=pending`）；恢复网络后同步，`pending` 清零且服务端出现对应读数。
   7. **汇总与离线标注**：`GET .../readings/summary?metric=&hours=24` 的 min/max/avg/last 与详情页汇总行一致；停掉网络/后端后重进详情，仍显示本地图表与最近记录，并出现「离线：本地数据」。
-  8. **图表边界**：0 条读数（新设备）显示空状态不崩溃；1 条读数时只画一个居中数据点；连续采集 60+ 条时折线、坐标轴、首尾时间正常，无越界或闪烁。
+  8. **图表边界**：0 条读数（新设备）显示空状态不崩溃；1 条读数时只画一个桶的区间带与数据点；长周期分桶后折线、坐标轴、首尾时间正常，无越界或闪烁（区间与缺口见 §7.7）。
   9. **权限空状态**：在系统设置撤销「附近的设备」权限后重进详情，「数据」区显示权限提示与「去应用设置」按钮，点击可跳到本应用设置页；恢复权限后读数恢复展示。
 - 失败判定：notify 已到达但无读数、读数与真实值明显不符、非法报文导致崩溃或写入脏数据、本地超过 7 天仍保留、重复同步报错/重复插入、断网读数丢失、离线仍显示远端数据、0/1/60 点图表崩溃、无权限时展示假数据或按钮无响应。
 - 说明：模拟器无法接收真实 BLE notify，本组必须真机执行；解析器的合法/非法/超长/非数字路径已由 `GattReadingParserTest` 覆盖，同步与查询契约由 e2e 覆盖。
+
+### 7.7 长周期图表与区间验收（v0.5.0 新增）
+
+前置：后端为 PJGoIoT **v0.5.0**（含 `/readings/series` 与 `/readings/metrics`）；设备已产生跨小时/跨天的真实读数。
+
+- 步骤与预期：
+  1. **区间切换**：进入详情「数据」区，区间 Chip 为「1 小时 / 24 小时 / 7 天 / 30 天」，默认选中 24 小时；逐一切换，图表立即重新请求并重绘，`logcat` 可见 `metric=…&bucket=1m/1h/1d`（1h→1m、24h→1h、7d→1h、30d→1d）。
+  2. **指标真值**：指标 Chip 文案为「指标名 · N 条」，顺序与 `GET .../readings/metrics` 的 `lastAt` 倒序一致；切换指标后 Y 轴单位与汇总行单位同步变化。
+  3. **时间定位与缺口**：采集一段时间后让设备停止推送若干小时（制造空桶），再恢复；图表在缺口处折线断开，不得跨越空桶连线；X 轴位置与真实时间成比例，不能等距排列。
+  4. **波动区间**：每个桶内多次读数时，可见 avg 折线外的浅色 min–max 区间带；Y 轴上下界随所选区间自适应。
+  5. **固定 24h 汇总**：切换 1h/7d/30d 时，汇总行文案仍为「最近 24 小时汇总」，数值不随区间变化；单位与当前指标一致。
+  6. **离线降级**：停掉后端后重进详情并切换区间，图表回退本地数据并显示「离线：本地数据」；选择 30 天时显示「离线：仅本地 7 天数据」，数据集中在时间轴右侧（本地仅保留 7 天）。
+  7. **空区间**：选择没有数据的指标/区间，显示「该区间暂无数据」，不出现假折线、不崩溃。
+  8. **无指标**：新设备无任何读数时显示「连接设备后开始采集」，不发起 series 请求。
+- 失败判定：切换区间不重新查询、bucket 映射错误、缺口仍连线、X 轴等距、Y 轴不随数据变化、单位不更新、30 天离线提示缺失、空区间显示假数据或崩溃。
+- 说明：图表几何（空数据/单桶/等距/缺口/30 天 24 桶/异常值/Y 轴）由 `ReadingChartGeometryTest`、`ReadingRangeTest`、`ReadingSeriesBucketingTest` 覆盖；series 与 metrics 契约由 e2e 覆盖。
 
 ---
 
@@ -481,7 +497,7 @@ adb install -r app/build/outputs/apk/release/app-release.apk
 adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versionCode"
 ```
 
-预期：安装成功；版本 `0.4.1 / 12`；能启动；五模块可进入；BLE 扫描/连接可用。
+预期：安装成功；版本 `0.5.0 / 13`；能启动；五模块可进入；BLE 扫描/连接可用。
 失败判定：`INSTALL_FAILED_NO_MATCHING_ABIS`、安装后闪退（多为 R8 裁剪过度或签名问题）。
 
 ### L3 签名验证

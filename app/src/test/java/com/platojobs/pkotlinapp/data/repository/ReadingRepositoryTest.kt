@@ -2,6 +2,7 @@ package com.platojobs.pkotlinapp.data.repository
 
 import com.platojobs.pkotlinapp.data.local.ReadingDao
 import com.platojobs.pkotlinapp.data.local.ReadingEntity
+import com.platojobs.pkotlinapp.data.local.ReadingMetricRow
 import com.platojobs.pkotlinapp.domain.reading.Reading
 import com.platojobs.pkotlinapp.domain.reading.ReadingSample
 import kotlinx.coroutines.flow.Flow
@@ -101,6 +102,41 @@ class ReadingRepositoryTest {
         assertEquals(18.0, summary.last!!, 0.0)
     }
 
+    @Test
+    fun `local metrics are sorted by lastAt descending with latest unit`() = runBlocking {
+        val dao = FakeReadingDao()
+        val repository = ReadingRepositoryImpl(dao, now = { now })
+
+        repository.record("AA:BB:CC:00:00:01", ReadingSample("temperature", 20.0, "°C", now - 60_000L))
+        repository.record("AA:BB:CC:00:00:01", ReadingSample("temperature", 21.0, "°C", now - 30_000L))
+        repository.record("AA:BB:CC:00:00:01", ReadingSample("heart_rate", 72.0, "bpm", now - 45_000L))
+
+        val metrics = repository.localMetrics("AA:BB:CC:00:00:01")
+
+        // 与服务端口径一致：最近出现的指标在前，同一时刻按 metric 升序。
+        assertEquals(listOf("temperature", "heart_rate"), metrics.map { it.metric })
+        assertEquals(2L, metrics.first().count)
+        assertEquals("°C", metrics.first().unit)
+        assertEquals(now - 30_000L, metrics.first().lastAt)
+        assertEquals(now - 60_000L, metrics.first().firstAt)
+    }
+
+    @Test
+    fun `readingsSince returns ascending rows only after the cutoff`() = runBlocking {
+        val dao = FakeReadingDao()
+        val repository = ReadingRepositoryImpl(dao, now = { now })
+        val day = 24L * 60L * 60L * 1000L
+
+        repository.record("AA:BB:CC:00:00:01", ReadingSample("temperature", 20.0, "°C", now - 8 * day))
+        repository.record("AA:BB:CC:00:00:01", ReadingSample("temperature", 21.0, "°C", now - 2 * day))
+        repository.record("AA:BB:CC:00:00:01", ReadingSample("temperature", 22.0, "°C", now - day))
+
+        val rows = repository.readingsSince("AA:BB:CC:00:00:01", "temperature", now - 7 * day)
+
+        assertEquals(2, rows.size)
+        assertEquals(listOf(now - 2 * day, now - day), rows.map { it.recordedAt })
+    }
+
     /** 只实现仓储真正调用的方法，其余保持最小可用。 */
     private class FakeReadingDao : ReadingDao {
         val stored = mutableListOf<ReadingEntity>()
@@ -142,6 +178,21 @@ class ReadingRepositoryTest {
         ): List<ReadingEntity> = stored
             .filter { it.deviceId == deviceId && it.metric == metric && it.recordedAt >= from }
             .sortedBy { it.recordedAt }
+
+        override suspend fun metricAggregates(deviceId: String): List<ReadingMetricRow> =
+            stored.filter { it.deviceId == deviceId }
+                .groupBy { it.metric }
+                .map { (metric, rows) ->
+                    val latest = rows.maxWith(compareBy({ it.recordedAt }, { it.id }))
+                    ReadingMetricRow(
+                        metric = metric,
+                        unit = latest.unit,
+                        count = rows.size.toLong(),
+                        firstAt = rows.minOf { it.recordedAt },
+                        lastAt = rows.maxOf { it.recordedAt },
+                    )
+                }
+                .sortedWith(compareByDescending<ReadingMetricRow> { it.lastAt }.thenBy { it.metric })
 
         override suspend fun pending(limit: Int): List<ReadingEntity> = stored
             .filter { it.syncState == Reading.SYNC_STATE_PENDING }

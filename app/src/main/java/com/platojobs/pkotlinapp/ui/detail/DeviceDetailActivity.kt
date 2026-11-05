@@ -33,8 +33,9 @@ import com.platojobs.pkotlinapp.domain.model.displayName
 import com.platojobs.pkotlinapp.domain.model.unrecognizedDeviceTypeKey
 import com.platojobs.pkotlinapp.domain.reading.Reading
 import com.platojobs.pkotlinapp.domain.reading.ReadingMetrics
+import com.platojobs.pkotlinapp.domain.reading.ReadingRange
 import com.platojobs.pkotlinapp.domain.reading.ReadingSummary
-import com.platojobs.pkotlinapp.ui.chart.ChartPoint
+import com.platojobs.pkotlinapp.ui.chart.ChartBucket
 import com.platojobs.pkotlinapp.ui.common.BlePermissions
 import com.platojobs.pkotlinapp.ui.common.applyBottomInset
 import com.platojobs.pkotlinapp.ui.common.applyHorizontalInsets
@@ -63,7 +64,8 @@ class DeviceDetailActivity : AppCompatActivity() {
     }
 
     private var receiverRegistered = false
-    private var renderedMetrics: List<String> = emptyList()
+    private var renderedMetricSignatures: List<String> = emptyList()
+    private var renderedRangeChips = false
 
     /**
      * Android 16 新增的受保护系统广播：
@@ -296,37 +298,95 @@ class DeviceDetailActivity : AppCompatActivity() {
             .show()
     }
 
-    /** 数据区：权限/空状态/加载三选一，正常路径展示 Chip、图表、24h 汇总与最近记录。 */
+    /** 数据区：权限/空状态/加载三选一，正常路径展示区间与指标 Chip、图表、24h 汇总。 */
     private fun renderReadings(state: ReadingsState) {
         val hasPermission = BlePermissions.hasConnect(this)
         val hasMetrics = hasPermission && state.metrics.isNotEmpty()
 
         binding.readingsPermissionBlock.visibility = if (hasPermission) View.GONE else View.VISIBLE
         binding.readingsLoadingHint.visibility =
-            if (hasPermission && state.loading) View.VISIBLE else View.GONE
+            if (hasPermission && state.loadingMetrics) View.VISIBLE else View.GONE
         binding.readingsEmptyHint.visibility =
-            if (hasPermission && !state.loading && state.metrics.isEmpty()) View.VISIBLE else View.GONE
+            if (hasPermission && !state.loadingMetrics && state.metrics.isEmpty()) {
+                View.VISIBLE
+            } else {
+                View.GONE
+            }
+        binding.readingsRangeTitle.visibility = if (hasMetrics) View.VISIBLE else View.GONE
+        binding.readingsRangeChips.visibility = if (hasMetrics) View.VISIBLE else View.GONE
         binding.readingsChipScroll.visibility = if (hasMetrics) View.VISIBLE else View.GONE
         binding.readingsOfflineHint.visibility =
             if (hasMetrics && state.offlineLocal) View.VISIBLE else View.GONE
+        binding.readingsOfflineHint.setText(
+            if (state.offlineOnlyLocal7d) {
+                R.string.readings_offline_local_7d
+            } else {
+                R.string.readings_offline_hint
+            },
+        )
         if (hasMetrics) {
+            renderRangeChips(state.selectedRange)
             renderMetricChips(state.metrics, state.selectedMetric)
         }
-        binding.readingsChart.visibility =
-            if (hasMetrics && state.points.isNotEmpty()) View.VISIBLE else View.GONE
-        binding.readingsChart.setPoints(
-            state.points.map { ChartPoint(it.value, it.recordedAt) },
-        )
+
+        val series = state.series
+        val hasBuckets = hasMetrics && series != null && series.buckets.isNotEmpty()
+        binding.readingsChart.visibility = if (hasBuckets) View.VISIBLE else View.GONE
+        if (series != null) {
+            binding.readingsChart.setSeries(
+                series.buckets.map {
+                    ChartBucket(it.start, it.end, it.min, it.max, it.avg)
+                },
+                series.from,
+                series.to,
+                series.unit,
+            )
+        }
+        binding.readingsSeriesEmptyHint.visibility =
+            if (hasMetrics && !state.loadingSeries && !hasBuckets) View.VISIBLE else View.GONE
+
         renderSummary(state.summary)
         renderRecent(state.recent)
     }
 
-    private fun renderMetricChips(metrics: List<String>, selected: String?) {
-        if (renderedMetrics != metrics) {
-            renderedMetrics = metrics
+    /** 区间 Chip：1 小时 / 24 小时 / 7 天 / 30 天，默认 24 小时。 */
+    private fun renderRangeChips(selected: ReadingRange) {
+        if (!renderedRangeChips) {
+            renderedRangeChips = true
+            binding.readingsRangeChips.removeAllViews()
+            ReadingRange.entries.forEach { range ->
+                val label = rangeLabel(range)
+                val chip = Chip(this).apply {
+                    id = View.generateViewId()
+                    text = label
+                    isCheckable = true
+                    isSingleLine = false
+                    maxLines = 2
+                    ellipsize = null
+                    contentDescription = label
+                    setOnClickListener { viewModel.selectRange(range) }
+                }
+                binding.readingsRangeChips.addView(chip)
+            }
+        }
+        ReadingRange.entries.forEachIndexed { index, range ->
+            val chip = binding.readingsRangeChips.getChildAt(index) as? Chip ?: return@forEachIndexed
+            val checked = range == selected
+            if (chip.isChecked != checked) chip.isChecked = checked
+        }
+    }
+
+    private fun renderMetricChips(metrics: List<MetricItem>, selected: String?) {
+        val signatures = metrics.map { "${it.metric}|${it.count}|${it.unit}" }
+        if (renderedMetricSignatures != signatures) {
+            renderedMetricSignatures = signatures
             binding.readingsChips.removeAllViews()
-            metrics.forEach { metric ->
-                val label = metricLabel(metric)
+            metrics.forEach { item ->
+                val label = getString(
+                    R.string.readings_metric_with_count,
+                    metricLabel(item.metric),
+                    item.count.toString(),
+                )
                 val chip = Chip(this).apply {
                     id = View.generateViewId()
                     text = label
@@ -336,16 +396,23 @@ class DeviceDetailActivity : AppCompatActivity() {
                     maxLines = 2
                     ellipsize = null
                     contentDescription = label
-                    setOnClickListener { viewModel.selectMetric(metric) }
+                    setOnClickListener { viewModel.selectMetric(item.metric) }
                 }
                 binding.readingsChips.addView(chip)
             }
         }
         for (index in metrics.indices) {
             val chip = binding.readingsChips.getChildAt(index) as? Chip ?: continue
-            val checked = metrics[index] == selected
+            val checked = metrics[index].metric == selected
             if (chip.isChecked != checked) chip.isChecked = checked
         }
+    }
+
+    private fun rangeLabel(range: ReadingRange): String = when (range) {
+        ReadingRange.HOUR_1 -> getString(R.string.readings_range_1h)
+        ReadingRange.HOUR_24 -> getString(R.string.readings_range_24h)
+        ReadingRange.DAY_7 -> getString(R.string.readings_range_7d)
+        ReadingRange.DAY_30 -> getString(R.string.readings_range_30d)
     }
 
     private fun renderSummary(summary: ReadingSummary?) {

@@ -48,6 +48,18 @@ class AppSettingsTest {
     }
 
     @Test
+    fun `首启引导默认未完成且完成状态可持久化`() {
+        val settings = AppSettings(context)
+        assertFalse(settings.onboardingCompleted)
+
+        settings.onboardingCompleted = true
+        assertTrue(AppSettings(context).onboardingCompleted)
+
+        settings.onboardingCompleted = false
+        assertFalse(AppSettings(context).onboardingCompleted)
+    }
+
+    @Test
     fun `后台采集开关默认关闭且可持久化`() {
         val settings = AppSettings(context)
         assertFalse(settings.backgroundCollectionEnabled)

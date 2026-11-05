@@ -21,6 +21,7 @@ import com.platojobs.pkotlinapp.domain.model.Device
 import com.platojobs.pkotlinapp.domain.model.displayName
 import com.platojobs.pkotlinapp.ui.MainActivity
 import com.platojobs.pkotlinapp.ui.common.BlePermissions
+import com.platojobs.pkotlinapp.ui.common.PermissionRationale
 import com.platojobs.pkotlinapp.ui.common.ThreeStateHost
 import com.platojobs.pkotlinapp.ui.detail.DeviceDetailActivity
 import kotlinx.coroutines.launch
@@ -122,9 +123,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         when {
             state.loading -> threeState.showLoading()
 
-            state.devices.isEmpty() && !state.syncError.isNullOrBlank() ->
-                threeState.showError(state.syncError) { viewModel.syncNow() }
-
+            // 无设备时「开始扫描」是唯一主行动；网络不可用由顶部横幅说明，不在空态里再给一套错误文案。
             state.devices.isEmpty() -> threeState.showEmpty(
                 title = getString(R.string.home_devices_empty_title),
                 hint = getString(R.string.home_devices_empty_hint),
@@ -225,8 +224,14 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             return
         }
         if (!BlePermissions.hasConnect(requireContext())) {
-            pendingDevice = device
-            connectPermissionLauncher.launch(BlePermissions.runtimePermissions())
+            PermissionRationale.show(
+                this,
+                R.string.onboarding_rationale_scan_title,
+                R.string.onboarding_rationale_connect_body,
+            ) {
+                pendingDevice = device
+                connectPermissionLauncher.launch(BlePermissions.runtimePermissions())
+            }
             return
         }
         connectAndOpen(device)

@@ -18,6 +18,7 @@ import com.platojobs.pkotlinapp.data.ble.BleError
 import com.platojobs.pkotlinapp.databinding.DialogScanBinding
 import com.platojobs.pkotlinapp.domain.model.ScannedDevice
 import com.platojobs.pkotlinapp.ui.common.BlePermissions
+import com.platojobs.pkotlinapp.ui.common.PermissionRationale
 import com.platojobs.pkotlinapp.ui.detail.DeviceDetailActivity
 import kotlinx.coroutines.launch
 
@@ -124,7 +125,13 @@ class ScanDialogFragment : DialogFragment() {
             return
         }
         if (!BlePermissions.hasScan(requireContext())) {
-            scanPermissionLauncher.launch(BlePermissions.runtimePermissions())
+            PermissionRationale.show(
+                this,
+                R.string.onboarding_rationale_scan_title,
+                R.string.onboarding_rationale_scan_body,
+            ) {
+                scanPermissionLauncher.launch(BlePermissions.runtimePermissions())
+            }
             return
         }
         viewModel.startScan()
@@ -132,8 +139,14 @@ class ScanDialogFragment : DialogFragment() {
 
     private fun onDeviceClick(device: ScannedDevice) {
         if (!BlePermissions.hasConnect(requireContext())) {
-            pendingDevice = device
-            connectPermissionLauncher.launch(BlePermissions.runtimePermissions())
+            PermissionRationale.show(
+                this,
+                R.string.onboarding_rationale_scan_title,
+                R.string.onboarding_rationale_connect_body,
+            ) {
+                pendingDevice = device
+                connectPermissionLauncher.launch(BlePermissions.runtimePermissions())
+            }
             return
         }
         connectAndOpen(device)

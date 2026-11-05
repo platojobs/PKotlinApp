@@ -1,6 +1,7 @@
 package com.platojobs.pkotlinapp.ui
 
 import android.animation.ValueAnimator
+import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import android.view.animation.DecelerateInterpolator
@@ -24,6 +25,7 @@ import com.platojobs.pkotlinapp.ui.common.applyTopInset
 import com.platojobs.pkotlinapp.ui.home.HomeFragment
 import com.platojobs.pkotlinapp.ui.intelligence.IntelligenceFragment
 import com.platojobs.pkotlinapp.ui.market.MarketFragment
+import com.platojobs.pkotlinapp.ui.onboarding.OnboardingActivity
 import com.platojobs.pkotlinapp.ui.products.ProductsFragment
 import com.platojobs.pkotlinapp.ui.profile.ProfileFragment
 import kotlinx.coroutines.flow.collect
@@ -56,6 +58,7 @@ class MainActivity : AppCompatActivity() {
     private var headerCollapsed = false
     private var headerAnimator: ValueAnimator? = null
     private var attachedScroll: View? = null
+    private var suppressNavSelection = false
     private var recyclerListener: RecyclerView.OnScrollListener? = null
     private var nestedScrollListener: NestedScrollView.OnScrollChangeListener? = null
     private var scrollListener: View.OnScrollChangeListener? = null
@@ -81,21 +84,49 @@ class MainActivity : AppCompatActivity() {
 
         val restoredTab = savedInstanceState?.getInt(STATE_TAB, R.id.nav_home) ?: R.id.nav_home
 
+        val app = application as PKotlinApplication
+        if (savedInstanceState == null && !app.container.settings.onboardingCompleted) {
+            startActivity(Intent(this, OnboardingActivity::class.java))
+        }
+
         binding.bottomNav.setOnItemSelectedListener { item ->
-            showTab(item.itemId)
+            if (!suppressNavSelection) showTab(item.itemId)
             true
         }
 
-        // 冷启动先等待增量拉取（最多 3 秒），失败/超时也继续展示本地数据，避免白屏。
-        val app = application as PKotlinApplication
-        lifecycleScope.launch {
-            app.awaitInitialSync()
-            binding.syncLoading.visibility = View.GONE
-            val previous = binding.bottomNav.selectedItemId
-            binding.bottomNav.selectedItemId = restoredTab
-            if (binding.bottomNav.selectedItemId == previous) {
-                showTab(restoredTab)
-            }
+        binding.shellSkeleton.configure(
+            rows = 4,
+            rowHeightPx = (112 * resources.displayMetrics.density).toInt(),
+        )
+        binding.shellSkeleton.visibility = View.VISIBLE
+        supportFragmentManager.registerFragmentLifecycleCallbacks(
+            object : androidx.fragment.app.FragmentManager.FragmentLifecycleCallbacks() {
+                override fun onFragmentViewCreated(
+                    fm: androidx.fragment.app.FragmentManager,
+                    f: androidx.fragment.app.Fragment,
+                    v: View,
+                    savedInstanceState: Bundle?,
+                ) {
+                    binding.shellSkeleton.visibility = View.GONE
+                }
+            },
+            false,
+        )
+        if (supportFragmentManager.fragments.isNotEmpty()) {
+            binding.shellSkeleton.visibility = View.GONE
+        }
+
+        // 首帧只出应用壳 + 骨架；首页在下一帧挂载，避免首帧承担列表构建。
+        // 本地数据不等网络，同步/清理在首帧之后投递到 IO 线程。
+        suppressNavSelection = true
+        binding.bottomNav.selectedItemId = restoredTab
+        suppressNavSelection = false
+        val initialTitle = getString(titleRes[restoredTab] ?: R.string.app_name)
+        binding.headerTitleLarge.text = initialTitle
+        binding.headerTitleCollapsed.text = initialTitle
+        binding.root.postOnAnimation {
+            showTab(restoredTab)
+            app.startBackgroundWork()
         }
 
         lifecycleScope.launch {

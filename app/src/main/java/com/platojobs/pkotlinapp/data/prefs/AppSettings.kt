@@ -71,6 +71,13 @@ class AppSettings(context: Context) {
             prefs.edit { putString(KEY_DEVICE_SORT, value.name) }
         }
 
+    /** 首次使用引导是否已完成（含用户主动跳过）；未完成时每次启动都会展示。 */
+    var onboardingCompleted: Boolean
+        get() = prefs.getBoolean(KEY_ONBOARDING_COMPLETED, false)
+        set(value) {
+            prefs.edit { putBoolean(KEY_ONBOARDING_COMPLETED, value) }
+        }
+
     /** 后台采集开关：连接设备后是否用前台服务保持 notify 采集。 */
     var backgroundCollectionEnabled: Boolean
         get() = prefs.getBoolean(KEY_BACKGROUND_COLLECTION, false)
@@ -99,5 +106,6 @@ class AppSettings(context: Context) {
         private const val KEY_DEVICE_SORT = "device_sort_mode"
         private const val KEY_BACKGROUND_COLLECTION = "background_collection_enabled"
         private const val KEY_ALERTS_MUTED_UNTIL = "alerts_muted_until"
+        private const val KEY_ONBOARDING_COMPLETED = "onboarding_completed"
     }
 }

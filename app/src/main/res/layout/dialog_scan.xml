@@ -31,7 +31,7 @@
         android:layout_height="wrap_content"
         android:gravity="center"
         android:paddingVertical="@dimen/space_24"
-        android:text="@string/home_empty_hint"
+        android:text="@string/home_devices_empty_hint"
         android:textAppearance="@style/TextAppearance.App.Caption" />
 
     <com.google.android.material.button.MaterialButton

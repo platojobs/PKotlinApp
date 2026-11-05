@@ -36,7 +36,7 @@
 - 首卡上方一行「今日告警摘要」：条数来自 `RuleEvent` 当日真实触发计数，点击进入「智能」。
 - 下方「快捷场景」横向卡：展示本机前 3 个场景，点击即执行并 toast 汇总结果。
 - 点设备卡校验蓝牙连接权限后发起连接并进入详情；「扫描添加」弹层复用同一套 `BluetoothLeScanner`。
-- 三态：骨架延迟 300ms 且与真实列表同高；空态给出「还没有发现设备」+「开始扫描」；同步失败且无本地设备时给出可重试错误块。
+- 三态：骨架延迟 300ms 且与真实列表同高；空态给出「还没有设备」+「开始扫描」；同步失败且无本地设备时给出可重试错误块。
 
 ### 智能 Intelligence（`ui/intelligence`，v0.8.0 新增）
 - **自动化**：低 RSSI / 断开 / 绑定丢失三类本地规则的增删启停，以及最近触发记录；规则命中写 `RuleEvent` 并投递告警通知。
@@ -55,11 +55,11 @@
 - **不包含购物车、订单、支付等任何假交易能力**，页面有明确免责声明。
 
 ### 我的 Profile（`ui/profile`）
-- 同步状态：上次同步时间、待上传条数、最近冲突数、最近错误、纯本地模式提示、手动「立即同步」；登录失效时改为「重新登录」入口（需用户确认），数据来自真实同步状态与 Room 统计。
+- 同步状态：上次同步时间、待同步条数、最近冲突数、最近错误、纯本地模式提示、手动「立即同步」；登录失效时改为「重新登录」入口（需用户确认），数据来自真实同步状态与 Room 统计。
 - 权限自检：读取真实的蓝牙扫描/连接/定位授权状态，并跳转系统应用设置。
 - 扫描日志：Room 本地记录（扫描会话中每个设备首次出现写一条），可清空。
 - 版本与关于：读取 `BuildConfig` 的真实版本号与构建类型。
-- 账号：**迁移到新设备**（8 位配对码 + 服务端真实过期倒计时）、**从旧设备接管**（用配对码换同一 `userId` 的 token 并重新标记本机数据待上传）、**导出我的数据**（按不透明 cursor 分页 JSON）、**注销账号**（二次确认后硬删除云端与本机数据）。
+- 账号：**迁移到新设备**（8 位配对码 + 服务端真实过期倒计时）、**从旧设备接管**（用配对码换同一 `userId` 的 token 并重新标记本机数据待同步）、**导出我的数据**（按不透明 cursor 分页 JSON）、**注销账号**（二次确认后硬删除云端与本机数据）。
 - 后台采集：显示当前是否正在前台服务中采集（设备名 + 已采集条数）。
 - 简单设置：主题（跟随系统 / 浅色 / 深色），写入 SharedPreferences 并即时生效。
 
@@ -176,7 +176,7 @@ app/src/main/java/com/platojobs/pkotlinapp/
 - 迁移后 schema 输出在 `app/schemas/com.platojobs.pkotlinapp.data.local.AppDatabase/6.json`。
 - 别名与广播名隔离：扫描只写 `advertisedName`，详情页编辑只写 `name`（alias），两者互不覆盖；列表/详情展示优先级为「用户别名 → 广播名 → catalog 型号名 → 未知设备」。
 - **别名清空语义**：`aliasDirty` 只在详情页保存且别名相对初始值发生变化时置 1（一旦置位保持），扫描路径永远不置位。置位后即使 `name` 为空，推送也会显式上报 `"alias":""`；未置位时不报空别名。服务端返回空别名时按「已清空」写回本地（`name=""`），展示层回退到广播名，旧别名不会被拉回复活。
-- `DeviceDao` 使用 `@Upsert insertOrUpdate`、`suspend getAllDevices`，并提供待同步查询、待上传计数、按 externalId 标记 synced 等同步专用方法。
+- `DeviceDao` 使用 `@Upsert insertOrUpdate`、`suspend getAllDevices`，并提供待同步查询、待同步计数、按 externalId 标记 synced 等同步专用方法。
 - 删除设备改为**墓碑（tombstone）**：写 `deletedAt + syncState=pending`，UI 通过 `deletedAt IS NULL` 过滤，推送成功后再物理删除。
 
 ### 多设备同步
@@ -218,7 +218,7 @@ app/src/main/java/com/platojobs/pkotlinapp/
 - **冲突处理**：服务端按 LWW 返回 `conflicts`（如 `server_newer`）时以服务端版本覆盖本地，但结果会通过 `SyncOutcome.conflicts` 上报，并显示在「我的」页，**不静默覆盖**。
 - **拉取合并**：若本地记录为 `pending` 且 `updatedAt` 更新，则不被较旧的服务端版本覆盖；服务端 tombstone 直接删除本地记录。
 - **WorkManager**：`SyncWorker` 在 `NetworkType.CONNECTED` 约束下批量 push，成功后置 `synced`；失败按指数退避重试。
-- **冷启动**：`PKotlinApplication` 启动后先拉增量，`MainActivity` 最多等待 3 秒再渲染；超时或失败直接展示本地数据，不白屏。
+- **冷启动**：`PKotlinApplication.onCreate` 只做容器装配与主题恢复；`MainActivity` 不再等待网络，直接渲染首页骨架/空态；同步、保留清理与周期调度在首帧之后由 `startBackgroundWork()` 投递到 IO 线程（详见 §12 的真实测量数字）。
 - **降级**：连续失败 3 次进入纯本地模式并持久化，主界面顶部横幅与「我的」页同步卡片都会提示；本地 Room 功能不受影响，用户可手动同步恢复。
 - **测试**：`SyncEngineTest` 覆盖幂等重试、未上报字段不参与幂等键、冲突落败上报、tombstone 删除与拉取合并；`Rfc3339Test` 覆盖 Go 纳秒时间与带时区偏移的解析；`SyncDtoMappingTest` 覆盖三态序列化（absent/空串/值）、别名与广播名隔离、absent 解析、push DTO 字段归一化、iOS 无 MAC、tombstone 与非法 id 回退；`SyncErrorKindTest` 覆盖网络/超时/401/403/409/500/未知分类；`RemoteSyncTokenTest` 覆盖「401 不自动重登、保留 token、其它错误原样抛出」；`OfflineDeviceInfoTest` 覆盖展示优先级与离线分组；`DeviceAliasPersistenceTest` 覆盖显式清空别名落库、扫描不覆盖别名/不置脏；`DeviceMigrationTest` 用真实 SQLite 验证 v3→v4、v4→v5、v5→v6 不丢数据。
 
@@ -666,7 +666,8 @@ release {
 - [ ] 各机型上的权限弹窗、拒绝后跳系统设置的行为。
 - [ ] 横屏、大屏、折叠屏的 Edge-to-edge 与列表布局表现。
 - [ ] WorkManager 在网络恢复后自动推送、断网连续失败进入纯本地模式。
-- [ ] 冷启动 3 秒内增量拉取与超时回退本地数据的表现。
+- [ ] 首启三步引导在真机上的系统权限弹窗顺序（Android 11 / 12 / 13+），以及拒绝后「仅本机可用」降级页与设置回跳。
+- [ ] 冷启动首帧与首页内容出现时间（`am start -W` + `Displayed`），对比 §12 的模拟器数字。
 - [ ] v1 → v6 全链路 Room 迁移在已有数据的真实设备上执行（本机仅验证 schema 与构建）。
 
 其他限制：
@@ -678,8 +679,98 @@ release {
 
 ---
 
-## 11. 版本记录
+## 11. 首次使用与权限前置（v0.9.0）
 
+首启引导只在**首次安装**或**用户尚未走完**时出现；跳过也会持久化完成状态，中途返回则不写，下次启动继续展示。
+
+- 入口：`MainActivity.onCreate` 读取 `AppSettings.onboardingCompleted`，未完成且非 Activity 重建时启动 `OnboardingActivity`（`ui/onboarding/OnboardingActivity.kt`）。
+- 三步说明（均为真实用途，不是套话）：
+  1. **蓝牙 / 附近的设备**：扫描发现设备广播；连接后读取心率、电量、温度等读数。Android 12+ 只申请「附近的设备」，扫描不用于定位。
+  2. **通知**：规则命中（信号低于阈值、设备断开、绑定丢失）时发送本地告警；后台采集时显示常驻通知。拒绝后规则仍记录，但不提醒。
+  3. **位置**：仅 Android 11 及以下因系统限制必须授权才能扫描 BLE；App 不调用定位 API、不读取/上传位置。Android 12+ 明确显示「当前系统不需要位置权限」，不申请。
+- 先说明后申请：前两步的「继续」只翻页，最后一步「继续」才调用 `RequestMultiplePermissions`；扫描/连接前的补授权也先弹 `PermissionRationale` 说明框（`ui/common/PermissionRationale.kt`），点「继续」才弹系统框。
+- 拒绝后不是死路：结果页展示三项真实授权状态；缺少扫描/连接时显示「仅本机可用：无法扫描或连接设备，不能从设备读取实时读数」，并给出「设置 → 应用 → BLE 设备面板 → 权限」路径与「打开应用设置」按钮；返回后自动刷新状态。仅缺通知时只提示告警不提醒，不判定为仅本机。
+- 首页空态统一：无设备时只有「还没有设备」+「开始扫描」一套文案（`home_devices_empty_*`），扫描弹窗复用同一句提示；已删除旧的 `home_empty_*` / `devices_empty_*` 重复文案。
+- 测试：`OnboardingPolicyTest`（扫描缺失→仅本机、仅通知缺失→非仅本机、全授权→能力完整）；`AppSettingsTest` 覆盖 `onboardingCompleted` 默认值与持久化；`TerminologyAuditTest` 校验高频文案。真机走查见 `docs/acceptance.md` §A0 与 §4 P1/P3。
+
+## 12. 启动性能（真实测量）
+
+> 测量环境：本机 Android Emulator `Test_API35`（android-35 google_apis_playstore / arm64，headless + swiftshader 软件渲染，关闭系统动画，Debug APK），测量前执行 `cmd package compile -m speed -f` 做 AOT 编译以降低 JIT 噪声。改前/改后使用同一模拟器、同一协议。模拟器进程启动与软件渲染开销明显高于中端真机，因此同时记录 `am start -W` 的 `Displayed` 与 App 侧拆分耗时，不把模拟器数字当成真机结论。
+
+### 测量方法
+
+```bash
+adb shell cmd package compile -m speed -f com.platojobs.pkotlinapp
+adb shell am force-stop com.platojobs.pkotlinapp
+adb shell am start -W -n com.platojobs.pkotlinapp/.ui.MainActivity
+adb logcat -d -s ActivityTaskManager:I | grep "Displayed com.platojobs"
+```
+
+每次测量前 `force-stop`，保证进程不在后台；改前 v0.8.0 用 `/tmp/pk080` worktree 安装同签名的降级包（`adb install -r -d`），改后 v0.9.0 用当前构建，各连续测量取中位数并记录最大值。App 侧拆分通过临时 `ColdStartTrace` 日志记录 `Application.onCreate`、`MainActivity.onCreate`、首次 `onPreDraw`，**发布版已移除该日志**。
+
+### 改前（v0.8.0，10 次）
+
+| 指标 | 数值 |
+| --- | --- |
+| `am start -W` TotalTime | 765 / 1489 / 981 / 959 / 1443 / 1094 / 1340 / 1103 / 1414 / 1082 ms，**中位数 1098.5 ms**，最大 1489 ms |
+| `Application.onCreate` | 9–13 ms |
+| Activity 实例化 → 首次 onPreDraw | 282–345 ms（首帧只有应用壳与 `syncLoading` 转圈，**首页内容要等网络**） |
+| 进程 fork → `Application.onCreate` | 约 1.0 s（模拟器进程启动/类加载，非 App 代码） |
+
+### 定位到的原因
+
+1. `MainActivity` 在 `lifecycleScope` 中 `awaitInitialSync()`，最多等 3 秒才挂载首页 Fragment；首帧只显示空容器与 `syncLoading` 转圈，用户看到的是“壳 + 转圈”，不是本地内容。
+2. `PKotlinApplication.onCreate` 同时启动冷启动拉取、7 天清理与 WorkManager 调度；虽在 IO 线程，但与首帧布局/渲染争抢 CPU。
+3. `Application.onCreate` 本身耗时 9–13 ms（仅容器装配 + 主题 SharedPreferences 读取），没有主线程数据库查询或网络请求；模拟器 TotalTime 的主要构成是进程启动（约 1.0 s）与软件渲染，不是应用初始化。
+
+### 改后（v0.9.0，20 次）
+
+| 指标 | 数值 |
+| --- | --- |
+| `am start -W` TotalTime（第一批 10 次） | 929 / 1183 / 1482 / 1920 / 1004 / 749 / 816 / 797 / 772 / 788 ms |
+| `am start -W` TotalTime（第二批 10 次，间隔 3 s） | 1635 / 537 / 820 / 777 / 812 / 943 / 801 / 832 / 683 / 913 ms |
+| 合并统计 | **中位数 818 ms**，最小 537 ms，最大 1920 ms，20 次中 8 次低于 800 ms |
+| `Application.onCreate` | 4–35 ms（仅容器装配 + 主题读取；同步/清理/调度不在 onCreate 执行） |
+| `MainActivity.onCreate` | 138–230 ms（`activity_main` 装配、Insets、底部导航） |
+| 首次 `onPreDraw` | 256–374 ms（只含应用壳 + `shellSkeleton`；首页 Fragment 下一帧挂载） |
+| 后台工作启动 | `binding.root.postOnAnimation { app.startBackgroundWork() }`，首帧绘制后投递到 `Dispatchers.IO` |
+
+结论：同环境、同协议下 `TotalTime` 中位数从 **1098.5 ms 降到 818 ms（−25.5%）**，App 侧首帧耗时 256–374 ms，剩余约 450–600 ms 来自模拟器进程 fork、类加载与软件渲染；波动（537–1920 ms）来自模拟器调度。期间发现首页三态容器层级缺陷（内容被整体 `GONE`）导致首页空白，该构建的 742.5 ms 数据不参与对比，修复布局后按上表重测。
+
+### 改动内容
+
+- 删除 `awaitInitialSync()` 与 `syncLoading`，首页立即渲染本地 Room 数据；网络同步不再决定首屏。
+- 首帧只装配应用壳 + `SkeletonView`，`showTab()` 延后到 `postOnAnimation` 的下一帧，避免首帧承担首页列表构建。
+- `PKotlinApplication` 新增 `startBackgroundWork()`：冷启动拉取、7 天保留清理、WorkManager 周期调度统一在首帧之后、IO 线程执行，且只执行一次。
+- `onCreate` 保持只做 `AppContainer` 装配与主题恢复，不打开数据库、不发网络请求。
+
+## 13. 上架材料与术语统一
+
+| 材料 | 路径 | 覆盖内容 |
+| --- | --- | --- |
+| 商店文案 | `docs/store-listing.md` | 中文短描述（≤80 字）、长描述（仅已实现功能）、关键词、内容分级、不含交易/广告声明、v0.9.0 版本说明 |
+| 隐私政策 | `docs/privacy-policy.md` | 逐项真实数据（BLE MAC/名称/广播名、读数与时间戳、匿名账号 ID/token、本地日志）、用途、保留期（服务端读数 90 天 / 本机 7 天）、注销即删、无广告 SDK、位置不采集不上传、系统备份关闭、导出文件边界 |
+| Data safety 对照 | `docs/data-safety.md` | 按 Play 表单逐项：收集/共享/加密传输/可删除/可选性，每项给出代码或接口证据；未实现能力不申报 |
+
+版本说明一致性：`docs/releasenotes.md` 与 README 本节的 v0.9.0 条目必须一致（版本 `0.9.0 / 17`，tag `v0.9.0`）。
+
+### 13.1 术语统一（设计规范第 8 节）
+
+| 统一使用 | 禁止/避免 | 说明 |
+| --- | --- | --- |
+| 设备 | 装置、机器 | 所有卡片、空态、错误与设置文案 |
+| 读数 | 数值、测量数据（指单条读数时） | 集合仍称「数据」，单条/指标值统一「读数」 |
+| 同步 | 上传 | 待同步条数、同步完成、重新同步；「推送/拉取」仅用于同步方向说明 |
+| 扫描 | 搜索（指发现 BLE 设备时） | 首页“搜索已保存设备”属于列表过滤，可保留「搜索」 |
+| 分组 | 分类 | 设备分组与规则分组统一「分组」 |
+| 绑定 / 解绑 | 配对（系统蓝牙配对除外） | 账号接管入口的「配对码」为既有产品名，保留 |
+| 最后在线 | 最后在线时间/最后活跃 | 统一「最后在线」 |
+
+落地方式：`TerminologyAuditTest` 直接解析 `strings.xml`，对 9 条高频文案（扫描按钮、首页空态、同步状态、读数标题/空态、首启降级文案等）断言不含「装置/机器/上传/策略/参数/最后在线/数值」；另断言扫描按钮含「扫描」、待同步以「待同步」开头、读数标题为「读数」。
+
+## 14. 版本记录
+
+- `v0.9.0`：首次使用路径 + 冷启动性能 + 上架材料。新增 `OnboardingActivity` 三步首启引导（蓝牙/通知/位置的真实用途，可跳过，状态持久化在 `AppSettings.onboardingCompleted`，中途返回不写），权限改为「先说明后申请」（最后一步「继续」才弹系统框，扫描/连接补授权先弹 `PermissionRationale`），拒绝后展示逐项授权状态、「仅本机可用」能力边界与「打开应用设置」入口，返回自动刷新；仅缺通知不算仅本机。首页无设备时只保留「还没有设备」+「开始扫描」一套文案，删除重复空态串，网络不可用只由顶部横幅说明；修复首页三态容器层级缺陷（根布局被整体 `GONE`）。冷启动移除 `awaitInitialSync()`/`syncLoading`，首帧只出应用壳 + 骨架、首页下一帧挂载，同步/清理/调度在首帧后投递 IO，同环境实测 TotalTime 中位数 1098.5 ms → 818 ms（20 次，见 §12）。新增 `docs/store-listing.md`、`docs/privacy-policy.md`、`docs/data-safety.md`；按设计规范第 8 节统一术语并在 §13.1 列表，新增 `TerminologyAuditTest` 检查 9 条高频文案。新增 `OnboardingPolicyTest`、`TerminologyAuditTest`，`AppSettingsTest` 补 `onboardingCompleted`；单测 182 全绿，`assembleDebug`、`lintDebug` 0 issue。
 - `v0.8.0`：设计令牌与信息架构升级。新增 `colors.xml` / `values-night/colors.xml` / `dimens.xml` / 10 级 `TextAppearance` / `res/color` 状态选择器与 `Widget.App.Card`（1dp 描边、零阴影、12dp 圆角），删除布局与代码中的硬编码色值与字号，`windowBackground`/系统栏跟随语义色；自绘大标题 96→56（12dp 阈值、200ms 插值）、行高 56/72/88、页边距 16；统一浅色 6% / 深色 8% 按压遮罩，按钮只变色、卡片按下 0.98；读数/阈值/计数改用 `tnum` 等宽数字；`ChartColorAuditTest` 扩展为同时禁止硬编码字号。底部导航按米家重组为**首页 / 智能 / 产品 / 市场 / 我的**：首页改为设备卡片网格 + 分组分段 + 今日告警摘要 + 快捷场景；新增智能页承载自动化规则与场景；原「设备」Tab 与其规则入口删除。场景为仅本机的有序动作组合（连接/断开设备、开始/停止后台采集、静音告警 10/30/60 分钟、刷新同步），Room v9（`MIGRATION_8_9`）、`SceneExecutor` 顺序执行且失败不阻断、逐动作反馈与汇总；首页展示前 3 个场景。五模块统一骨架（延迟 300ms）/真实空态/可重试错误块。新增场景执行器、持久化、v8→v9 迁移与汇总口径单测；`assembleDebug`、`testDebugUnitTest`、`lintDebug` 全绿。
 - `v0.7.0`：账号迁移与注销 + 后台采集。「我的」新增**迁移到新设备**（`POST /auth/pairing-code`，8 位码 + 服务端 `expiresAt` 真实倒计时、复制、重新生成使旧码立即失效）与**从旧设备接管**（`POST /auth/pairing-code/claim` 换同 `userId` 新 token，保留本地设备/读数并全量重置 `pending` 后重新上传）；输入框按 `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` 自动大写/过滤/截断 8 位；404 统一「码无效或已过期」，429 显示剩余冷却秒数。新增**导出我的数据**（`GET /me/export` 按 `hasMore`/`nextCursor` 循环，cursor 只透传不解析，`devices` 去重、`readings` 拼接，写 `cacheDir/exports/` 后经 FileProvider 分享，显示真实进度与可重试）与**注销账号**（二次确认写明「设备与读数将永久删除且不可恢复」，`DELETE /me` 成功后清 token/游标/同步状态/`clearAllTables()`，401 与网络错误分别提示）。新增**后台采集**前台服务：连接后开关控制，`foregroundServiceType=connectedDevice` + `FOREGROUND_SERVICE_CONNECTED_DEVICE`（Android 14+），通知渠道「数据采集」常驻（设备名 + 已采集条数 + 停止动作），Android 13+ 拒绝通知权限不阻断采集，断开/退出自动停止，开关持久化。单测 168（配对码/导出分页/注销顺序/服务会话/通知构建/Robolectric），e2e 新增账号契约 12 项；lint 0 issue。Room 无 schema 变更（仍为 v8）。
 - `v0.6.0`：四项真实可用功能。**告警通知**：独立渠道「设备告警」、Android 13+ `POST_NOTIFICATIONS` 动态申请与「我的」拒绝提示、真实开关、1/5/30 分钟节流（SharedPreferences 持久化）、信号恢复通知只发一次、点击通知进设备详情、正文不含敏感信息。**CSV 导出**：详情按当前设备+指标+区间导出，≤7 天读 Room、>7 天服务端 cursor 分页（上限 5 万条），UTF-8 BOM / `recordedAt,metric,value,unit` / ISO8601 UTC / RFC 4180 转义，写 `cacheDir/exports/` 并用 `FileProvider` + `ACTION_SEND` 分享，真实进度与可重试错误。**设备列表**：别名/广播名/型号/MAC 即时搜索、四种排序持久化、真实分组 Chip（含未分组）、无设备与筛选无结果两种空状态。**深色模式**：`values-night/colors.xml` + 图表颜色全部走主题资源，`ChartColorAuditTest` 防硬编码回归。Room v8 新增 `devices.createdAt`（`MIGRATION_7_8`）；单测 139，lint 0 issue。

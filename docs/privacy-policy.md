@@ -1,0 +1,96 @@
+# 隐私政策（BLE 设备数据面板）
+
+生效日期：2026-11-05  
+适用版本：0.9.0（`versionCode 17`）
+
+本政策只描述**当前版本实际实现**的数据处理行为。未实现的能力（账号密码、云备份、广告、支付、位置上传）不在本政策承诺范围内。
+
+## 1. 概述
+
+- 本应用采用匿名账号，不需要邮箱、手机号或密码，也不提供账号密码登录。
+- 设备与读数优先保存在本机 Room 数据库；联网时同步到本项目自建后端，用于跨设备查看与恢复。
+- 不接入广告 SDK、统计分析 SDK、第三方推送/社交 SDK。
+- 系统备份已关闭（`allowBackup=false` 与 `data_extraction_rules`），应用数据不会进入 Android 云备份。
+- 不收集、不上传位置数据；不使用通讯录、短信、照片、文件、日历或广告标识符。
+
+## 2. 实际收集的数据
+
+| 数据项 | 具体字段 | 来源 | 用途 | 是否离开本机 |
+| --- | --- | --- | --- | --- |
+| 蓝牙设备信息 | MAC 地址、广播名、用户设置的别名、分组、型号/厂商/固件、设备类型 | 系统 BLE 扫描与 GATT 读取；用户编辑别名/分组 | 展示设备、连接取数、跨设备同步、规则绑定 | 联网同步时发送到本项目后端 |
+| 信号与扫描记录 | RSSI、首次/最近出现时间、扫描记录时间戳 | BLE 扫描 | 信号条、趋势与同步 | 联网同步时发送 |
+| 设备读数 | 指标（温度/湿度/电量/心率/二氧化碳/气压/其他）、数值、单位、记录时间戳 | 设备 GATT/NUS 上报 | 实时展示、历史曲线、汇总、规则判断、CSV 导出 | 联网同步时发送 |
+| 匿名账号标识 | 安装 UUID（`clientId`）、匿名 `userId`、访问 token | 首次匿名登录生成 | 区分同步数据归属、鉴权 | 是；token 经 HTTPS 传输 |
+| 本地错误日志 | 同步 `lastError`、蓝牙/GATT 解析失败日志 | 应用运行 | 本机排障与界面提示 | **否**，仅写 Logcat/SharedPreferences |
+| 用户主动导出的文件 | CSV（`recordedAt,metric,value,unit`）、账号 JSON（设备与读数） | 用户点击导出 | 用户自行保存或分享 | 仅由用户通过系统分享面板发出 |
+
+补充说明：
+
+- 心率属于健康类数据；仅当设备实际上报心率特征（`0x2A37`）时才会产生，未上报则不会出现。
+- 同步请求中的设备字段包括 `id / platform / externalId / mac / deviceType / alias / advertisedName / group / rules / scanRecords / updatedAt / deleted`；读数包括 `id / metric / value / unit / recordedAt`（见 `data/remote/SyncApi.kt`）。
+- 同步接口只发送上述业务字段，不发送位置、通讯录、短信、相册、文件列表或广告 ID。
+
+## 3. 权限与真实用途
+
+| 权限 | 申请时机 | 真实用途 | 拒绝后的影响 |
+| --- | --- | --- | --- |
+| `BLUETOOTH_SCAN`（Android 12+，`neverForLocation`） | 首次引导说明后，用户点「继续」 | 发现附近 BLE 设备广播 | 无法扫描；仍可查看本机已保存设备与历史读数 |
+| `BLUETOOTH_CONNECT`（Android 12+） | 首次引导说明后，用户点「继续」 | 连接设备并读取 GATT 读数 | 无法连接与读取实时读数 |
+| `ACCESS_FINE_LOCATION`（`maxSdkVersion=30`） | 仅 Android 11 及以下首启引导 | 系统要求 BLE 扫描必须获得位置权限；应用不调用定位 API、不读取经纬度、不上传位置 | 无法扫描附近 BLE 设备 |
+| `POST_NOTIFICATIONS`（Android 13+） | 首次引导说明后，用户点「继续」 | 规则告警与后台采集常驻通知 | 告警仍记录，但不会提醒；后台采集通知不可见 |
+
+Android 11 及以下的位置权限仅用于满足系统 BLE 扫描限制，不产生任何位置数据；Android 12 及以上不申请位置权限。
+
+## 4. 数据共享与第三方
+
+- **不向第三方出售或共享**个人数据。同步数据只发送到本项目自建后端（开发者运营），用于账号同步与恢复。
+- 无广告 SDK、无 Crashlytics/Sentry/Firebase 等崩溃或分析 SDK、无第三方推送 SDK。
+- 依赖库仅为 AndroidX、Material、Kotlin Coroutines、Retrofit/OkHttp/Moshi、Room、WorkManager、security-crypto（见 `app/build.gradle.kts`）。
+- 用户主动导出并分享文件时，接收方由用户在系统分享面板中选择，不属于应用自动共享。
+
+## 5. 保留期
+
+- **本机读数**：已同步的读数保留 7 天，之后由清理任务删除（`RETENTION_DAYS = 7`，仅清理 `syncState = synced`）；未同步读数无论多旧都会保留到同步成功为止，避免数据丢失。
+- **服务端读数**：按本项目同步契约保留 90 天。
+- **服务端设备元数据**：随匿名账号保留，注销账号时删除。
+- **本机设备信息**：保留到用户移除设备、清空数据或注销账号。
+- **本地错误日志**：`lastError` 保留在 SharedPreferences 直到下次同步覆盖或注销；Logcat 日志随系统日志轮转。
+- **导出文件**：写入应用 `cacheDir/exports`，由用户自行保存或分享；注销账号不会自动删除已导出的文件。
+
+## 6. 删除与注销
+
+- 应用内路径：「我的 → 注销账号」，二次确认后调用 `DELETE /api/v1/me`。
+- 成功后：删除服务端账号数据；清空本机 token（EncryptedSharedPreferences）、同步游标、同步状态与全部 Room 表（含仅本机的场景、扫描日志、规则触发记录），回到匿名初始态。
+- 失败时：保留本地数据并提示错误，不静默删除，可重试。
+- 不提供账号密码，因此没有「修改密码」流程；匿名账号注销后不可恢复。
+- 卸载应用会删除应用私有目录内的本机数据；已导出到公共目录或通过分享发送的文件需用户自行清理。
+
+## 7. 安全
+
+- 生产环境必须使用 HTTPS；Release 构建默认禁止明文 HTTP（`targetSdk 36`），若未注入 HTTPS 的 `apiBaseUrl`，同步会失败而不会明文传输。
+- 匿名 token 存于 `EncryptedSharedPreferences`（AES256_GCM，Android Keystore 保护）；安装 UUID 与主题设置存于普通 SharedPreferences。
+- Debug 构建为本地联调允许明文 HTTP（仅 `10.0.2.2` 等开发地址），不用于生产分发。
+
+## 8. 儿童与内容
+
+- 应用不专门面向 13 岁以下儿童，不含用户生成内容、社交、广告或交易功能。
+- 若设备上报心率，仅用于展示与用户自己的健康记录，不用于广告画像。
+
+## 9. 变更与联系
+
+- 政策变更会在仓库 `docs/privacy-policy.md` 与版本说明中记录，并在新版本生效前更新本文件。
+- 隐私问题与数据删除协助：https://github.com/platojobs/PKotlinApp/issues
+
+## 10. 代码证据索引
+
+| 事项 | 文件 |
+| --- | --- |
+| 同步接口与字段 | `app/src/main/java/com/platojobs/pkotlinapp/data/remote/SyncApi.kt` |
+| 设备/读数 Room 实体 | `app/src/main/java/com/platojobs/pkotlinapp/data/local/Entities.kt` |
+| 7 天保留与仅清 synced | `domain/reading/ReadingModels.kt`、`data/repository/ReadingRepositoryImpl.kt`、`data/local/Daos.kt` |
+| token 加密存储 | `data/sync/SecureTokenStore.kt` |
+| 安装 UUID | `data/sync/SyncPrefs.kt` |
+| 注销流程 | `domain/account/AccountService.kt` |
+| 导出 CSV/JSON | `domain/export/ReadingCsv.kt`、`domain/account/AccountExportJson.kt`、`ui/common/FileSharing.kt` |
+| 权限声明 | `app/src/main/AndroidManifest.xml`、`ui/common/BlePermissions.kt` |
+| 无崩溃/广告 SDK | `app/build.gradle.kts` 依赖列表 |

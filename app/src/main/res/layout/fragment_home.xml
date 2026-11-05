@@ -1,10 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    android:id="@+id/homeContent"
+    android:id="@+id/homeRoot"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:orientation="vertical">
+    android:layout_height="match_parent">
+
+    <!-- 三态控制只隐藏 homeContent；骨架与空态/错误浮层是它的兄弟节点。 -->
+    <LinearLayout
+        android:id="@+id/homeContent"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -95,16 +101,19 @@
                 android:paddingEnd="10dp"
                 android:paddingBottom="@dimen/space_24"
                 android:scrollbars="none" />
-
-            <com.platojobs.pkotlinapp.ui.common.SkeletonView
-                android:id="@+id/skeletonHome"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/space_8" />
-
-            <FrameLayout
-                android:id="@+id/homeOverlay"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent" />
         </FrameLayout>
-</LinearLayout>
+    </LinearLayout>
+
+    <com.platojobs.pkotlinapp.ui.common.SkeletonView
+        android:id="@+id/skeletonHome"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="10dp"
+        android:layout_marginTop="@dimen/space_8"
+        android:layout_marginEnd="10dp" />
+
+    <FrameLayout
+        android:id="@+id/homeOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+</FrameLayout>

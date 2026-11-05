@@ -6,6 +6,23 @@
 
 ---
 
+## v0.9.0
+
+**主题：首次使用路径 / 冷启动性能 / 上架材料与术语统一**
+
+- 首次使用：新增 `OnboardingActivity`，仅在首次安装或用户未走完时出现，可跳过；完成或跳过会持久化 `AppSettings.onboardingCompleted`，中途返回不写状态、下次继续展示。三步均为真实用途：① 蓝牙/附近的设备——扫描发现广播、连接后读取心率/电量/温度等读数（Android 12+ 只申请「附近的设备」，扫描不用于定位）；② 通知——规则命中（信号低于阈值、设备断开、绑定丢失）时发送本地告警、后台采集显示常驻通知，拒绝后规则仍记录但不提醒；③ 位置——仅 Android 11 及以下因系统限制需要位置权限才能扫描 BLE，App 不调用定位 API、不读取/上传位置，Android 12+ 明确说明本步骤不申请。
+- 权限前置：前两步「继续」只翻页，最后一步「继续」才调用 `RequestMultiplePermissions`；扫描/连接前的补授权也先弹 `PermissionRationale` 说明框，点「继续」才弹系统框。拒绝后不是死路：结果页逐项展示真实授权状态，缺少扫描/连接时标注「仅本机可用」并给出具体能力边界、「设置 → 应用 → BLE 设备面板 → 权限」路径与「打开应用设置」按钮；返回后自动刷新状态；仅缺通知时只提示告警不提醒，不判定为仅本机。
+- 首页空态：无设备时只保留「还没有设备」+「开始扫描」一套文案与一个主行动（`home_devices_empty_*`），扫描弹窗复用同一句提示，删除旧的 `home_empty_*` / `devices_empty_*` 重复文案；网络不可用只由顶部横幅说明，空态不再叠加错误文案。修复首页三态容器层级缺陷（根布局被整体 `GONE` 导致骨架/空态/错误一起不可见），三态浮层与骨架改为内容的兄弟节点。
+- 冷启动：移除 `awaitInitialSync()` 与 `syncLoading`，首帧只装配应用壳 + `SkeletonView`，首页 Fragment 延后到 `postOnAnimation` 的下一帧挂载；`PKotlinApplication` 新增 `startBackgroundWork()`，冷启动拉取、7 天保留清理与 WorkManager 调度统一在首帧之后、`Dispatchers.IO` 执行且只执行一次。同环境（Test_API35 模拟器、AOT、Debug）实测 `am start -W` TotalTime 中位数 **1098.5 ms → 818 ms**（20 次，最小 537 ms、最大 1920 ms），App 侧首帧 256–374 ms，其余为模拟器进程启动与软件渲染。数字与原因见 README §12。
+- 上架材料：新增 `docs/store-listing.md`（中文短描述 38 字、长描述仅列已实现能力、关键词、全年龄分级、明确「不含交易/不含广告」、健康数据说明、v0.9.0 版本说明）、`docs/privacy-policy.md`（逐项真实数据：BLE MAC/广播名/别名、带时间戳读数、匿名账号 ID 与加密 token、崩溃与错误仅本地日志；用途、保留期服务端 90 天/本机 7 天、注销即删、无广告与分析 SDK、位置不采集不上传、系统备份关闭）、`docs/data-safety.md`（按 Play Data safety 表单逐项对照并给出代码/接口证据，未实现能力不申报）。
+- 术语统一（设计规范第 8 节）：设备（不用装置/机器）、读数（单条不用数值）、同步（不用上传）、扫描（发现 BLE 设备不用搜索）、分组（不用分类）、绑定/解绑（系统蓝牙配对除外）、最后在线；README §13.1 列易混术语表；新增 `TerminologyAuditTest` 解析 `strings.xml` 对 9 条高频文案检查禁用词并断言扫描/待同步/读数三条关键文案。
+- 测试：新增 `OnboardingPolicyTest`（扫描缺失→仅本机、仅通知缺失→非仅本机、全授权→能力完整）、`TerminologyAuditTest`；`AppSettingsTest` 补 `onboardingCompleted` 默认值与持久化；单测 182 个全绿，`assembleDebug`、`lintDebug` 0 issue。
+- 文档：README 新增 §11「首次使用与权限前置」、§12「启动性能（真实测量）」、§13「上架材料与术语统一」（含 §13.1 术语表），版本记录同步；`docs/acceptance.md` 升级 v0.9.0 并补 §A0 首启引导与权限前置走查，空态与 P1/P3 文案同步。
+
+版本：`versionCode = 17`、`versionName = 0.9.0`。
+
+---
+
 ## v0.8.0
 
 **主题：设计令牌落地 / 米家式信息架构 / 本机场景**

@@ -16,12 +16,44 @@
     <string name="action_disconnect">断开连接</string>
     <string name="action_scan">开始扫描</string>
     <string name="action_stop_scan">停止扫描</string>
+    <string name="permission_dialog_continue">继续</string>
+
+    <!-- 首次使用引导：仅首次或未走完时显示，可跳过；跳过也会记为已完成 -->
+    <string name="onboarding_skip">跳过</string>
+    <string name="onboarding_step_indicator">第 %1$d 步 / 共 %2$d 步</string>
+    <string name="onboarding_continue">继续</string>
+    <string name="onboarding_step_bluetooth_title">为什么需要「附近的设备」权限</string>
+    <string name="onboarding_step_bluetooth_body">扫描时要发现附近设备的蓝牙广播；连接后要读取心率、电量、温度等读数。Android 12 及以上只申请「附近的设备」，扫描结果不用于定位。</string>
+    <string name="onboarding_step_notification_title">为什么需要通知权限</string>
+    <string name="onboarding_step_notification_body">规则命中时（信号低于阈值、设备断开、绑定丢失）发送本地告警；后台采集时也会显示常驻通知。拒绝后规则仍会记录，但不会提醒。</string>
+    <string name="onboarding_step_location_title_current">为什么这里要说明位置权限</string>
+    <string name="onboarding_step_location_body_current">Android 11 及以下，系统要求扫描 BLE 必须获得位置权限；本 App 不使用、也不收集位置数据，位置数据不会离开本机。当前系统为 Android 12 及以上，扫描不依赖定位，本步骤不会申请位置权限。</string>
+    <string name="onboarding_step_location_title_legacy">为什么需要位置权限</string>
+    <string name="onboarding_step_location_body_legacy">Android 11 及以下，系统要求扫描 BLE 必须获得位置权限（系统限制）；本 App 只用它扫描设备，不使用、也不收集位置数据，位置数据不会离开本机。</string>
+    <string name="onboarding_result_all_title">权限已就绪</string>
+    <string name="onboarding_result_all_body">可以扫描并连接附近设备。读数保存在本机，联网后自动同步。</string>
+    <string name="onboarding_result_limited_title">部分权限未授予</string>
+    <string name="onboarding_result_limited_body">仍可查看本机已保存的设备与历史读数，但以下能力不可用：</string>
+    <string name="onboarding_result_local_only">仅本机可用：无法扫描或连接设备，不能从设备读取实时读数。</string>
+    <string name="onboarding_result_no_notification">告警仍会记录，但不会发送通知；后台采集通知也不会显示。</string>
+    <string name="onboarding_result_location_denied">Android 11 及以下缺少位置权限，无法扫描附近 BLE 设备。</string>
+    <string name="onboarding_status_scan">蓝牙扫描</string>
+    <string name="onboarding_status_connect">蓝牙连接</string>
+    <string name="onboarding_status_notification">告警通知</string>
+    <string name="onboarding_permission_line">%1$s：%2$s</string>
+    <string name="onboarding_settings_hint">可在系统「设置 → 应用 → %1$s → 权限」中重新开启。</string>
+    <string name="onboarding_open_settings">打开应用设置</string>
+    <string name="onboarding_use_limited">先这样使用</string>
+    <string name="onboarding_start">开始使用</string>
+    <string name="onboarding_rationale_scan_title">需要蓝牙权限</string>
+    <string name="onboarding_rationale_scan_body">扫描需要「附近的设备」权限来发现设备广播；扫描结果不用于定位。拒绝后无法扫描，但本机历史读数仍可查看。</string>
+    <string name="onboarding_rationale_connect_body">连接设备需要「附近的设备」权限来读取心率、电量、温度等读数。拒绝后无法连接该设备。</string>
 
     <string name="status_scanning">正在扫描附近 BLE 设备…</string>
     <string name="status_scan_idle">未在扫描</string>
     <string name="status_bluetooth_off">蓝牙未开启，请先开启蓝牙</string>
     <string name="status_ble_unsupported">当前设备不支持 BLE</string>
-    <string name="status_permission_missing">缺少蓝牙或附近设备权限</string>
+    <string name="status_permission_missing">缺少蓝牙或附近设备权限，可在系统设置中开启后重试</string>
     <string name="status_scan_failed">扫描失败（错误码 %1$d）</string>
 
     <string name="device_unknown">未知设备</string>
@@ -31,15 +63,10 @@
 
     <string name="home_live_title">附近设备</string>
     <string name="home_recent_title">最近设备</string>
-    <string name="home_recent_empty">暂无历史设备，扫描后会自动保存</string>
-    <string name="home_empty_title">还没有发现设备</string>
-    <string name="home_empty_hint">开启蓝牙并授权附近设备权限后开始扫描</string>
 
     <string name="devices_saved_title">已保存设备</string>
     <string name="devices_count_with_groups">共 %1$d 台设备 · %2$d 个分组</string>
     <string name="device_group_value">分组：%1$s</string>
-    <string name="devices_empty_title">暂无已保存设备</string>
-    <string name="devices_empty_hint">在首页扫描到的设备会自动保存到这里</string>
     <string name="devices_connected">已连接</string>
     <string name="devices_connecting">连接中</string>
     <string name="devices_disconnected">未连接</string>
@@ -47,7 +74,7 @@
     <string name="devices_trend_up">上升 %1$d dBm</string>
     <string name="devices_trend_down">下降 %1$d dBm</string>
     <string name="devices_trend_flat">持平</string>
-    <string name="devices_trend_unknown">暂无趋势数据</string>
+    <string name="devices_trend_unknown">暂无趋势读数</string>
     <string name="devices_delete_desc">移除设备</string>
     <string name="devices_delete_title">移除设备</string>
     <string name="devices_delete_message">确定从本地记录中移除「%1$s」吗？</string>
@@ -133,12 +160,12 @@
     <string name="profile_sync_title">同步状态</string>
     <string name="profile_sync_last">上次同步：%1$s</string>
     <string name="profile_sync_never">上次同步：尚未同步</string>
-    <string name="profile_sync_pending">待上传：%1$d 条</string>
+    <string name="profile_sync_pending">待同步：%1$d 条</string>
     <string name="profile_sync_conflicts">最近冲突：%1$d 条（已采用服务端版本）</string>
     <string name="profile_sync_local_only">已连续失败，切换为纯本地模式。可点击“立即同步”重试。</string>
     <string name="profile_sync_now">立即同步</string>
     <string name="profile_sync_running">同步中…</string>
-    <string name="profile_sync_success">同步完成：上传 %1$d 条，拉取 %2$d 条</string>
+    <string name="profile_sync_success">同步完成：推送 %1$d 条，拉取 %2$d 条</string>
     <string name="profile_sync_failure">同步失败：%1$s</string>
     <string name="profile_sync_last_error">最近错误：%1$s</string>
     <string name="profile_sync_error_network">网络不可用，请检查网络后重试</string>
@@ -222,10 +249,10 @@
     <string name="product_characteristics_item">特征：%1$s</string>
     <string name="product_no_gatt">该型号未提供 GATT 服务信息</string>
 
-    <string name="readings_title">数据</string>
+    <string name="readings_title">读数</string>
     <string name="readings_loading">正在读取本地数据…</string>
-    <string name="readings_empty_hint">暂无测量数据，连接设备后开始采集。</string>
-    <string name="readings_permission_hint">缺少蓝牙连接权限，无法采集与展示测量数据。请在应用设置中授予「附近的设备」权限。</string>
+    <string name="readings_empty_hint">暂无读数，连接设备后开始采集。</string>
+    <string name="readings_permission_hint">缺少蓝牙连接权限，无法采集与展示读数。请在应用设置中授予「附近的设备」权限。</string>
     <string name="readings_permission_action">去应用设置</string>
     <string name="readings_offline_hint">离线：本地数据</string>
     <string name="readings_offline_local_7d">离线：仅本地 7 天数据</string>
@@ -235,10 +262,10 @@
     <string name="readings_range_7d">7 天</string>
     <string name="readings_range_30d">30 天</string>
     <string name="readings_metric_with_count">%1$s · %2$s 条</string>
-    <string name="readings_series_empty">该区间暂无数据</string>
+    <string name="readings_series_empty">该区间暂无读数</string>
     <string name="readings_summary_line">最近 24 小时汇总：最小 %1$s · 最大 %2$s · 平均 %3$s · 最新 %4$s</string>
     <string name="readings_recent_title">最近记录</string>
-    <string name="readings_chart_desc">区间内 %1$d 个数据桶的折线图</string>
+    <string name="readings_chart_desc">区间内 %1$d 个分桶的折线图</string>
     <string name="readings_metric_temperature">温度</string>
     <string name="readings_metric_humidity">湿度</string>
     <string name="readings_metric_battery">电量</string>
@@ -303,14 +330,14 @@
     <string name="account_pairing_generate_failed">生成失败：%1$s</string>
 
     <string name="account_claim_title">从旧设备接管</string>
-    <string name="account_claim_desc">输入旧设备上的 8 位配对码。接管后本机已有设备与读数会重新上传到该账号。</string>
+    <string name="account_claim_desc">输入旧设备上的 8 位配对码。接管后本机已有设备与读数会重新同步到该账号。</string>
     <string name="account_claim_hint">8 位配对码</string>
     <string name="account_claim_button">接管账号</string>
     <string name="account_claim_format_error">请输入完整的 8 位配对码</string>
     <string name="account_claim_invalid">码无效或已过期</string>
     <string name="account_claim_rate_limited">尝试过于频繁，请稍后再试</string>
     <string name="account_claim_rate_limited_seconds">尝试过于频繁，请 %1$d 秒后再试</string>
-    <string name="account_claim_success">接管成功，本机数据已重新排队上传（账号 %1$s）</string>
+    <string name="account_claim_success">接管成功，本机数据已重新排队同步（账号 %1$s）</string>
 
     <!-- 账号导出与注销 -->
     <string name="account_export_title">导出我的数据</string>

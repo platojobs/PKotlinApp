@@ -88,6 +88,53 @@ class HouseholdMigrationTest {
         }
     }
 
+    /**
+     * v12 -> v13：家庭卡片使用服务端 roomCount，旧行补 0，不清数据。
+     */
+    @Test
+    fun `v12 to v13 adds roomCount with default zero`() {
+        DriverManager.getConnection("jdbc:sqlite::memory:").use { connection ->
+            connection.createStatement().use { statement ->
+                statement.execute(
+                    """
+                    CREATE TABLE `households` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `remoteId` TEXT NOT NULL,
+                        `name` TEXT NOT NULL,
+                        `isPersonal` INTEGER NOT NULL DEFAULT 0,
+                        `role` TEXT NOT NULL,
+                        `memberCount` INTEGER NOT NULL DEFAULT 0,
+                        `deviceCount` INTEGER NOT NULL DEFAULT 0,
+                        `sortOrder` INTEGER NOT NULL DEFAULT 0,
+                        `createdAt` INTEGER NOT NULL DEFAULT 0
+                    )
+                    """.trimIndent(),
+                )
+                statement.executeUpdate(
+                    "INSERT INTO households (remoteId, name, isPersonal, role, memberCount, deviceCount) " +
+                        "VALUES ('h-1', '我的家', 1, 'owner', 1, 2)",
+                )
+            }
+
+            HouseholdCountsMigrationSql.V12_TO_V13.forEach { sql ->
+                connection.createStatement().use { it.execute(sql) }
+            }
+
+            assertTrue(tableColumns(connection, "households").contains("roomCount"))
+            assertEquals(1, countRows(connection, "households"))
+            connection.createStatement().use { statement ->
+                statement.executeQuery("SELECT name, memberCount, deviceCount, roomCount FROM households")
+                    .use { cursor ->
+                        assertTrue(cursor.next())
+                        assertEquals("我的家", cursor.getString("name"))
+                        assertEquals(1, cursor.getInt("memberCount"))
+                        assertEquals(2, cursor.getInt("deviceCount"))
+                        assertEquals(0, cursor.getInt("roomCount"))
+                    }
+            }
+        }
+    }
+
     private fun createV11Schema(connection: Connection) {
         connection.createStatement().use { statement ->
             statement.execute(

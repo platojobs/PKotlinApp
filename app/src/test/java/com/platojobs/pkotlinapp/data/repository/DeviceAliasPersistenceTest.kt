@@ -164,6 +164,8 @@ class DeviceAliasPersistenceTest {
 
         override suspend fun clearHouseholdAssignments(householdId: Long) = Unit
 
+        override suspend fun deleteSharedForHousehold(householdId: Long) = Unit
+
         override suspend fun clearHouseholdLinks() = Unit
 
         override suspend fun tombstone(mac: String, timestamp: Long) {

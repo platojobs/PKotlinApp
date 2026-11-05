@@ -1,9 +1,9 @@
-# 真机验收清单（v0.14.0）
+# 真机验收清单（v0.15.0）
 
 本清单用于「执行人不在开发现场」时也能照着做完验收。每项都写明**操作步骤、预期现象、失败判定**。
 所有结果请记录到文末的「验收记录表」；未实际执行的项不要填 PASS。
 
-- 适用版本：`versionName = 0.14.0`（`versionCode = 22`）
+- 适用版本：`versionName = 0.15.0`（`versionCode = 23`）
 - 应用包名：`com.platojobs.pkotlinapp`
 - 主界面：`com.platojobs.pkotlinapp.ui.MainActivity`
 - 设备详情：`com.platojobs.pkotlinapp.ui.detail.DeviceDetailActivity`
@@ -55,7 +55,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versionCode"
 ```
 
-预期：`versionName=0.10.0`、`versionCode=18`。
+预期：`versionName=0.15.0`、`versionCode=23`。
 
 ---
 
@@ -357,7 +357,7 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
 
 ---
 
-## 7. Room v1 → v2 → v3 → v4 → v5 → v6 → v7 → v8 → v9 → v10 → v11 迁移
+## 7. Room v1 → v2 → v3 → v4 → v5 → v6 → v7 → v8 → v9 → v10 → v11 → v12 → v13 迁移
 
 > 需要 v0.3.1 的 Debug APK 作为「旧版本」。若手头没有，可从 tag 构建：
 >
@@ -481,6 +481,20 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
   3. 恢复网络并登录/同步，再次查看首页与本机数据。
 - 预期：`user_version = 12`；两个房间仍在，`remoteId/householdId` 迁移后为 `NULL`，设备 `roomId` 指向原房间；联网合并后同名服务端房间被认领、其余房间被上传获得 `remoteId`，设备归属不变；`households` 出现至少一条记录。
 - 失败判定：版本不是 12、房间或设备归属丢失、联网后本机房间被静默删除、`households` 为空。
+
+### M10 v12 → v13 家庭计数迁移（v0.15.0 新增）
+
+- 前置：v0.14.0 包（Room v12）已登录并同步过，`households` 至少有一条记录。
+- 步骤：
+  1. 覆盖安装 v0.15.0，打开「我的」查看家庭计数；
+  2. 导出数据库查询：
+     ```bash
+     sqlite3 /tmp/device_dashboard.db "PRAGMA user_version;"
+     sqlite3 /tmp/device_dashboard.db "SELECT remoteId, name, memberCount, deviceCount, roomCount FROM households;"
+     ```
+  3. 联网同步后再次查看首页家庭 Chip 与「我的」家庭计数。
+- 预期：`user_version = 13`；迁移后旧行 `roomCount = 0` 且其余字段不变；同步后 `roomCount` 变为服务端真实房间数，首页 Chip 与家庭卡片显示同源数字。
+- 失败判定：版本不是 13、`households` 数据丢失、迁移后崩溃、计数仍取本地缓存条数。
 
 ### 7.2 离线缓存与分组验收（v0.3.5 新增）
 
@@ -746,6 +760,22 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
     ```
     预期：`households.remoteId` 唯一且当前家庭已持久化；远端房间有 `remoteId`，未上传房间为空；共享设备 `shared=1`，待上报设备 `pendingRoomPatch=1`，成功后归零。
 - 失败判定：邀请码非 8 位或倒计时不来自服务端；加入家庭未复用配对码规范化；多家庭无切换入口或切换后数据不跟随；member 能改房间/看到原始错误码；离线白屏或本机房间被清空；共享设备可编辑。
+
+### 7.21 家庭管理（成员移除 / 退出 / 邀请码撤销）与房间整段排序验收（v0.15.0 新增）
+
+前置：后端 PJGoIoT v0.13.0 及以上；手机 A = owner，手机 B = member（已加入 A 的家庭并共享设备）；A 家庭至少有 2 个房间。
+
+1. **真实计数**：A、B 的「我的」家庭卡片显示「成员 N · 设备 M · 房间 K」，N/M/K 与 `GET /api/v1/households` 返回值一致；断网后数字仍为上次服务端值，不按本地缓存重新数。
+2. **owner / member 入口可见性**：A 能看到「重命名家庭」「生成邀请码」「邀请码列表」「退出家庭」且成员行可长按；B 看不到重命名、邀请码与撤销入口，成员行不可长按，只有「退出家庭」。
+3. **邀请码列表**：A 生成一个码后，列表新增一条仅显示哈希前缀（如 `a1b2c3d4`）、状态与过期时间，**不出现 8 位明文**；对着列表项截图与后端 `GET /households/{id}/invitations` 比对，无 `code` 字段。
+4. **撤销邀请码**：A 点该行「撤销」，提示成功且该行消失；此时 B（或第三台手机）用该码加入提示「邀请码无效或已过期」。
+5. **移除成员**：A 长按 B 的成员行 → 弹出二次确认，文案写明「对方设备将回到其个人家庭」；确认后成员数减 1，B 的设备从 A 的列表消失（共享行清理）。B 再访问该家庭提示「家庭或房间不存在，可能已被移除」。
+6. **退出家庭（owner 被拦截）**：A 家庭仍有其他成员时点「退出家庭」，提示「请先转让所有权或移除其他成员」，不发生退出。
+7. **退出家庭（成员）**：B 点「退出家庭」并确认，提示成功；B 的设备回落到其个人家庭，家庭内房间清空，B 不再出现在 A 的成员列表。
+8. **房间整段排序**：A 在「房间管理」点某行的 ↑/↓ 移动，顺序立即生效并发起整段提交；成功后再进入房间管理顺序保持。
+9. **重排冲突**：在另一台设备同时增删房间制造集合变化（或用未包含全部房间的请求复现），重新排序时提示「房间列表已变化，已刷新」，列表自动刷新为服务端最新顺序，不丢失房间。
+10. **离线排序**：断网移动房间顺序，顺序本地保留并标记「未同步」；恢复网络同步成功后标记消失。
+- 失败判定：邀请码列表出现明文或 `code` 字段；member 能看到签发/撤销/移除/重命名入口；移除成员后对方仍能访问或本机残留共享设备；owner 带成员能直接退出；排序只改本地不提交或 409 后不刷新；计数取自本地缓存。
 
 ## 8. Release 包安装与 R8 生效验证
 

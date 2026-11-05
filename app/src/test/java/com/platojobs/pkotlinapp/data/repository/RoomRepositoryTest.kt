@@ -115,6 +115,10 @@ class RoomRepositoryTest {
             rooms[id]?.let { rooms[id] = it.copy(name = name, sortOrder = sortOrder) }
         }
 
+        override suspend fun updateSortOrder(id: Long, sortOrder: Int) {
+            rooms[id]?.let { rooms[id] = it.copy(sortOrder = sortOrder) }
+        }
+
         override suspend fun adoptOrphanRooms(householdId: Long) {
             rooms.values.filter { it.householdId == null }.forEach {
                 rooms[it.id] = it.copy(householdId = householdId)
@@ -245,6 +249,11 @@ class RoomRepositoryTest {
             rows.values.filter { it.householdId == householdId }.forEach {
                 rows[it.mac] = it.copy(householdId = null, roomId = null, remoteRoomId = null)
             }
+        }
+
+        override suspend fun deleteSharedForHousehold(householdId: Long) {
+            rows.values.filter { it.shared && it.householdId == householdId }
+                .forEach { rows.remove(it.mac) }
         }
 
         override suspend fun clearHouseholdLinks() {

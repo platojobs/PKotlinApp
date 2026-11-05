@@ -28,6 +28,24 @@
             android:textAppearance="@style/TextAppearance.App.Body" />
 
         <TextView
+            android:id="@+id/householdCounts"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:textAppearance="@style/TextAppearance.App.Caption"
+            android:textColor="@color/text_secondary"
+            android:visibility="gone" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/householdRenameButton"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/household_rename"
+            android:visibility="gone" />
+
+        <TextView
             android:id="@+id/householdSyncState"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -60,6 +78,7 @@
             android:text="@string/household_create" />
 
         <TextView
+            android:id="@+id/householdInviteTitle"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
@@ -131,6 +150,40 @@
             android:textColor="@color/danger"
             android:visibility="gone" />
 
+        <LinearLayout
+            android:id="@+id/householdInvitationsSection"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/household_invitation_list_title"
+                android:textAppearance="@style/TextAppearance.App.Caption"
+                android:textColor="@color/text_secondary" />
+
+            <TextView
+                android:id="@+id/householdInvitationsEmpty"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="@string/household_invitation_list_empty"
+                android:textAppearance="@style/TextAppearance.App.Caption"
+                android:textColor="@color/text_secondary"
+                android:visibility="gone" />
+
+            <LinearLayout
+                android:id="@+id/householdInvitationsList"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:orientation="vertical" />
+
+        </LinearLayout>
+
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -163,6 +216,24 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
             android:text="@string/household_join_action" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/householdLeaveButton"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="@string/household_leave"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/householdLeaveHint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:textAppearance="@style/TextAppearance.App.Caption"
+            android:textColor="@color/text_secondary"
+            android:visibility="gone" />
 
     </LinearLayout>
 

@@ -591,6 +591,19 @@ Debug / Release 都可通过 `apiBaseUrl` 切换；发布前请传入正式域�
 - **权限降级**：403 映射「你没有修改该家庭或房间的权限」，404「家庭或房间不存在，可能已被移除」，429「尝试次数过多」，网络错误「网络不可用，已保留本机数据」；不展示原始错误码、不整页报错，操作失败后列表保持可用。
 - **离线**：家庭接口不可用时保留本机房间与设备，状态卡显示「未同步：当前显示本机缓存，联网后自动更新」，不白屏、不清空家庭列表（服务端返回空列表时也保留本机数据）。
 
+### 6.13 家庭管理能力与整段房间排序（v0.15.0）
+
+- **数据模型**：Room v13（`MIGRATION_12_13`）为 `households` 增加 `roomCount INTEGER NOT NULL DEFAULT 0`；该字段只存服务端 `GET /households` 返回的真实计数，UI 不数本地缓存。
+- **新增接口接法**（后端 PJGoIoT v0.13.0 / openapi 0.9.0）：
+  - `DELETE /households/{id}/members/{userId}`：owner 移除成员；成功后本地刷新家庭计数并重拉设备，被移除成员的共享设备因不再返回而清理。
+  - `POST /households/{id}/leave`：成员退出；owner 还有其他成员时服务端返回 409。成功后本地删除该家庭的房间、共享设备与设备归属，清除当前家庭偏好，回落到个人家庭。
+  - `GET /households/{id}/invitations` / `DELETE /households/{id}/invitations/{invitationId}`：列表只消费 `codeHashPrefix`、`status`、`attempts`、`expiresAt`、`createdAt`，**不请求也不展示明文**；撤销只对未使用且未过期的码有效。
+  - `PUT /households/{id}/rooms/order`：整段集合顺序提交（`roomIds` 为完整列表），服务端按数组下标重写 `sortOrder`。
+- **错误判定**：HTTP 409 映射为 `HouseholdConflictException`（保留 `error.code`），重排集合不一致再转换为 `RoomSetMismatchException`；分类统一为 `HouseholdErrorKind.CONFLICT`。后端 v0.13.0 未提供 `ROOM_SET_MISMATCH`，因此绝不解析 `message`，只依据 HTTP 状态与 `error.code` 做机读判断，未来后端补码时可平滑替换。
+- **409 重试策略**：本地先按用户操作乐观落顺序（离线也保留）；若存在未上传房间先补传，再整段 PUT。收到 409 时立即重新拉取服务端房间集合覆盖本地并抛 `RoomSetMismatchException`，UI 提示「房间列表已变化，已刷新」，用户看到的即为最新顺序，不需要盲目重试；网络错误则保留本地顺序并标记「未同步」。
+- **权限与可见性**：`householdCapabilities()` 统一计算入口——owner 可见重命名、签发/撤销邀请码、移除成员；member 全部隐藏，仅保留「退出家庭」；owner 且 `memberCount > 1` 时退出按钮被拦截，展示「请先转让所有权或移除其他成员」。成员行仅 owner 可长按移除，二次确认文案说明对方设备会回到其个人家庭。
+- **计数**：首页家庭 Chip 使用服务端 `deviceCount`，家庭卡片使用 `memberCount/deviceCount/roomCount`；服务端数字是唯一来源。
+
 ---
 
 ## 7. 构建与运行
@@ -600,7 +613,7 @@ export JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk-21.jdk/Contents/Home
 
 ./gradlew assembleDebug        # Debug APK
 ./gradlew lintDebug            # Lint
-./gradlew testDebugUnitTest    # 单元测试：222 个（含规则防抖/恢复/迁移、图表命中、推荐模板、双语/无障碍/200% 字号）
+./gradlew testDebugUnitTest    # 单元测试：245 个（含规则防抖/恢复/迁移、图表命中、推荐模板、双语/无障碍/200% 字号、家庭移除/退出/邀请码/重排 409）
 ./gradlew assembleRelease      # 签名 Release APK
 ./gradlew bundleRelease        # 签名 Release AAB
 
@@ -917,7 +930,7 @@ Content-Type: application/json
 
 1. 调 `PJGoIoT/scripts/stack-for-e2e.sh`：Docker 起 `postgres:16-alpine`（自动选空闲端口）、迁移到最新版本、Go 进程以 `STORE=postgres` 启动 API，输出 `BASE_URL`；
 2. 调 `scripts/seed-for-e2e.sh`：写入真实迁移 seed 关联的 ESP32-C3-DevKitM-1 与 24 条读数，并从 API 读回校验；
-3. 跑 `:app:e2ePostgres`：与 fixture 套件共用用例，另加 postgres 专属断言——匿名登录/claim 的 `expiresAt`（180 天）、push 设备+读数、changes、readings/changes/export 的 limit 边界（500/500/5000 通过，501/501/5001 返回 400）、series/metrics、注销 204 后 401；
+3. 跑 `:app:e2ePostgres`：与 fixture 套件共用用例，另加 postgres 专属断言——匿名登录/claim 的 `expiresAt`（180 天）、push 设备+读数、changes、readings/changes/export 的 limit 边界（500/500/5000 通过，501/501/5001 返回 400）、series/metrics、注销 204 后 401；家庭链路在两种存储下一致覆盖：服务端计数、邀请码列表无明文、撤销后 claim 404、重排缺项 409、owner 带成员退出 409、移除成员后对方 404、owner 退出 204；
 4. 410 分支：匿名登录 → push 2 台设备 → SQL 把该用户最老 `seq` 的 `server_ts` 改到 100 天前 → 跑 `cmd/cleanup`（change_log 保留 90 天）→ `cursor=最老seq-1` 断言 `410 RESYNC_REQUIRED` → `cursor=0` 断言 200 且返回剩余变更；
 5. 无论成功失败都停栈；失败时把 `api.log` 复制到 `E2E_LOG_DIR`，供 CI artifact 上传。
 
@@ -941,6 +954,7 @@ CI：GitHub Actions 的 `e2e-postgres` job 与该次运行同一脚本，日志�
 
 ## 16. 版本记录
 
+- `v0.15.0`：接入后端 v0.13.0 的家庭管理能力。Room v13（`MIGRATION_12_13`）为 `households` 增加 `roomCount`，统一保存服务端 `memberCount/deviceCount/roomCount` 真实数字，首页 Chip 与家庭卡片不再数本地缓存。新增 `DELETE /households/{id}/members/{userId}`（owner 移除成员，本地刷新计数并重拉设备清理共享行）、`POST /households/{id}/leave`（成员退出，owner 有其他成员时 409；本地删除该家庭房间/共享设备/归属并回落个人家庭）、`GET /households/{id}/invitations`（只取 `codeHashPrefix`/状态/过期时间，绝无明文）与 `DELETE .../invitations/{invitationId}`、`PUT /households/{id}/rooms/order`（整段集合排序）。409 机读判定为 HTTP 409 + `error.code`（后端 v0.13.0 无 `ROOM_SET_MISMATCH`），重排冲突自动重拉并提示「房间列表已变化，已刷新」，离线保留本地顺序标「未同步」。`householdCapabilities()` 统一 owner/member 可见性：member 看不到重命名、邀请码签发/撤销与成员移除，owner 带成员退出时提示「请先转让所有权或移除其他成员」。新增 `HouseholdRepositoryTest`（成员移除清理、退出回落、邀请码列表/撤销、重排 409 重试、离线排序）、`HouseholdMigrationTest` v12→v13 与 owner/member 能力单测；fixture 与真 Postgres e2e 补「服务端计数 → 邀请码列表无明文 → 撤销后 claim 404 → 重排缺项 409 → owner 带成员退出 409 → 移除成员后对方 404 → owner 退出 204」。单测 245 全绿、`lintDebug` 0 issue、`assembleDebug`、两套 e2e 全绿，tag `v0.15.0`。
 - `v0.14.0`：家庭接上后端，房间真正归属家庭并支持成员共享。Room v12（`MIGRATION_11_12`）新增 `households` 表，`rooms` 增加 `remoteId/householdId`，`devices` 增加 `householdId/remoteRoomId/pendingRoomPatch/pendingRoomLocalId/pendingHouseholdRemoteId/shared`；设备归属选择反规范化 `devices.remoteRoomId` 而不是映射表（单一可选属性、PATCH 按设备粒度，理由见 §6.12）。登录/手动同步/重登三条路径拉 `GET /households` 并持久化当前家庭，切换家庭按家庭拉房间与设备。首次接入按规范化名称认领服务端同名房间、其余按本地顺序上传，绝不静默丢弃本机房间，`planRoomMerge` + `HouseholdMigrationTest` 覆盖。设备房间归属只走 `PATCH /my/devices`（不塞 push，避免 LWW），失败保留 pending 重试，4xx 清 pending 并回读服务端。「我的」新增家庭管理（角色/成员、创建、8 位邀请码 + 服务端倒计时 + 复制 + 重新生成、加入家庭复用配对码规范化与 404/429 文案）；首页仅在多家庭时显示可见切换 Chip；服务端房间为权威来源，未上传房间与离线状态明确标注「未同步」；403/404/429/离线全部降级为可读提示。fixture 与真 Postgres e2e 均跑通「创建家庭 → 邀请码 → 第二账号领取 → 成员可见设备 → member 改房间 403 → 跨家庭 404」；单测 235 全绿、`lintDebug` 0 issue、`assembleDebug` 全绿，tag `v0.14.0`。
 - `v0.13.0`：本机房间与首页分区。Room v11 新增 `rooms(id, name, sortOrder, createdAt)` 与可空 `devices.roomId`（`MIGRATION_10_11`），旧设备保持未分配、`deviceGroup` 原样保留；`RoomMigrationTest` 用真实 SQLite 验证升级。首页按房间分段、房间头可折叠、「未分配」固定最后；搜索时平铺结果并忽略折叠，排序只在房间内生效，分组 Chip 仅按 `deviceGroup` 过滤并隐藏空房间（决策见 §6.11）。房间支持新建/重命名/删除（二次确认，删除后设备回到未分配），设备可长按或详情页移入移出；空态区分「还没有房间」与「房间内无设备引导扫描」。房间仅本机、不参与同步，扫描/编辑/拉取均保留 `roomId`。`RoomRepositoryTest` 覆盖排序、重命名与删除落点；单测 227 全绿、`lintDebug` 0 issue、`assembleDebug`、fixture 与真 Postgres e2e 全绿，tag `v0.13.0`。
 - `v0.12.0`：与 iOS 配平的双语、超大字号与无障碍。全部文案拆为默认中文 `values/strings.xml` 与 `values-en/strings.xml`（457 条字符串 + 8 组 `plurals`，占位符全部命名参数），英文统一 Device/Reading/Sync/Scan/Group/Alert/**Transfer Code**/Bucket，禁止 pairing code；新增 `BilingualAuditTest` 校验两份资源 key/占位符/空值一致性、UI 层 Kotlin 无中文字面量、英文术语、配色对比度与 48dp 触控区。界面日期/数字改用 `Locale.getDefault()`，CSV 仍固定 `Locale.US`。200% 字号下首页降为单列、卡片与详情行自适应换行、规则弹窗可滚动、图表 Y 轴缩为 3 刻度且标签宽度自适应、市场 Chip 换行不省略；`FontScaleLayoutTest` 用 Robolectric 实测高度与父宽。无障碍补规则开关 `stateDescription`、图标 `contentDescription`、图表整图/选中摘要，`text_tertiary` 调深满足 `surface_sunken` 上 ≥4.5:1。单测 222 全绿、`lintDebug` 0 issue、`assembleDebug`、fixture 与真 Postgres e2e 全绿，tag `v0.12.0`。

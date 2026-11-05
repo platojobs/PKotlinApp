@@ -106,6 +106,10 @@ interface DeviceDao {
     )
     suspend fun clearHouseholdAssignments(householdId: Long)
 
+    /** 退出家庭后，该家庭的成员共享设备必须从本机移除。 */
+    @Query("DELETE FROM devices WHERE shared = 1 AND householdId = :householdId")
+    suspend fun deleteSharedForHousehold(householdId: Long)
+
     /** 重新登录 / 切换账号时清空家庭与远端房间缓存，本机房间保留并等待重新合并。 */
     @Query(
         "UPDATE devices SET householdId = NULL, remoteRoomId = NULL, pendingRoomPatch = 0, " +
@@ -194,6 +198,10 @@ interface RoomDao {
     @Query("UPDATE rooms SET name = :name, sortOrder = :sortOrder WHERE id = :id")
     suspend fun updateFromServer(id: Long, name: String, sortOrder: Int)
 
+    /** 整段重排的本地乐观顺序；服务端确认后由 [updateFromServer] 覆盖。 */
+    @Query("UPDATE rooms SET sortOrder = :sortOrder WHERE id = :id")
+    suspend fun updateSortOrder(id: Long, sortOrder: Int)
+
     /** v12 迁移后的旧房间还没有家庭归属，首次同步归入当前家庭。 */
     @Query("UPDATE rooms SET householdId = :householdId WHERE householdId IS NULL")
     suspend fun adoptOrphanRooms(householdId: Long)
@@ -227,7 +235,7 @@ interface HouseholdDao {
 
     @Query(
         "UPDATE households SET name = :name, isPersonal = :isPersonal, role = :role, " +
-            "memberCount = :memberCount, deviceCount = :deviceCount, " +
+            "memberCount = :memberCount, deviceCount = :deviceCount, roomCount = :roomCount, " +
             "sortOrder = :sortOrder, createdAt = :createdAt WHERE id = :id",
     )
     suspend fun update(
@@ -237,6 +245,7 @@ interface HouseholdDao {
         role: String,
         memberCount: Int,
         deviceCount: Int,
+        roomCount: Int,
         sortOrder: Int,
         createdAt: Long,
     )

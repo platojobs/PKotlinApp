@@ -1,6 +1,6 @@
 package com.platojobs.pkotlinapp.ui.home
 
-import android.content.Context
+import android.app.Application
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
@@ -19,6 +19,7 @@ import com.platojobs.pkotlinapp.data.sync.SyncManager
 import com.platojobs.pkotlinapp.data.sync.SyncScheduler
 import com.platojobs.pkotlinapp.domain.household.Household
 import com.platojobs.pkotlinapp.domain.household.HouseholdErrorKind
+import com.platojobs.pkotlinapp.domain.household.RoomSetMismatchException
 import com.platojobs.pkotlinapp.domain.household.classifyHouseholdError
 import com.platojobs.pkotlinapp.domain.model.Device
 import com.platojobs.pkotlinapp.domain.model.Room
@@ -106,7 +107,7 @@ class HomeViewModel(
     private val syncManager: SyncManager,
     private val settings: AppSettings,
     private val householdRepository: HouseholdRepository,
-    private val context: Context,
+    private val context: Application,
     private val unknownDeviceName: String,
 ) : ViewModel() {
 
@@ -256,6 +257,23 @@ class HomeViewModel(
         }
     }
 
+    /**
+     * 整段重排房间：提交完整顺序给服务端；409 时仓库已重新拉取，这里只提示「已刷新」。
+     * 离线时本地顺序保留，房间头照常显示「未同步」。
+     */
+    fun reorderRooms(orderedLocalIds: List<Long>) {
+        viewModelScope.launch {
+            runCatching { householdRepository.reorderRooms(orderedLocalIds) }
+                .onFailure { error ->
+                    if (error is RoomSetMismatchException) {
+                        _householdMessages.tryEmit(context.getString(R.string.room_order_changed))
+                    } else {
+                        emitHouseholdError(error)
+                    }
+                }
+        }
+    }
+
     /** [roomId] 为 null 时移出房间，回到「未分配」。 */
     fun assignRoom(mac: String, roomId: Long?) {
         viewModelScope.launch {
@@ -278,6 +296,7 @@ class HomeViewModel(
                 HouseholdErrorKind.NOT_FOUND -> context.getString(R.string.household_not_found)
                 HouseholdErrorKind.INVALID_CODE -> context.getString(R.string.invite_code_invalid)
                 HouseholdErrorKind.RATE_LIMITED -> context.getString(R.string.invite_rate_limited)
+                HouseholdErrorKind.CONFLICT -> context.getString(R.string.household_conflict)
                 HouseholdErrorKind.OFFLINE -> context.getString(R.string.household_offline_hint)
                 HouseholdErrorKind.SERVER_ERROR -> context.getString(R.string.household_server_error)
             },
@@ -496,7 +515,7 @@ class HomeViewModel(
                     syncManager = container.syncManager,
                     settings = container.settings,
                     householdRepository = container.householdRepository,
-                    context = app.applicationContext,
+                    context = app,
                     unknownDeviceName = app.getString(R.string.device_unknown),
                 )
             }

@@ -4,22 +4,29 @@ import com.platojobs.pkotlinapp.data.remote.DeviceMetaPatchRequest
 import com.platojobs.pkotlinapp.data.remote.HouseholdCreateRequest
 import com.platojobs.pkotlinapp.data.remote.HouseholdDto
 import com.platojobs.pkotlinapp.data.remote.HouseholdInvitationClaimRequest
+import com.platojobs.pkotlinapp.data.remote.HouseholdInvitationInfoDto
+import com.platojobs.pkotlinapp.data.remote.HouseholdPatchRequest
 import com.platojobs.pkotlinapp.data.remote.HouseholdRoomCreateRequest
 import com.platojobs.pkotlinapp.data.remote.HouseholdRoomDto
+import com.platojobs.pkotlinapp.data.remote.HouseholdRoomOrderRequest
 import com.platojobs.pkotlinapp.data.remote.HouseholdRoomPatchRequest
 import com.platojobs.pkotlinapp.data.remote.Reported
 import com.platojobs.pkotlinapp.data.remote.SyncApi
 import com.platojobs.pkotlinapp.data.remote.SyncDeviceDto
+import com.platojobs.pkotlinapp.data.remote.apiErrorCode
 import com.platojobs.pkotlinapp.data.remote.toSyncException
 import com.platojobs.pkotlinapp.data.sync.TokenStore
+import com.platojobs.pkotlinapp.domain.household.HouseholdConflictException
 import com.platojobs.pkotlinapp.domain.household.HouseholdForbiddenException
 import com.platojobs.pkotlinapp.domain.household.HouseholdInvitation
+import com.platojobs.pkotlinapp.domain.household.HouseholdInvitationInfo
 import com.platojobs.pkotlinapp.domain.household.HouseholdMember
 import com.platojobs.pkotlinapp.domain.household.HouseholdNotFoundException
 import com.platojobs.pkotlinapp.domain.household.HouseholdRemote
 import com.platojobs.pkotlinapp.domain.household.HouseholdRole
 import com.platojobs.pkotlinapp.domain.household.HouseholdRoom
 import com.platojobs.pkotlinapp.domain.household.HouseholdSnapshot
+import com.platojobs.pkotlinapp.domain.household.InvitationStatus
 import com.platojobs.pkotlinapp.domain.household.InviteCodeInvalidException
 import com.platojobs.pkotlinapp.domain.household.InviteRateLimitedException
 import com.platojobs.pkotlinapp.domain.household.RemoteDeviceRef
@@ -27,11 +34,13 @@ import com.platojobs.pkotlinapp.domain.sync.Rfc3339
 import retrofit2.HttpException
 
 /**
- * 家庭接口 Retrofit 适配（openapi 0.8.0 / 后端 v0.12.0）。
+ * 家庭接口 Retrofit 适配（openapi 0.9.0 / 后端 v0.13.0）。
  *
  * 错误语义：
- * - 403 → [HouseholdForbiddenException]（member 改家庭/房间）；
+ * - 403 → [HouseholdForbiddenException]（member 改家庭/房间/签发邀请码）；
  * - 404 → [HouseholdNotFoundException]（跨家庭不可见，避免泄露存在性）；
+ * - 409 → [HouseholdConflictException]，只带 `error.code`（当前为 `CONFLICT`）作为机读判定，
+ *   不解析 message；
  * - 领取邀请码的 404 → [InviteCodeInvalidException]，429 → [InviteRateLimitedException]；
  * - 401 沿用同步的 [com.platojobs.pkotlinapp.domain.sync.AuthExpiredException]。
  */
@@ -49,6 +58,12 @@ class RemoteHouseholdDataSource(
             ?: throw IllegalStateException("创建家庭响应缺少 id")
     }
 
+    override suspend fun renameHousehold(remoteId: String, name: String): HouseholdSnapshot =
+        withToken { auth ->
+            api.patchHousehold(auth, remoteId, HouseholdPatchRequest(name)).toSnapshot()
+                ?: throw IllegalStateException("更新家庭响应缺少 id")
+        }
+
     override suspend fun members(remoteId: String): List<HouseholdMember> = withToken { auth ->
         api.householdMembers(auth, remoteId).items.orEmpty().map {
             HouseholdMember(
@@ -60,12 +75,30 @@ class RemoteHouseholdDataSource(
         }
     }
 
+    override suspend fun removeMember(remoteId: String, userId: String) = withToken { auth ->
+        api.removeHouseholdMember(auth, remoteId, userId)
+    }
+
+    override suspend fun leave(remoteId: String) = withToken { auth ->
+        api.leaveHousehold(auth, remoteId)
+    }
+
     override suspend fun createInvitation(remoteId: String): HouseholdInvitation = withToken { auth ->
         val response = api.createHouseholdInvitation(auth, remoteId)
         val code = response.code?.takeIf { it.isNotBlank() }
             ?: throw IllegalStateException("邀请码响应缺少 code")
         HouseholdInvitation(code = code, expiresAt = Rfc3339.parse(response.expiresAt) ?: 0L)
     }
+
+    override suspend fun listInvitations(remoteId: String): List<HouseholdInvitationInfo> =
+        withToken { auth ->
+            api.householdInvitations(auth, remoteId).items.orEmpty().mapNotNull { it.toInfo() }
+        }
+
+    override suspend fun revokeInvitation(remoteId: String, invitationId: String) =
+        withToken { auth ->
+            api.revokeHouseholdInvitation(auth, remoteId, invitationId)
+        }
 
     override suspend fun claimInvitation(code: String): HouseholdSnapshot = withToken { auth ->
         try {
@@ -111,6 +144,14 @@ class RemoteHouseholdDataSource(
         api.deleteHouseholdRoom(auth, remoteId, roomRemoteId)
     }
 
+    override suspend fun reorderRooms(
+        remoteId: String,
+        roomRemoteIds: List<String>,
+    ): List<HouseholdRoom> = withToken { auth ->
+        api.reorderHouseholdRooms(auth, remoteId, HouseholdRoomOrderRequest(roomRemoteIds))
+            .items.orEmpty().mapNotNull { it.toRoom() }
+    }
+
     override suspend fun listDevices(): List<RemoteDeviceRef> = withToken { auth ->
         api.myDevices(auth).items.orEmpty().mapNotNull { it.toDeviceRef() }
     }
@@ -142,6 +183,7 @@ class RemoteHouseholdDataSource(
             when (e.code()) {
                 403 -> throw HouseholdForbiddenException()
                 404 -> throw HouseholdNotFoundException()
+                409 -> throw HouseholdConflictException(e.apiErrorCode())
                 else -> throw e.toSyncException() ?: e
             }
         }
@@ -157,6 +199,19 @@ class RemoteHouseholdDataSource(
             memberCount = memberCount ?: 0,
             deviceCount = deviceCount ?: 0,
             sortOrder = 0,
+            createdAt = Rfc3339.parse(createdAt) ?: 0L,
+            roomCount = roomCount ?: 0,
+        )
+    }
+
+    private fun HouseholdInvitationInfoDto.toInfo(): HouseholdInvitationInfo? {
+        val invitationId = id?.takeIf { it.isNotBlank() } ?: return null
+        return HouseholdInvitationInfo(
+            invitationId = invitationId,
+            codeHashPrefix = codeHashPrefix.orEmpty(),
+            status = InvitationStatus.parse(status),
+            attempts = attempts ?: 0,
+            expiresAt = Rfc3339.parse(expiresAt) ?: 0L,
             createdAt = Rfc3339.parse(createdAt) ?: 0L,
         )
     }

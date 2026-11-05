@@ -21,6 +21,8 @@ data class Household(
     val role: HouseholdRole,
     val memberCount: Int = 0,
     val deviceCount: Int = 0,
+    /** 服务端统计的房间数（`GET /households`），不数本地缓存。 */
+    val roomCount: Int = 0,
     val sortOrder: Int = 0,
     val createdAt: Long = 0,
 ) {
@@ -38,6 +40,33 @@ data class HouseholdInvitation(
     val code: String,
     /** 服务端返回的过期时间（毫秒时间戳）。 */
     val expiresAt: Long,
+)
+
+/** 邀请码状态：与服务端 `status` 枚举一致。 */
+enum class InvitationStatus {
+    ACTIVE,
+    EXPIRED,
+    LOCKED;
+
+    companion object {
+        fun parse(raw: String?): InvitationStatus = when (raw?.lowercase()) {
+            "active" -> ACTIVE
+            "locked" -> LOCKED
+            else -> EXPIRED
+        }
+    }
+}
+
+/**
+ * 邀请码管理视图：服务端只返回哈希前缀，明文只在签发那一次出现。
+ */
+data class HouseholdInvitationInfo(
+    val invitationId: String,
+    val codeHashPrefix: String,
+    val status: InvitationStatus,
+    val attempts: Int,
+    val expiresAt: Long,
+    val createdAt: Long,
 )
 
 data class HouseholdRoom(
@@ -73,12 +102,28 @@ class InviteRateLimitedException : RuntimeException("too many attempts")
 class HouseholdServerUnavailableException(cause: Throwable? = null) :
     RuntimeException("server unavailable", cause)
 
+/**
+ * 409：owner 带成员退出、整段重排集合不一致。
+ *
+ * 后端 v0.13.0 尚未提供 `ROOM_SET_MISMATCH`，因此机读判定只用 HTTP 409 + `error.code`
+ * （当前为 `CONFLICT`），不解析人类可读的 message。
+ */
+class HouseholdConflictException(val code: String? = null) : RuntimeException("conflict")
+
+/** 重排时房间集合已变化：仓库已重新拉取，调用方提示「已刷新」即可。 */
+class RoomSetMismatchException : RuntimeException("room set changed")
+
 /** 家庭接口的远程访问抽象，便于单测替换。 */
 interface HouseholdRemote {
     suspend fun listHouseholds(): List<HouseholdSnapshot>
     suspend fun createHousehold(name: String): HouseholdSnapshot
+    suspend fun renameHousehold(remoteId: String, name: String): HouseholdSnapshot
     suspend fun members(remoteId: String): List<HouseholdMember>
+    suspend fun removeMember(remoteId: String, userId: String)
+    suspend fun leave(remoteId: String)
     suspend fun createInvitation(remoteId: String): HouseholdInvitation
+    suspend fun listInvitations(remoteId: String): List<HouseholdInvitationInfo>
+    suspend fun revokeInvitation(remoteId: String, invitationId: String)
     suspend fun claimInvitation(code: String): HouseholdSnapshot
     suspend fun listRooms(remoteId: String): List<HouseholdRoom>
     suspend fun createRoom(remoteId: String, name: String, sortOrder: Int): HouseholdRoom
@@ -89,6 +134,8 @@ interface HouseholdRemote {
         sortOrder: Int?,
     ): HouseholdRoom
 
+    /** 整段重排；集合不一致时服务端返回 409。 */
+    suspend fun reorderRooms(remoteId: String, roomRemoteIds: List<String>): List<HouseholdRoom>
     suspend fun deleteRoom(remoteId: String, roomRemoteId: String)
     suspend fun listDevices(): List<RemoteDeviceRef>
 
@@ -117,4 +164,6 @@ data class HouseholdSnapshot(
     val deviceCount: Int,
     val sortOrder: Int,
     val createdAt: Long,
+    /** 服务端统计的房间数（openapi 0.9.0 起）。 */
+    val roomCount: Int = 0,
 )

@@ -223,13 +223,20 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             return
         }
         binding.householdScroll.visibility = View.VISIBLE
-        val signature = state.households.map { it.remoteId to it.name } to state.currentHousehold?.remoteId
+        val signature = state.households.map { Triple(it.remoteId, it.name, it.deviceCount) } to
+            state.currentHousehold?.remoteId
         if (binding.householdChips.tag == signature) return
         binding.householdChips.tag = signature
         binding.householdChips.removeAllViews()
         state.households.forEach { household ->
+            // 设备数取服务端统计，不数本地缓存。
+            val label = getString(
+                R.string.home_household_chip,
+                household.name,
+                household.deviceCount,
+            )
             binding.householdChips.addView(
-                makeChip(household.name, state.currentHousehold?.remoteId == household.remoteId) {
+                makeChip(label, state.currentHousehold?.remoteId == household.remoteId) {
                     viewModel.switchHousehold(household.remoteId)
                 },
             )
@@ -259,57 +266,100 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             .show()
     }
     private fun showRoomManager() {
-        val rooms = lastState.rooms
         val context = requireContext()
+        val ordered = lastState.rooms.toMutableList()
         val content = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(8), dp(20), dp(8))
         }
-        if (rooms.isEmpty()) {
-            content.addView(TextView(context).apply {
-                setText(R.string.room_manage_empty)
-                setTextAppearance(R.style.TextAppearance_App_Caption)
-                setTextColor(context.getColor(R.color.text_secondary))
-            })
+
+        // 先声明渲染闭包，move 里可以重新渲染当前顺序（Kotlin 局部函数不支持前向引用）。
+        var renderRows: () -> Unit = {}
+
+        // 上下移动即整段提交；服务端 409 时仓库已重新拉取，首页提示「已刷新」。
+        fun move(index: Int, delta: Int) {
+            val target = index + delta
+            if (target !in ordered.indices) return
+            val item = ordered.removeAt(index)
+            ordered.add(target, item)
+            renderRows()
+            viewModel.reorderRooms(ordered.map { it.id })
         }
-        rooms.forEach { room ->
-            val row = LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                minimumHeight = dp(48)
-                gravity = android.view.Gravity.CENTER_VERTICAL
-            }
-            row.addView(TextView(context).apply {
-                text = room.name
+
+        fun moveButton(label: String, description: String, enabled: Boolean, onClick: () -> Unit) =
+            TextView(context).apply {
+                text = label
+                contentDescription = description
                 setTextAppearance(R.style.TextAppearance_App_Callout)
-                gravity = android.view.Gravity.CENTER_VERTICAL
-                minimumHeight = dp(48)
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-                setOnClickListener {
-                    promptRoomName(getString(R.string.room_rename), room.name) {
-                        viewModel.renameRoom(room.id, it)
-                    }
-                }
-            })
-            row.addView(TextView(context).apply {
-                setText(R.string.room_delete)
-                setTextAppearance(R.style.TextAppearance_App_Caption)
-                setTextColor(context.getColor(R.color.danger))
                 gravity = android.view.Gravity.CENTER
                 minimumWidth = dp(48)
                 minimumHeight = dp(48)
-                setOnClickListener {
-                    MaterialAlertDialogBuilder(context)
-                        .setTitle(R.string.room_delete_title)
-                        .setMessage(getString(R.string.room_delete_message, room.name))
-                        .setPositiveButton(R.string.room_delete) { _, _ ->
-                            viewModel.deleteRoom(room.id)
-                        }
-                        .setNegativeButton(R.string.action_cancel, null)
-                        .show()
+                alpha = if (enabled) 1f else 0.3f
+                isEnabled = enabled
+                setOnClickListener { onClick() }
+            }
+
+        renderRows = {
+            content.removeAllViews()
+            if (ordered.isEmpty()) {
+                content.addView(TextView(context).apply {
+                    setText(R.string.room_manage_empty)
+                    setTextAppearance(R.style.TextAppearance_App_Caption)
+                    setTextColor(context.getColor(R.color.text_secondary))
+                })
+            }
+            ordered.forEachIndexed { index, room ->
+                val row = LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    minimumHeight = dp(48)
+                    gravity = android.view.Gravity.CENTER_VERTICAL
                 }
-            })
-            content.addView(row)
+                row.addView(
+                    moveButton("↑", getString(R.string.room_move_up), index > 0) { move(index, -1) },
+                )
+                row.addView(
+                    moveButton(
+                        "↓",
+                        getString(R.string.room_move_down),
+                        index < ordered.lastIndex,
+                    ) { move(index, 1) },
+                )
+                row.addView(TextView(context).apply {
+                    text = room.name
+                    setTextAppearance(R.style.TextAppearance_App_Callout)
+                    gravity = android.view.Gravity.CENTER_VERTICAL
+                    minimumHeight = dp(48)
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                    setPadding(dp(8), 0, dp(8), 0)
+                    setOnClickListener {
+                        promptRoomName(getString(R.string.room_rename), room.name) {
+                            viewModel.renameRoom(room.id, it)
+                        }
+                    }
+                })
+                row.addView(TextView(context).apply {
+                    setText(R.string.room_delete)
+                    setTextAppearance(R.style.TextAppearance_App_Caption)
+                    setTextColor(context.getColor(R.color.danger))
+                    gravity = android.view.Gravity.CENTER
+                    minimumWidth = dp(48)
+                    minimumHeight = dp(48)
+                    setOnClickListener {
+                        MaterialAlertDialogBuilder(context)
+                            .setTitle(R.string.room_delete_title)
+                            .setMessage(getString(R.string.room_delete_message, room.name))
+                            .setPositiveButton(R.string.room_delete) { _, _ ->
+                                viewModel.deleteRoom(room.id)
+                            }
+                            .setNegativeButton(R.string.action_cancel, null)
+                            .show()
+                    }
+                })
+                content.addView(row)
+            }
         }
+
+        renderRows()
         val scroll = ScrollView(context).apply { addView(content) }
         MaterialAlertDialogBuilder(context)
             .setTitle(R.string.room_manage_title)

@@ -89,6 +89,8 @@ enum class HouseholdErrorKind {
     NOT_FOUND,
     INVALID_CODE,
     RATE_LIMITED,
+    /** 409：owner 带成员退出、重排集合已变化。 */
+    CONFLICT,
     OFFLINE,
     SERVER_ERROR,
 }
@@ -98,6 +100,34 @@ fun classifyHouseholdError(error: Throwable): HouseholdErrorKind = when (error) 
     is HouseholdNotFoundException -> HouseholdErrorKind.NOT_FOUND
     is InviteCodeInvalidException -> HouseholdErrorKind.INVALID_CODE
     is InviteRateLimitedException -> HouseholdErrorKind.RATE_LIMITED
+    is HouseholdConflictException, is RoomSetMismatchException -> HouseholdErrorKind.CONFLICT
     is java.io.IOException -> HouseholdErrorKind.OFFLINE
     else -> HouseholdErrorKind.SERVER_ERROR
+}
+
+/**
+ * 家庭管理入口可见性：
+ * - 只有 owner 能签发/撤销邀请码、移除成员、改家庭名；
+ * - member 随时可以退出（非个人家庭）；
+ * - owner 只有在没有其他成员时才能退出，否则需要先移除成员或转让所有权。
+ */
+data class HouseholdCapabilities(
+    val canManage: Boolean,
+    val canRemoveMembers: Boolean,
+    val canLeave: Boolean,
+    /** owner 还有其他成员：展示「请先转让所有权或移除其他成员」。 */
+    val leaveBlockedByMembers: Boolean,
+)
+
+fun householdCapabilities(household: Household?): HouseholdCapabilities {
+    if (household == null) return HouseholdCapabilities(false, false, false, false)
+    val owner = household.role == HouseholdRole.OWNER
+    val hasOtherMembers = household.memberCount > 1
+    val leaveBlocked = !household.isPersonal && owner && hasOtherMembers
+    return HouseholdCapabilities(
+        canManage = owner,
+        canRemoveMembers = owner && hasOtherMembers,
+        canLeave = !household.isPersonal && !leaveBlocked,
+        leaveBlockedByMembers = leaveBlocked,
+    )
 }

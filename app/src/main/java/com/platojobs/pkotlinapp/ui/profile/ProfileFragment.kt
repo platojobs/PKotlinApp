@@ -33,8 +33,12 @@ import com.platojobs.pkotlinapp.data.prefs.ThemeMode
 import com.platojobs.pkotlinapp.databinding.FragmentProfileBinding
 import com.platojobs.pkotlinapp.domain.account.PairingCodeFormat
 import com.platojobs.pkotlinapp.domain.household.Household
+import com.platojobs.pkotlinapp.domain.household.HouseholdInvitationInfo
 import com.platojobs.pkotlinapp.domain.household.HouseholdMember
+import com.platojobs.pkotlinapp.domain.household.HouseholdRole
 import com.platojobs.pkotlinapp.domain.household.HouseholdSyncStatus
+import com.platojobs.pkotlinapp.domain.household.InvitationStatus
+import com.platojobs.pkotlinapp.domain.household.householdCapabilities
 import com.platojobs.pkotlinapp.domain.sync.SyncStatus
 import com.platojobs.pkotlinapp.ui.common.BlePermissions
 import com.platojobs.pkotlinapp.ui.common.FileSharing
@@ -42,6 +46,8 @@ import com.platojobs.pkotlinapp.ui.common.NotificationPermission
 import com.platojobs.pkotlinapp.ui.common.TimeFormat
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import java.text.DateFormat
+import java.util.Date
 
 class ProfileFragment : Fragment() {
 
@@ -185,6 +191,9 @@ class ProfileFragment : Fragment() {
                     viewModel.invite.collect { renderInvite(it) }
                 }
                 launch {
+                    viewModel.invitations.collect { renderInvitations(it) }
+                }
+                launch {
                     viewModel.householdBusy.collect { busy ->
                         binding.householdSection.householdCreateButton.isEnabled = !busy
                         binding.householdSection.householdJoinButton.isEnabled = !busy
@@ -279,6 +288,12 @@ class ProfileFragment : Fragment() {
         binding.householdSection.householdCreateButton.setOnClickListener {
             showCreateHouseholdDialog()
         }
+        binding.householdSection.householdRenameButton.setOnClickListener {
+            showRenameHouseholdDialog()
+        }
+        binding.householdSection.householdLeaveButton.setOnClickListener {
+            confirmLeaveHousehold()
+        }
         binding.householdSection.householdInviteButton.setOnClickListener {
             viewModel.generateInvitation()
         }
@@ -322,6 +337,48 @@ class ProfileFragment : Fragment() {
             .show()
     }
 
+    private fun showRenameHouseholdDialog() {
+        val current = viewModel.currentHousehold.value ?: return
+        val input = android.widget.EditText(requireContext()).apply {
+            hint = getString(R.string.household_name_hint)
+            setText(current.name)
+            setSingleLine()
+        }
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.household_rename)
+            .setView(input)
+            .setNegativeButton(R.string.action_cancel, null)
+            .setPositiveButton(R.string.action_confirm) { _, _ ->
+                viewModel.renameHousehold(input.text?.toString().orEmpty())
+            }
+            .show()
+    }
+
+    private fun confirmLeaveHousehold() {
+        val household = viewModel.currentHousehold.value ?: return
+        if (householdCapabilities(household).leaveBlockedByMembers) {
+            Snackbar.make(binding.root, R.string.household_leave_blocked, Snackbar.LENGTH_LONG).show()
+            return
+        }
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.household_leave_title)
+            .setMessage(R.string.household_leave_message)
+            .setNegativeButton(R.string.action_cancel, null)
+            .setPositiveButton(R.string.action_confirm) { _, _ -> viewModel.leaveHousehold() }
+            .show()
+    }
+
+    private fun confirmRemoveMember(member: HouseholdMember) {
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.household_member_remove_title)
+            .setMessage(R.string.household_member_remove_message)
+            .setNegativeButton(R.string.action_cancel, null)
+            .setPositiveButton(R.string.household_member_remove_action) { _, _ ->
+                viewModel.removeMember(member.userId)
+            }
+            .show()
+    }
+
     private fun copyInviteCode() {
         val code = viewModel.invite.value.code ?: return
         val clipboard = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -342,28 +399,111 @@ class ProfileFragment : Fragment() {
                 ),
             )
         }
-        // member 没有邀请/改名权限：入口保留，失败时用 403 可读文案降级。
-        section.householdInviteButton.isEnabled = household != null
+        // 计数来自服务端 GET /households，不用本地缓存自己数。
+        section.householdCounts.visibility = if (household == null) View.GONE else View.VISIBLE
+        section.householdCounts.text = household?.let {
+            getString(R.string.household_counts, it.memberCount, it.deviceCount, it.roomCount)
+        }.orEmpty()
+
+        // owner 才能改家庭名、签发/撤销邀请码；member 一律隐藏这些入口。
+        val capabilities = householdCapabilities(household)
+        val owner = capabilities.canManage
+        section.householdRenameButton.visibility = if (owner) View.VISIBLE else View.GONE
+        section.householdInviteTitle.visibility = if (owner) View.VISIBLE else View.GONE
+        section.householdInviteButton.visibility =
+            if (owner && viewModel.invite.value.code == null) View.VISIBLE else View.GONE
+        section.householdInvitationsSection.visibility = if (owner) View.VISIBLE else View.GONE
+
+        section.householdLeaveButton.visibility =
+            if (household != null && !household.isPersonal) View.VISIBLE else View.GONE
+        section.householdLeaveHint.visibility =
+            if (capabilities.leaveBlockedByMembers) View.VISIBLE else View.GONE
+        section.householdLeaveHint.text = getString(R.string.household_leave_blocked)
     }
 
     private fun renderMembers(members: List<HouseholdMember>) {
         val section = binding.householdSection
+        val owner = householdCapabilities(viewModel.currentHousehold.value).canRemoveMembers
         section.householdMembersList.removeAllViews()
         if (members.isEmpty()) {
             section.householdMembersList.addView(memberRow(getString(R.string.household_members_empty)))
             return
         }
         members.forEach { member ->
+            val isOwnerRow = member.role == HouseholdRole.OWNER
             val role = getString(
-                if (member.role == com.platojobs.pkotlinapp.domain.household.HouseholdRole.OWNER) {
-                    R.string.household_role_owner
-                } else {
-                    R.string.household_role_member
+                if (isOwnerRow) R.string.household_role_owner else R.string.household_role_member,
+            )
+            val row = memberRow(
+                getString(R.string.household_member_row, shortUserId(member.userId), role),
+            )
+            // owner 可长按移除其他成员；owner 自己与 member 都没有这个入口。
+            if (owner && !isOwnerRow) {
+                row.isLongClickable = true
+                row.setOnLongClickListener {
+                    confirmRemoveMember(member)
+                    true
+                }
+            }
+            section.householdMembersList.addView(row)
+        }
+    }
+
+    private fun renderInvitations(list: List<HouseholdInvitationInfo>) {
+        val section = binding.householdSection
+        section.householdInvitationsList.removeAllViews()
+        section.householdInvitationsEmpty.visibility =
+            if (list.isEmpty()) View.VISIBLE else View.GONE
+        list.forEach { invitation ->
+            val status = getString(
+                when (invitation.status) {
+                    InvitationStatus.ACTIVE -> R.string.invite_status_active
+                    InvitationStatus.EXPIRED -> R.string.invite_status_expired
+                    InvitationStatus.LOCKED -> R.string.invite_status_locked
                 },
             )
-            section.householdMembersList.addView(
-                memberRow(getString(R.string.household_member_row, shortUserId(member.userId), role)),
-            )
+            val expiry = if (invitation.expiresAt > 0L) {
+                DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
+                    .format(Date(invitation.expiresAt))
+            } else {
+                getString(R.string.household_invite_unknown_expiry)
+            }
+            val row = android.widget.LinearLayout(requireContext()).apply {
+                orientation = android.widget.LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                setPadding(0, 4, 0, 4)
+            }
+            val label = android.widget.TextView(requireContext()).apply {
+                text = getString(
+                    R.string.household_invitation_row,
+                    invitation.codeHashPrefix,
+                    status,
+                    expiry,
+                )
+                setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodyMedium)
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    0,
+                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                    1f,
+                )
+            }
+            val revoke = android.widget.TextView(requireContext()).apply {
+                text = getString(R.string.household_invitation_revoke)
+                setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_LabelLarge)
+                setTextColor(
+                    androidx.core.content.ContextCompat.getColor(
+                        requireContext(),
+                        R.color.danger,
+                    ),
+                )
+                setPadding(24, 12, 24, 12)
+                isClickable = true
+                contentDescription = getString(R.string.household_invitation_revoke)
+                setOnClickListener { viewModel.revokeInvitation(invitation.invitationId) }
+            }
+            row.addView(label)
+            row.addView(revoke)
+            section.householdInvitationsList.addView(row)
         }
     }
 

@@ -25,7 +25,9 @@ import com.platojobs.pkotlinapp.domain.account.PairingRateLimitedException
 import com.platojobs.pkotlinapp.domain.household.Household
 import com.platojobs.pkotlinapp.domain.household.HouseholdErrorKind
 import com.platojobs.pkotlinapp.domain.household.HouseholdInvitation
+import com.platojobs.pkotlinapp.domain.household.HouseholdInvitationInfo
 import com.platojobs.pkotlinapp.domain.household.HouseholdMember
+import com.platojobs.pkotlinapp.domain.household.HouseholdRole
 import com.platojobs.pkotlinapp.domain.household.HouseholdSyncStatus
 import com.platojobs.pkotlinapp.domain.household.classifyHouseholdError
 import com.platojobs.pkotlinapp.domain.model.ScanLog
@@ -318,6 +320,10 @@ class ProfileViewModel(
     private val _invite = MutableStateFlow(InviteState())
     val invite: StateFlow<InviteState> = _invite.asStateFlow()
 
+    /** 邀请码管理列表（仅 owner 可见）：哈希前缀 + 状态 + 过期时间，无明文。 */
+    private val _invitations = MutableStateFlow<List<HouseholdInvitationInfo>>(emptyList())
+    val invitations: StateFlow<List<HouseholdInvitationInfo>> = _invitations.asStateFlow()
+
     private var inviteTicker: Job? = null
 
     private val _householdBusy = MutableStateFlow(false)
@@ -329,9 +335,11 @@ class ProfileViewModel(
             currentHousehold.collect { household ->
                 if (household == null) {
                     _members.value = emptyList()
+                    _invitations.value = emptyList()
                 } else {
                     runCatching { householdRepository.members() }
                         .onSuccess { _members.value = it }
+                    if (household.role == HouseholdRole.OWNER) loadInvitations()
                 }
             }
         }
@@ -345,6 +353,7 @@ class ProfileViewModel(
                 runCatching { householdRepository.members() }.onSuccess { list ->
                     _members.value = list
                 }
+                if (it.role == HouseholdRole.OWNER) loadInvitations()
             }
         }
     }
@@ -364,7 +373,23 @@ class ProfileViewModel(
         }
     }
 
-    /** 生成邀请码：服务端签发 8 位一次性明文码，旧码立即失效。 */
+    /** owner 改家庭名；member 入口在 UI 层隐藏，服务端同样 403。 */
+    fun renameHousehold(name: String) {
+        if (name.isBlank() || _householdBusy.value) return
+        viewModelScope.launch {
+            _householdBusy.value = true
+            try {
+                val updated = householdRepository.renameHousehold(name)
+                _accountMessage.emit(appContext.getString(R.string.household_renamed, updated.name))
+            } catch (e: Exception) {
+                _accountMessage.emit(householdErrorText(e))
+            } finally {
+                _householdBusy.value = false
+            }
+        }
+    }
+
+    /** 生成邀请码：服务端签发 8 位一次性明文码；旧码仍按各自有效期有效。 */
     fun generateInvitation() {
         if (_invite.value.loading) return
         _invite.update { it.copy(loading = true, error = null) }
@@ -378,8 +403,81 @@ class ProfileViewModel(
                     loading = false,
                 )
                 startInviteCountdown(invitation)
+                loadInvitations()
             } catch (e: Exception) {
                 _invite.update { it.copy(loading = false, error = householdErrorText(e)) }
+            }
+        }
+    }
+
+    fun loadInvitations() {
+        viewModelScope.launch {
+            runCatching { householdRepository.invitations() }
+                .onSuccess { _invitations.value = it }
+        }
+    }
+
+    fun revokeInvitation(invitationId: String) {
+        if (_householdBusy.value) return
+        viewModelScope.launch {
+            _householdBusy.value = true
+            try {
+                householdRepository.revokeInvitation(invitationId)
+                loadInvitations()
+                _accountMessage.emit(appContext.getString(R.string.invite_revoked))
+            } catch (e: Exception) {
+                _accountMessage.emit(householdErrorText(e))
+            } finally {
+                _householdBusy.value = false
+            }
+        }
+    }
+
+    /** owner 移除成员：对方设备会回到其个人家庭（文案在确认弹窗说明）。 */
+    fun removeMember(userId: String) {
+        if (_householdBusy.value) return
+        viewModelScope.launch {
+            _householdBusy.value = true
+            try {
+                householdRepository.removeMember(userId)
+                _members.value = runCatching { householdRepository.members() }
+                    .getOrDefault(_members.value)
+                loadInvitations()
+                _accountMessage.emit(appContext.getString(R.string.household_member_removed))
+            } catch (e: Exception) {
+                _accountMessage.emit(householdErrorText(e))
+            } finally {
+                _householdBusy.value = false
+            }
+        }
+    }
+
+    /** 退出当前家庭：owner 还有其他成员时服务端 409，文案可读。 */
+    fun leaveHousehold() {
+        if (_householdBusy.value) return
+        viewModelScope.launch {
+            _householdBusy.value = true
+            try {
+                val remaining = householdRepository.leaveHousehold()
+                _invite.value = InviteState()
+                _members.value = emptyList()
+                _invitations.value = emptyList()
+                _accountMessage.emit(
+                    appContext.getString(
+                        R.string.household_left,
+                        remaining?.name ?: appContext.getString(R.string.household_none),
+                    ),
+                )
+            } catch (e: Exception) {
+                _accountMessage.emit(
+                    if (classifyHouseholdError(e) == HouseholdErrorKind.CONFLICT) {
+                        appContext.getString(R.string.household_leave_blocked)
+                    } else {
+                        householdErrorText(e)
+                    },
+                )
+            } finally {
+                _householdBusy.value = false
             }
         }
     }
@@ -436,6 +534,7 @@ class ProfileViewModel(
                 HouseholdErrorKind.NOT_FOUND -> R.string.household_not_found
                 HouseholdErrorKind.INVALID_CODE -> R.string.invite_code_invalid
                 HouseholdErrorKind.RATE_LIMITED -> R.string.invite_rate_limited
+                HouseholdErrorKind.CONFLICT -> R.string.household_conflict
                 HouseholdErrorKind.OFFLINE -> R.string.household_offline_hint
                 HouseholdErrorKind.SERVER_ERROR -> R.string.household_server_error
             },

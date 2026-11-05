@@ -144,6 +144,13 @@ internal object HouseholdMigrationSql {
     )
 }
 
+/** v12 -> v13：家庭卡片使用服务端统计的房间数。 */
+internal object HouseholdCountsMigrationSql {
+    val V12_TO_V13 = listOf(
+        "ALTER TABLE households ADD COLUMN roomCount INTEGER NOT NULL DEFAULT 0",
+    )
+}
+
 @Database(
     entities = [
         DeviceEntity::class,
@@ -156,7 +163,7 @@ internal object HouseholdMigrationSql {
         RoomEntity::class,
         HouseholdEntity::class,
     ],
-    version = 12,
+    version = 13,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -305,6 +312,12 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                HouseholdCountsMigrationSql.V12_TO_V13.forEach(db::execSQL)
+            }
+        }
+
         @Volatile
         private var instance: AppDatabase? = null
 
@@ -326,6 +339,7 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_9_10,
                     MIGRATION_10_11,
                     MIGRATION_11_12,
+                    MIGRATION_12_13,
                 )
                     .build()
                     .also { instance = it }

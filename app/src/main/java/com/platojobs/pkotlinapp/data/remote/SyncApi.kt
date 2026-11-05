@@ -10,6 +10,7 @@ import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.PATCH
 import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Path
 import retrofit2.http.Query
 
@@ -128,6 +129,23 @@ data class HouseholdInvitationDto(
 )
 
 data class HouseholdInvitationClaimRequest(val code: String)
+
+/** 邀请码管理视图：只有哈希前缀，绝不包含明文。 */
+data class HouseholdInvitationInfoDto(
+    val id: String? = null,
+    val codeHashPrefix: String? = null,
+    val status: String? = null,
+    val attempts: Int? = null,
+    val expiresAt: String? = null,
+    val createdAt: String? = null,
+)
+
+data class HouseholdInvitationInfoListResponse(
+    val items: List<HouseholdInvitationInfoDto>? = null,
+)
+
+/** 整段重排：roomIds 必须恰好覆盖家庭全部房间。 */
+data class HouseholdRoomOrderRequest(val roomIds: List<String>)
 
 data class HouseholdRoomDto(
     val id: String? = null,
@@ -486,11 +504,37 @@ interface SyncApi {
         @Path("id") id: String,
     ): HouseholdMemberListResponse
 
+    @DELETE("api/v1/households/{id}/members/{userId}")
+    suspend fun removeHouseholdMember(
+        @Header("Authorization") authorization: String,
+        @Path("id") id: String,
+        @Path("userId") userId: String,
+    )
+
+    @POST("api/v1/households/{id}/leave")
+    suspend fun leaveHousehold(
+        @Header("Authorization") authorization: String,
+        @Path("id") id: String,
+    )
+
     @POST("api/v1/households/{id}/invitations")
     suspend fun createHouseholdInvitation(
         @Header("Authorization") authorization: String,
         @Path("id") id: String,
     ): HouseholdInvitationDto
+
+    @GET("api/v1/households/{id}/invitations")
+    suspend fun householdInvitations(
+        @Header("Authorization") authorization: String,
+        @Path("id") id: String,
+    ): HouseholdInvitationInfoListResponse
+
+    @DELETE("api/v1/households/{id}/invitations/{invitationId}")
+    suspend fun revokeHouseholdInvitation(
+        @Header("Authorization") authorization: String,
+        @Path("id") id: String,
+        @Path("invitationId") invitationId: String,
+    )
 
     @POST("api/v1/households/invitations/claim")
     suspend fun claimHouseholdInvitation(
@@ -525,4 +569,11 @@ interface SyncApi {
         @Path("id") id: String,
         @Path("roomId") roomId: String,
     )
+
+    @PUT("api/v1/households/{id}/rooms/order")
+    suspend fun reorderHouseholdRooms(
+        @Header("Authorization") authorization: String,
+        @Path("id") id: String,
+        @Body body: HouseholdRoomOrderRequest,
+    ): HouseholdRoomListResponse
 }

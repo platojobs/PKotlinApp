@@ -6,6 +6,20 @@
 
 ---
 
+## v0.15.0
+
+**主题：接入后端 v0.13.0 的家庭管理能力（成员移除 / 退出 / 邀请码撤销 / 整段房间排序）**
+
+- 契约升级：对齐 PJGoIoT v0.13.0（openapi 0.9.0），新增 `DELETE /households/{id}/members/{userId}`、`POST /households/{id}/leave`、`GET /households/{id}/invitations`、`DELETE /households/{id}/invitations/{invitationId}`、`PUT /households/{id}/rooms/order`。
+- 数据模型：Room v13（`MIGRATION_12_13`）为 `households` 增加 `roomCount INTEGER NOT NULL DEFAULT 0`；首页家庭 Chip 与家庭卡片统一使用服务端 `memberCount/deviceCount/roomCount`，不再数本地缓存。
+- 成员移除：owner 长按成员行二次确认（文案说明对方设备会回到其个人家庭），成功后刷新家庭计数并重拉设备，共享行随之清理。
+- 退出家庭：成员确认后清本地房间、共享设备与归属并回落个人家庭；owner 且还有其他成员时服务端 409，UI 展示「请先转让所有权或移除其他成员」。
+- 邀请码管理：列表只展示 `codeHashPrefix`、状态（有效/已过期/已锁定）与过期时间，**绝不出现明文**；支持撤销未使用的码，撤销后 claim 返回 404。
+- 房间整段排序：房间管理新增 ↑/↓ 移动，本地乐观落序后整段 PUT；409 自动重新拉取并提示「房间列表已变化，已刷新」；离线保留本地顺序并标记「未同步」。
+- 错误判定：只在 HTTP 状态与 `error.code` 层做机读判断（409 → `HouseholdConflictException`，重排集合不一致转 `RoomSetMismatchException`），不解析 `message`；后端 v0.13.0 尚未提供 `ROOM_SET_MISMATCH`，后续补码可平滑接入。
+- 权限可见性：`householdCapabilities()` 统一计算——member 看不到重命名、邀请码签发/撤销、成员移除；owner 才可管理，退出受成员数限制。
+- 测试与 CI：新增 `HouseholdRepositoryTest`（真实内存 Room：成员移除清理、退出回落、邀请码列表/撤销、重排 409 重试、离线排序）与 v12→v13 迁移、owner/member 能力单测；fixture 与真 Postgres e2e 补「服务端计数 → 邀请码列表无明文 → 撤销后 claim 404 → 重排缺项 409 → owner 带成员退出 409 → 移除成员后对方 404 → owner 退出 204」。单测 245 全绿，`lintDebug` 0 issue，`assembleDebug`、两套 e2e 全绿；tag `v0.15.0`。
+
 ## v0.14.0
 
 **主题：家庭接上后端，房间归属家庭并支持成员共享**

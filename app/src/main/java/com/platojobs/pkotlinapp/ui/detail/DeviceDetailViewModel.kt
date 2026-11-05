@@ -1,6 +1,6 @@
 package com.platojobs.pkotlinapp.ui.detail
 
-import android.content.Context
+import android.app.Application
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
@@ -117,7 +117,7 @@ class DeviceDetailViewModel(
     private val collectionSession: CollectionSession,
     private val roomRepository: RoomRepository,
     private val householdRepository: HouseholdRepository,
-    private val context: Context,
+    private val context: Application,
     private val now: () -> Long = System::currentTimeMillis,
 ) : ViewModel() {
 
@@ -171,6 +171,7 @@ class DeviceDetailViewModel(
                 HouseholdErrorKind.NOT_FOUND -> context.getString(R.string.household_not_found)
                 HouseholdErrorKind.INVALID_CODE -> context.getString(R.string.invite_code_invalid)
                 HouseholdErrorKind.RATE_LIMITED -> context.getString(R.string.invite_rate_limited)
+                HouseholdErrorKind.CONFLICT -> context.getString(R.string.household_conflict)
                 HouseholdErrorKind.OFFLINE -> context.getString(R.string.household_offline_hint)
                 HouseholdErrorKind.SERVER_ERROR -> context.getString(R.string.household_server_error)
             },
@@ -574,7 +575,7 @@ class DeviceDetailViewModel(
                     collectionSession = container.collectionSession,
                     roomRepository = container.roomRepository,
                     householdRepository = container.householdRepository,
-                    context = app.applicationContext,
+                    context = app,
                 )
             }
         }

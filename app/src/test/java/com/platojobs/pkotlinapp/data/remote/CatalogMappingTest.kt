@@ -179,6 +179,36 @@ class CatalogMappingTest {
             id: String,
             roomId: String,
         ) = Unit
+
+        override suspend fun removeHouseholdMember(
+            authorization: String,
+            id: String,
+            userId: String,
+        ) = Unit
+
+        override suspend fun leaveHousehold(
+            authorization: String,
+            id: String,
+        ) = Unit
+
+        override suspend fun householdInvitations(
+            authorization: String,
+            id: String,
+        ): com.platojobs.pkotlinapp.data.remote.HouseholdInvitationInfoListResponse =
+            com.platojobs.pkotlinapp.data.remote.HouseholdInvitationInfoListResponse()
+
+        override suspend fun revokeHouseholdInvitation(
+            authorization: String,
+            id: String,
+            invitationId: String,
+        ) = Unit
+
+        override suspend fun reorderHouseholdRooms(
+            authorization: String,
+            id: String,
+            body: com.platojobs.pkotlinapp.data.remote.HouseholdRoomOrderRequest,
+        ): com.platojobs.pkotlinapp.data.remote.HouseholdRoomListResponse =
+            com.platojobs.pkotlinapp.data.remote.HouseholdRoomListResponse()
     }
 
     private class FakeApi(

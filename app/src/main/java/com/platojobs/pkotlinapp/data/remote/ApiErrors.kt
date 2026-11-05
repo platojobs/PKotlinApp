@@ -20,6 +20,9 @@ object ApiErrorCodes {
     const val RATE_LIMITED = "RATE_LIMITED"
     const val BAD_REQUEST = "BAD_REQUEST"
     const val UNAVAILABLE = "UNAVAILABLE"
+
+    /** 409：owner 带成员退出、房间集合不一致（v0.13.0 契约使用 `CONFLICT`）。 */
+    const val CONFLICT = "CONFLICT"
 }
 
 data class ApiErrorDto(

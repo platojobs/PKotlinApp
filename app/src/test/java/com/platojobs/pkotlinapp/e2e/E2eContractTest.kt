@@ -1146,6 +1146,111 @@ class E2eContractTest {
             assertEquals(404, get("/households/$householdId", outsider.token).code)
         }
 
+        // ---- v0.13.0：成员移除 / 退出 / 邀请码管理 / 整段重排 ----
+        step("household: GET /households exposes server-side counts") {
+            val result = get("/households", user.token)
+            assertEquals(200, result.code)
+            val row = (parseMap(result.body)["items"] as? List<*>).orEmpty()
+                .map { it as? Map<*, *> }
+                .firstOrNull { it?.get("id") == householdId }
+                ?: error("household missing from list")
+            assertEquals(2, (row["memberCount"] as? Number)?.toInt())
+            assertEquals(1, (row["deviceCount"] as? Number)?.toInt())
+            assertEquals(1, (row["roomCount"] as? Number)?.toInt())
+        }
+
+        val managedInvite = captureStep("household: invitation list keeps plaintext out") {
+            val created = post("/households/$householdId/invitations", "{}", user.token)
+            assertEquals(201, created.code)
+            val code = parseMap(created.body)["code"] as? String ?: error("missing invite code")
+
+            val listed = get("/households/$householdId/invitations", user.token)
+            assertEquals(200, listed.code)
+            // 明文码不得出现在列表响应里（否则等于把一次性码变成可反复读取）。
+            assertFalse("invitation list leaked plaintext", listed.body.contains(code))
+            val items = (parseMap(listed.body)["items"] as? List<*>).orEmpty()
+                .map { it as? Map<*, *> }
+            assertTrue("invitation list should not be empty", items.isNotEmpty())
+            items.forEach { item ->
+                assertNull(item?.get("code"))
+                assertNotNull(item?.get("codeHashPrefix"))
+                assertNotNull(item?.get("status"))
+                assertNotNull(item?.get("expiresAt"))
+            }
+            // 上一段链路签发过一个仍在有效期内的码，这里全部撤销后再验证 claim 404。
+            val invitationIds = items.mapNotNull { it?.get("id") as? String }
+            assertTrue("missing invitation ids", invitationIds.isNotEmpty())
+            code to invitationIds
+        }
+
+        step("household: revoked invitation can no longer be claimed (404)") {
+            managedInvite.second.forEach { invitationId ->
+                val revoked = delete(
+                    "/households/$householdId/invitations/$invitationId",
+                    user.token,
+                )
+                assertEquals(204, revoked.code)
+            }
+            val latecomer = newAnonymousSession("household latecomer")
+            val claim = post(
+                "/households/invitations/claim",
+                claimBody(managedInvite.first),
+                latecomer.token,
+            )
+            assertEquals(404, claim.code)
+        }
+
+        step("household: member cannot reorder rooms (403)") {
+            val result = put(
+                "/households/$householdId/rooms/order",
+                """{"roomIds":["$roomId"]}""",
+                member.token,
+            )
+            assertEquals(403, result.code)
+            val error = parseMap(result.body)["error"] as Map<*, *>
+            assertEquals("FORBIDDEN", error["code"])
+        }
+
+        step("household: reorder with a missing room returns 409") {
+            val missing = put(
+                "/households/$householdId/rooms/order",
+                """{"roomIds":["00000000-0000-0000-0000-000000000000"]}""",
+                user.token,
+            )
+            assertEquals(409, missing.code)
+            val error = parseMap(missing.body)["error"] as Map<*, *>
+            // v0.13.0 契约没有 ROOM_SET_MISMATCH，机读判定只用 409 + error.code。
+            assertNotNull(error["code"])
+
+            val ok = put(
+                "/households/$householdId/rooms/order",
+                """{"roomIds":["$roomId"]}""",
+                user.token,
+            )
+            assertEquals(200, ok.code)
+            assertEquals(roomId, ((parseMap(ok.body)["items"] as? List<*>).orEmpty().first() as? Map<*, *>)?.get("id"))
+        }
+
+        step("household: owner with members cannot leave (409)") {
+            val result = post("/households/$householdId/leave", "{}", user.token)
+            assertEquals(409, result.code)
+            val error = parseMap(result.body)["error"] as Map<*, *>
+            assertNotNull(error["code"])
+        }
+
+        step("household: owner removes member and member loses access (404)") {
+            val removed = delete("/households/$householdId/members/${member.userId}", user.token)
+            assertEquals(204, removed.code)
+            assertEquals(404, get("/households/$householdId", member.token).code)
+            assertEquals(404, get("/households/$householdId/members", member.token).code)
+        }
+
+        step("household: owner can leave after removing other members (204)") {
+            val result = post("/households/$householdId/leave", "{}", user.token)
+            assertEquals(204, result.code)
+            assertEquals(404, get("/households/$householdId", user.token).code)
+        }
+
         println("[E2E] SUMMARY: household contract cases passed")
 
         step("account: delete returns 204 and revokes every token of the account") {
@@ -1363,6 +1468,9 @@ class E2eContractTest {
     private fun patch(path: String, body: String, token: String): HttpResult =
         execute("PATCH", path, body = body, token = token)
 
+    private fun put(path: String, body: String, token: String): HttpResult =
+        execute("PUT", path, body = body, token = token)
+
     private fun push(body: String, token: String, idempotencyKey: String): HttpResult =
         execute(
             "POST",
@@ -1388,6 +1496,10 @@ class E2eContractTest {
             "GET" -> builder.get()
             "DELETE" -> builder.delete()
             "PATCH" -> builder.patch(
+                (body ?: "").toRequestBody("application/json; charset=utf-8".toMediaType()),
+            )
+
+            "PUT" -> builder.put(
                 (body ?: "").toRequestBody("application/json; charset=utf-8".toMediaType()),
             )
 

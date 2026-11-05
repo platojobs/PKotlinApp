@@ -8,8 +8,10 @@ import com.platojobs.pkotlinapp.data.local.RoomDao
 import com.platojobs.pkotlinapp.data.local.RoomEntity
 import com.platojobs.pkotlinapp.data.sync.SyncPrefs
 import com.platojobs.pkotlinapp.domain.household.Household
+import com.platojobs.pkotlinapp.domain.household.HouseholdConflictException
 import com.platojobs.pkotlinapp.domain.household.HouseholdErrorKind
 import com.platojobs.pkotlinapp.domain.household.HouseholdInvitation
+import com.platojobs.pkotlinapp.domain.household.HouseholdInvitationInfo
 import com.platojobs.pkotlinapp.domain.household.HouseholdMember
 import com.platojobs.pkotlinapp.domain.household.HouseholdNotFoundException
 import com.platojobs.pkotlinapp.domain.household.HouseholdRemote
@@ -19,6 +21,7 @@ import com.platojobs.pkotlinapp.domain.household.HouseholdSyncStatus
 import com.platojobs.pkotlinapp.domain.household.HouseholdSyncer
 import com.platojobs.pkotlinapp.domain.household.LocalRoomSnapshot
 import com.platojobs.pkotlinapp.domain.household.RoomMergePlan
+import com.platojobs.pkotlinapp.domain.household.RoomSetMismatchException
 import com.platojobs.pkotlinapp.domain.household.chooseCurrentHousehold
 import com.platojobs.pkotlinapp.domain.household.classifyHouseholdError
 import com.platojobs.pkotlinapp.domain.household.planRoomMerge
@@ -40,7 +43,9 @@ import kotlinx.coroutines.sync.withLock
  * - 首次接入不丢本机房间：按名称认领服务端同名房间，其余按本地顺序上传（[planRoomMerge]）；
  * - 设备房间归属只在 `PATCH /my/devices` 上报，不塞进 push，避免与 LWW 冲突；
  * - 上报失败保留 pending，网络类错误下次同步重试；4xx 权限/不存在会清掉 pending 并回读服务端快照；
- * - 家庭接口不可用时只标记「未同步」，不改动本机房间与设备。
+ * - 家庭接口不可用时只标记「未同步」，不改动本机房间与设备；
+ * - 成员移除/退出家庭后清理本地共享设备与归属；整段重排遇 409 重新拉取后抛
+ *   [RoomSetMismatchException]（409 即机读判定，后端 v0.13.0 暂无 ROOM_SET_MISMATCH 码）。
  */
 class HouseholdRepository(
     private val householdDao: HouseholdDao,
@@ -138,9 +143,12 @@ class HouseholdRepository(
         }
     }
 
-    suspend fun refreshHouseholds(): Boolean = mutex.withLock {
+    suspend fun refreshHouseholds(): Boolean = mutex.withLock { refreshLocked() }
+
+    /** 不加锁的家庭列表刷新，供已持锁的操作复用。 */
+    private suspend fun refreshLocked(): Boolean {
         _status.value = _status.value.copy(syncing = true, lastError = null)
-        try {
+        return try {
             val snapshots = remote.listHouseholds()
             persistHouseholds(snapshots)
             val chosen = chooseCurrentHousehold(snapshots, prefs.currentHouseholdRemoteId)
@@ -185,6 +193,109 @@ class HouseholdRepository(
     suspend fun createInvitation(): HouseholdInvitation {
         val current = currentRow() ?: throw HouseholdNotFoundException()
         return remote.createInvitation(current.remoteId)
+    }
+
+    /** 邀请码管理列表：服务端只返回哈希前缀与状态，不含明文。 */
+    suspend fun invitations(): List<HouseholdInvitationInfo> {
+        val current = currentRow() ?: throw HouseholdNotFoundException()
+        return remote.listInvitations(current.remoteId)
+    }
+
+    suspend fun revokeInvitation(invitationId: String) {
+        val current = currentRow() ?: throw HouseholdNotFoundException()
+        remote.revokeInvitation(current.remoteId, invitationId)
+    }
+
+    suspend fun renameHousehold(name: String): Household = mutex.withLock {
+        val row = currentRow() ?: throw HouseholdNotFoundException()
+        remote.renameHousehold(row.remoteId, name.trim())
+        runCatching { refreshLocked() }
+        currentRow()?.toDomain() ?: row.toDomain()
+    }
+
+    /**
+     * owner 移除成员：服务端把该成员设备放回其个人家庭。
+     * 本地随即刷新家庭计数并重拉设备——被移除成员的设备不再返回，共享行随之清理。
+     */
+    suspend fun removeMember(userId: String) = mutex.withLock {
+        val row = currentRow() ?: throw HouseholdNotFoundException()
+        remote.removeMember(row.remoteId, userId)
+        runCatching { refreshLocked() }
+        val refreshed = householdDao.findByRemoteId(row.remoteId) ?: return@withLock
+        runCatching { pullDevices(refreshed) }
+    }
+
+    /**
+     * 退出家庭：服务端删除成员关系（owner 且无其他成员时家庭本身被删除）。
+     * 本地清掉该家庭的房间、设备归属与共享设备，再回落到个人家庭。
+     */
+    suspend fun leaveHousehold(): Household? = mutex.withLock {
+        val row = currentRow() ?: throw HouseholdNotFoundException()
+        remote.leave(row.remoteId)
+        roomDao.deleteForHousehold(row.id)
+        // 先删共享设备（依赖 householdId），再清归属，否则共享行会变成无主残留。
+        deviceDao.deleteSharedForHousehold(row.id)
+        deviceDao.clearHouseholdAssignments(row.id)
+        householdDao.delete(row.id)
+        if (prefs.currentHouseholdRemoteId == row.remoteId) {
+            prefs.currentHouseholdRemoteId = null
+            _currentRemoteId.value = null
+        }
+        runCatching { refreshLocked() }
+        currentRow()?.toDomain()
+    }
+
+    /**
+     * 整段重排：本地先落顺序（离线也保留），未上传的房间先补传，再按集合整体提交。
+     *
+     * 409 表示服务端房间集合已变化：立即重新拉取覆盖本地，并抛出 [RoomSetMismatchException]
+     * 让 UI 提示「房间列表已变化，已刷新」。
+     */
+    suspend fun reorderRooms(orderedLocalIds: List<Long>): Boolean = mutex.withLock {
+        val row = currentRow() ?: throw HouseholdNotFoundException()
+        orderedLocalIds.forEachIndexed { index, localId ->
+            roomDao.updateSortOrder(localId, index)
+        }
+        if (roomDao.getRoomsForHousehold(row.id).any { it.remoteId == null }) {
+            try {
+                mergeRooms(row)
+            } catch (e: Exception) {
+                when (classifyHouseholdError(e)) {
+                    HouseholdErrorKind.OFFLINE -> {
+                        _status.value = _status.value.copy(
+                            synced = false,
+                            lastError = HouseholdErrorKind.OFFLINE.name,
+                        )
+                        return@withLock false
+                    }
+
+                    else -> throw e
+                }
+            }
+        }
+        val rooms = roomDao.getRoomsForHousehold(row.id)
+        if (rooms.any { it.remoteId == null }) return@withLock false
+        val remoteIds = rooms.sortedBy { it.sortOrder }.mapNotNull { it.remoteId }
+        val ordered = try {
+            remote.reorderRooms(row.remoteId, remoteIds)
+        } catch (e: HouseholdConflictException) {
+            // 集合不一致：服务端是权威来源，重新拉取后让用户看到最新顺序。
+            runCatching { mergeRooms(row) }
+            throw RoomSetMismatchException()
+        } catch (e: java.io.IOException) {
+            // 离线：保留本地顺序，等下次同步再整段提交。
+            _status.value = _status.value.copy(
+                synced = false,
+                lastError = HouseholdErrorKind.OFFLINE.name,
+            )
+            return@withLock false
+        }
+        ordered.forEach { serverRoom ->
+            roomDao.findByRemoteId(serverRoom.remoteId)?.let { local ->
+                roomDao.updateFromServer(local.id, serverRoom.name, serverRoom.sortOrder)
+            }
+        }
+        true
     }
 
     /**
@@ -390,6 +501,7 @@ class HouseholdRepository(
                     HouseholdErrorKind.NOT_FOUND,
                     HouseholdErrorKind.INVALID_CODE,
                     HouseholdErrorKind.RATE_LIMITED,
+                    HouseholdErrorKind.CONFLICT,
                     HouseholdErrorKind.SERVER_ERROR,
                     -> {
                         deviceDao.finishRoomPatch(device.mac)
@@ -426,6 +538,7 @@ class HouseholdRepository(
         val removed = existing.filter { it.remoteId !in remoteIds }
         removed.forEach { row ->
             roomDao.deleteForHousehold(row.id)
+            deviceDao.deleteSharedForHousehold(row.id)
             deviceDao.clearHouseholdAssignments(row.id)
             householdDao.delete(row.id)
         }
@@ -441,6 +554,7 @@ class HouseholdRepository(
                     role = snapshot.role.name.lowercase(),
                     memberCount = snapshot.memberCount,
                     deviceCount = snapshot.deviceCount,
+                    roomCount = snapshot.roomCount,
                     sortOrder = index,
                     createdAt = snapshot.createdAt.takeIf { it > 0 } ?: row.createdAt,
                 )
@@ -465,6 +579,7 @@ class HouseholdRepository(
                 role = snapshot.role.name.lowercase(),
                 memberCount = snapshot.memberCount,
                 deviceCount = snapshot.deviceCount,
+                roomCount = snapshot.roomCount,
                 sortOrder = sortOrder,
                 createdAt = snapshot.createdAt,
             ),
@@ -478,6 +593,7 @@ class HouseholdRepository(
                 role = snapshot.role.name.lowercase(),
                 memberCount = snapshot.memberCount,
                 deviceCount = snapshot.deviceCount,
+                roomCount = snapshot.roomCount,
                 sortOrder = sortOrder,
                 createdAt = snapshot.createdAt,
             )
@@ -491,6 +607,7 @@ class HouseholdRepository(
         role = HouseholdRole.parse(role),
         memberCount = memberCount,
         deviceCount = deviceCount,
+        roomCount = roomCount,
         sortOrder = sortOrder,
         createdAt = createdAt,
     )

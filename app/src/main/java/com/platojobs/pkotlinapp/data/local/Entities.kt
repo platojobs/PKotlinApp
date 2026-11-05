@@ -62,6 +62,8 @@ data class HouseholdEntity(
     val role: String,
     @ColumnInfo(defaultValue = "0") val memberCount: Int,
     @ColumnInfo(defaultValue = "0") val deviceCount: Int,
+    /** 服务端统计的房间数；本地缓存不参与计算。 */
+    @ColumnInfo(defaultValue = "0") val roomCount: Int,
     @ColumnInfo(defaultValue = "0") val sortOrder: Int,
     @ColumnInfo(defaultValue = "0") val createdAt: Long,
 )

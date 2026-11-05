@@ -105,9 +105,63 @@ class HouseholdRulesTest {
         assertEquals(HouseholdErrorKind.NOT_FOUND, classifyHouseholdError(HouseholdNotFoundException()))
         assertEquals(HouseholdErrorKind.INVALID_CODE, classifyHouseholdError(InviteCodeInvalidException()))
         assertEquals(HouseholdErrorKind.RATE_LIMITED, classifyHouseholdError(InviteRateLimitedException()))
+        assertEquals(HouseholdErrorKind.CONFLICT, classifyHouseholdError(HouseholdConflictException()))
+        assertEquals(HouseholdErrorKind.CONFLICT, classifyHouseholdError(RoomSetMismatchException()))
         assertEquals(HouseholdErrorKind.OFFLINE, classifyHouseholdError(java.io.IOException()))
         assertEquals(HouseholdErrorKind.SERVER_ERROR, classifyHouseholdError(IllegalStateException()))
         assertFalse(HouseholdRole.parse("member").isOwner)
         assertTrue(HouseholdRole.parse("owner").isOwner)
     }
+
+    @Test
+    fun `owner with members cannot leave and sees all manage entries`() {
+        val caps = householdCapabilities(household(role = HouseholdRole.OWNER, memberCount = 2))
+
+        assertTrue(caps.canManage)
+        assertTrue(caps.canRemoveMembers)
+        assertFalse(caps.canLeave)
+        assertTrue(caps.leaveBlockedByMembers)
+    }
+
+    @Test
+    fun `member sees no manage entries but can leave`() {
+        val caps = householdCapabilities(household(role = HouseholdRole.MEMBER, memberCount = 3))
+
+        assertFalse(caps.canManage)
+        assertFalse(caps.canRemoveMembers)
+        assertTrue(caps.canLeave)
+        assertFalse(caps.leaveBlockedByMembers)
+    }
+
+    @Test
+    fun `owner alone can leave non-personal household`() {
+        val caps = householdCapabilities(household(role = HouseholdRole.OWNER, memberCount = 1))
+
+        assertTrue(caps.canManage)
+        assertFalse(caps.canRemoveMembers)
+        assertTrue(caps.canLeave)
+    }
+
+    @Test
+    fun `personal household can never be left`() {
+        val caps = householdCapabilities(
+            household(role = HouseholdRole.OWNER, memberCount = 1, isPersonal = true),
+        )
+        assertFalse(caps.canLeave)
+    }
+
+    private fun household(
+        role: HouseholdRole,
+        memberCount: Int,
+        isPersonal: Boolean = false,
+    ) = Household(
+        localId = 1,
+        remoteId = "h-1",
+        name = "全家",
+        isPersonal = isPersonal,
+        role = role,
+        memberCount = memberCount,
+        deviceCount = 2,
+        roomCount = 3,
+    )
 }

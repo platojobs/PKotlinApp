@@ -357,7 +357,7 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
 
 ---
 
-## 7. Room v1 → v2 → v3 → v4 → v5 → v6 → v7 → v8 → v9 → v10 迁移
+## 7. Room v1 → v2 → v3 → v4 → v5 → v6 → v7 → v8 → v9 → v10 → v11 迁移
 
 > 需要 v0.3.1 的 Debug APK 作为「旧版本」。若手头没有，可从 tag 构建：
 >
@@ -451,6 +451,21 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
   4. 新增一条指标规则（如温度 > 30℃、连续 2 条），确认保存后出现在列表。
 - 预期：`user_version = 10`；旧规则 `type='LOW_RSSI'`、`threshold=-70` 不变，`metric` 为 NULL，`comparator='<'`、`thresholdValue=-70`、`consecutive=1`；旧规则仍能触发；指标规则可正常新增。
 - 失败判定：版本不是 10、旧规则消失或被改成 METRIC_THRESHOLD、旧规则不再触发、指标规则无法保存。
+
+### M8 v10 → v11 房间迁移（v0.13.0 新增）
+
+- 前置：v0.12.0 包（Room v10）中已有至少两台设备，其中一台有 `deviceGroup`（如「客厅」），另一台为空。
+- 步骤：
+  1. 覆盖安装 v0.13.0，打开首页确认设备仍在、全部落在「未分配」；
+  2. 导出数据库查询：
+     ```bash
+     sqlite3 /tmp/device_dashboard.db "PRAGMA user_version;"
+     sqlite3 /tmp/device_dashboard.db "SELECT mac, deviceGroup, roomId FROM devices;"
+     sqlite3 /tmp/device_dashboard.db "SELECT id, name, sortOrder, createdAt FROM rooms;"
+     ```
+  3. 新建一个房间，把其中一台设备移入，确认首页分区变化。
+- 预期：`user_version = 11`；设备数量与 `deviceGroup` 不变，`roomId` 全为 `NULL`；`rooms` 表存在且新建后排序从 0 递增；旧设备升级后无需重新扫描。
+- 失败判定：版本不是 11、设备丢失、`deviceGroup` 被清空、`roomId` 非空或 `rooms` 表缺失。
 
 ### 7.2 离线缓存与分组验收（v0.3.5 新增）
 
@@ -680,7 +695,20 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
 6. **触控区**：扫描、添加设备、规则开关、导出、注销的可点击区域 ≥48dp。
 - 失败判定：切语言后出现中文残留或 pairing code；最大字号出现截断/重叠；TalkBack 不播报 stateDescription/图表摘要；触控区小于 48dp。
 
----
+### 7.19 房间增删改、设备移入移出与空态验收（v0.13.0 新增）
+
+前置：至少三台设备；其中一台尚未分配房间。
+
+1. **新建房间**：首页设备区标题右侧进入「房间管理」→ 新建「客厅」「卧室」，确认首页出现两个房间分区，顺序与创建顺序一致。
+2. **重命名**：在房间管理点击房间名改为「客厅（新）」，确认首页房间头同步更新。
+3. **移入移出**：长按一台设备 → 选择「客厅」，确认卡片移入该分区；再长按选择「未分配」，确认回到最后一段。进入设备详情 → 点击「房间」行选择「卧室」，返回首页确认分区变化。
+4. **未分配分区**：将所有设备移入房间后，「未分配」分区不再出现；任意设备移出后重新出现在最后。
+5. **折叠**：点击房间头收起该房间设备，再次点击展开；折叠状态在本次会话内保持；进入搜索后结果不受折叠影响。
+6. **删除房间**：删除含设备的「卧室」，确认弹出二次确认且文案写明设备回到未分配；确认后设备出现在「未分配」，房间消失。
+7. **空态**：清空所有房间与设备 → 首页显示「还没有房间」+「新建房间」；只保留房间（无设备）→ 首页保留房间分区，房间头提示「该房间暂无设备」，点击进入扫描；搜索无结果 → 显示「没有匹配设备」。
+8. **搜索 / 排序 / 分组 Chip 取舍**：搜索设备名时结果平铺且无房间头；排序切换只改变房间内顺序；选中分组 Chip 时只显示含该分组设备的房间，不改变设备所属房间。
+9. **删除后落点**：`sqlite3 /tmp/device_dashboard.db "SELECT mac, roomId FROM devices;"` 确认原房间内设备 `roomId` 为 `NULL`。
+- 失败判定：房间增删改不同步首页；删除房间后设备消失或仍指向已删房间；未分配未固定最后；搜索仍按房间分段或折叠隐藏结果；空态文案与真实数据不符。
 
 ## 8. Release 包安装与 R8 生效验证
 

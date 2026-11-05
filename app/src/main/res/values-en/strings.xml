@@ -547,4 +547,23 @@
     <string name="intelligence_scene_delete_failed">Failed to delete scene</string>
     <string name="intelligence_scene_status_success">Success</string>
     <string name="intelligence_scene_status_failure">Failed</string>
+    <string name="room_title">Room</string>
+    <string name="room_unassigned">Unassigned</string>
+    <string name="room_manage">Manage rooms</string>
+    <string name="room_manage_title">Manage rooms</string>
+    <string name="room_manage_empty">No rooms yet. Create one first</string>
+    <string name="room_create">New room</string>
+    <string name="room_rename">Rename</string>
+    <string name="room_delete">Delete</string>
+    <string name="room_delete_title">Delete room</string>
+    <string name="room_delete_message">Deleting “%1$s” moves its devices to Unassigned.</string>
+    <string name="room_name_hint">Room name</string>
+    <string name="room_device_count">Devices: %1$d</string>
+    <string name="room_empty_title">No rooms yet</string>
+    <string name="room_empty_hint">Create a room to organize devices by space</string>
+    <string name="room_no_devices">No devices in this room</string>
+    <string name="room_pick_title">Move to room</string>
+    <string name="room_a11y_header">%1$s, %2$s</string>
+    <string name="room_moved_to">Moved to “%1$s”</string>
+    <string name="room_moved_unassigned">Moved out of room to Unassigned</string>
 </resources>

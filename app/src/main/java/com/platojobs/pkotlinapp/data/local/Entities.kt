@@ -33,6 +33,17 @@ data class DeviceEntity(
     @ColumnInfo(defaultValue = "0") val aliasDirty: Boolean = false,
     // 首次添加时间（只写一次），供「按添加时间」排序；历史数据迁移时回填 lastSeenTimestamp。
     @ColumnInfo(defaultValue = "0") val createdAt: Long = 0,
+    // 本地房间归属；null 表示未分配。仅本机维护，不参与云端同步。
+    val roomId: Long? = null,
+)
+
+/** 本地房间：仅本机维护，不参与云端同步。 */
+@Entity(tableName = "rooms")
+data class RoomEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    @ColumnInfo(defaultValue = "0") val sortOrder: Int,
+    val createdAt: Long,
 )
 
 /**

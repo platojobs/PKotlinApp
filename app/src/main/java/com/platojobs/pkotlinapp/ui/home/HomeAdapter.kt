@@ -11,7 +11,8 @@ import androidx.recyclerview.widget.RecyclerView
 import com.platojobs.pkotlinapp.R
 import com.platojobs.pkotlinapp.databinding.ItemDeviceCardBinding
 import com.platojobs.pkotlinapp.databinding.ItemHomeAlertBinding
-import com.platojobs.pkotlinapp.databinding.ItemHomeGroupBinding
+import com.platojobs.pkotlinapp.databinding.ItemHomeRoomBinding
+import com.platojobs.pkotlinapp.databinding.ItemRoomEmptyBinding
 import com.platojobs.pkotlinapp.databinding.ItemHomeScenesBinding
 import com.platojobs.pkotlinapp.databinding.ItemHomeSectionBinding
 import com.platojobs.pkotlinapp.databinding.ItemSceneCardBinding
@@ -33,7 +34,17 @@ sealed interface HomeItem {
 
     data class DevicesHeader(val count: Int, val groupCount: Int) : HomeItem
 
-    data class GroupHeader(val label: String?) : HomeItem
+    /** 房间分区标题；[roomId] 为 null 表示「未分配」。 */
+    data class RoomHeader(
+        val roomId: Long?,
+        val name: String,
+        val deviceCount: Int,
+        val collapsed: Boolean,
+        val empty: Boolean,
+    ) : HomeItem
+
+    /** 完全没有房间时的真实空态。 */
+    data object RoomEmpty : HomeItem
 
     data class DeviceCard(
         val device: Device,
@@ -57,12 +68,17 @@ class HomeAdapter(
     private val onAlertClick: () -> Unit,
     private val onRunScene: (Scene) -> Unit,
     private val onManageScenes: () -> Unit,
+    private val onManageRooms: () -> Unit,
+    private val onCreateRoom: () -> Unit,
+    private val onRoomClick: (roomId: Long?, empty: Boolean) -> Unit,
+    private val onDeviceLongClick: (Device) -> Unit,
 ) : ListAdapter<HomeItem, RecyclerView.ViewHolder>(Diff) {
 
     override fun getItemViewType(position: Int): Int = when (getItem(position)) {
         is HomeItem.Alert -> TYPE_ALERT
         is HomeItem.DevicesHeader -> TYPE_SECTION
-        is HomeItem.GroupHeader -> TYPE_GROUP
+        is HomeItem.RoomHeader -> TYPE_ROOM
+        HomeItem.RoomEmpty -> TYPE_ROOM_EMPTY
         is HomeItem.DeviceCard -> TYPE_DEVICE
         is HomeItem.ScenesHeader -> TYPE_SECTION
         is HomeItem.SceneCards -> TYPE_SCENES
@@ -73,7 +89,8 @@ class HomeAdapter(
         return when (viewType) {
             TYPE_ALERT -> AlertHolder(ItemHomeAlertBinding.inflate(inflater, parent, false))
             TYPE_SECTION -> SectionHolder(ItemHomeSectionBinding.inflate(inflater, parent, false))
-            TYPE_GROUP -> GroupHolder(ItemHomeGroupBinding.inflate(inflater, parent, false))
+            TYPE_ROOM -> RoomHolder(ItemHomeRoomBinding.inflate(inflater, parent, false))
+            TYPE_ROOM_EMPTY -> RoomEmptyHolder(ItemRoomEmptyBinding.inflate(inflater, parent, false))
             TYPE_DEVICE -> DeviceHolder(ItemDeviceCardBinding.inflate(inflater, parent, false))
             else -> ScenesHolder(ItemHomeScenesBinding.inflate(inflater, parent, false))
         }
@@ -83,7 +100,8 @@ class HomeAdapter(
         when (val item = getItem(position)) {
             is HomeItem.Alert -> (holder as AlertHolder).bind(item)
             is HomeItem.DevicesHeader -> (holder as SectionHolder).bindDevices(item)
-            is HomeItem.GroupHeader -> (holder as GroupHolder).bind(item)
+            is HomeItem.RoomHeader -> (holder as RoomHolder).bind(item)
+            HomeItem.RoomEmpty -> (holder as RoomEmptyHolder).bind()
             is HomeItem.DeviceCard -> (holder as DeviceHolder).bind(item)
             is HomeItem.ScenesHeader -> (holder as SectionHolder).bindScenes(item)
             is HomeItem.SceneCards -> (holder as ScenesHolder).bind(item)
@@ -124,7 +142,9 @@ class HomeAdapter(
                 item.count,
                 item.groupCount,
             )
-            binding.sectionAction.visibility = View.GONE
+            binding.sectionAction.visibility = View.VISIBLE
+            binding.sectionAction.setText(R.string.room_manage)
+            binding.sectionAction.setOnClickListener { onManageRooms() }
         }
 
         fun bindScenes(item: HomeItem.ScenesHeader) {
@@ -136,12 +156,42 @@ class HomeAdapter(
         }
     }
 
-    private class GroupHolder(
-        private val binding: ItemHomeGroupBinding,
+    private inner class RoomHolder(
+        private val binding: ItemHomeRoomBinding,
     ) : RecyclerView.ViewHolder(binding.root) {
-        fun bind(item: HomeItem.GroupHeader) {
-            binding.groupTitle.text = item.label
-                ?: binding.groupTitle.context.getString(R.string.home_ungrouped)
+        fun bind(item: HomeItem.RoomHeader) {
+            val context = binding.root.context
+            binding.roomTitle.text = item.name
+            binding.roomArrow.visibility = if (item.empty) View.INVISIBLE else View.VISIBLE
+            binding.roomArrow.text = if (item.collapsed) "▸" else "▾"
+            binding.roomMeta.text = if (item.empty) {
+                context.getString(R.string.room_no_devices)
+            } else {
+                context.getString(R.string.room_device_count, item.deviceCount)
+            }
+            binding.root.contentDescription = context.getString(
+                R.string.room_a11y_header,
+                item.name,
+                binding.roomMeta.text,
+            )
+            binding.root.setOnClickListener { onRoomClick(item.roomId, item.empty) }
+            binding.root.setOnLongClickListener(null)
+        }
+    }
+
+    private inner class RoomEmptyHolder(
+        private val binding: ItemRoomEmptyBinding,
+    ) : RecyclerView.ViewHolder(binding.root) {
+        fun bind() {
+            binding.roomEmptyTitle.setText(R.string.room_empty_title)
+            binding.roomEmptyHint.setText(R.string.room_empty_hint)
+            binding.roomEmptyAction.setText(R.string.room_create)
+            binding.roomEmptyAction.setOnClickListener { onCreateRoom() }
+            if (binding.roomEmptyAction.contentDescription.isNullOrEmpty()) {
+                binding.roomEmptyAction.contentDescription =
+                    binding.root.context.getString(R.string.room_create)
+            }
+            binding.roomEmptyAction.setOnLongClickListener(null)
         }
     }
 
@@ -190,6 +240,10 @@ class HomeAdapter(
             )
             binding.root.enableCardPressScale()
             binding.root.setOnClickListener { onDeviceClick(device) }
+            binding.root.setOnLongClickListener {
+                onDeviceLongClick(device)
+                true
+            }
         }
     }
 
@@ -246,8 +300,11 @@ class HomeAdapter(
 
             oldItem is HomeItem.Alert && newItem is HomeItem.Alert -> true
             oldItem is HomeItem.DevicesHeader && newItem is HomeItem.DevicesHeader -> true
-            oldItem is HomeItem.GroupHeader && newItem is HomeItem.GroupHeader ->
-                oldItem.label == newItem.label
+
+            oldItem is HomeItem.RoomHeader && newItem is HomeItem.RoomHeader ->
+                oldItem == newItem
+
+            oldItem is HomeItem.RoomEmpty && newItem is HomeItem.RoomEmpty -> true
 
             oldItem is HomeItem.ScenesHeader && newItem is HomeItem.ScenesHeader -> true
             oldItem is HomeItem.SceneCards && newItem is HomeItem.SceneCards -> true
@@ -261,9 +318,10 @@ class HomeAdapter(
     private companion object {
         const val TYPE_ALERT = 0
         const val TYPE_SECTION = 1
-        const val TYPE_GROUP = 2
         const val TYPE_DEVICE = 3
         const val TYPE_SCENES = 4
+        const val TYPE_ROOM = 5
+        const val TYPE_ROOM_EMPTY = 6
         const val MAX_QUICK_SCENES = 3
     }
 }

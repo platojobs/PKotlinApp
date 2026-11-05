@@ -3,6 +3,11 @@ package com.platojobs.pkotlinapp.ui.home
 import android.content.Context
 import android.os.Bundle
 import android.view.View
+import android.widget.EditText
+import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.widget.doAfterTextChanged
@@ -13,6 +18,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.GridLayoutManager
 import com.google.android.material.chip.Chip
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.platojobs.pkotlinapp.PKotlinApplication
 import com.platojobs.pkotlinapp.R
 import com.platojobs.pkotlinapp.data.prefs.DeviceSortMode
@@ -63,6 +69,16 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             onAlertClick = { (activity as? MainActivity)?.openIntelligence() },
             onRunScene = { scene -> viewModel.runScene(scene) },
             onManageScenes = { (activity as? MainActivity)?.openIntelligence() },
+            onManageRooms = ::showRoomManager,
+            onCreateRoom = { promptRoomName(getString(R.string.room_create), "") { viewModel.createRoom(it) } },
+            onRoomClick = { roomId, empty ->
+                if (empty) {
+                    openScanDialog()
+                } else {
+                    viewModel.toggleRoom(roomId ?: HomeViewModel.UNASSIGNED_ROOM_ID)
+                }
+            },
+            onDeviceLongClick = ::showRoomPicker,
         )
 
         val columns = if (resources.configuration.fontScale >= LARGE_FONT_SCALE) 1 else 2
@@ -125,7 +141,23 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         when {
             state.loading -> threeState.showLoading()
 
-            // 无设备时「开始扫描」是唯一主行动；网络不可用由顶部横幅说明，不在空态里再给一套错误文案。
+            // 还没有任何房间：房间是首页主结构，空态先引导建房间，而不是直接扫描。
+            state.devices.isEmpty() && state.rooms.isEmpty() && !state.searching ->
+                threeState.showEmpty(
+                    title = getString(R.string.room_empty_title),
+                    hint = getString(R.string.room_empty_hint),
+                    action = getString(R.string.room_create),
+                    onAction = {
+                        promptRoomName(getString(R.string.room_create), "") {
+                            viewModel.createRoom(it)
+                        }
+                    },
+                )
+
+            // 有房间但无设备：保留房间分区，点空房间标题即引导扫描。
+            state.devices.isEmpty() && !state.searching -> threeState.showContent()
+
+            // 搜索无结果时仍是设备维度的空态，主行动回到扫描。
             state.devices.isEmpty() -> threeState.showEmpty(
                 title = getString(R.string.home_devices_empty_title),
                 hint = getString(R.string.home_devices_empty_hint),
@@ -140,24 +172,144 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
     private fun renderItems(state: HomeUiState) {
         val items = mutableListOf<HomeItem>()
         items += HomeItem.Alert(state.alertCountToday)
-        if (state.devices.isNotEmpty()) {
+        if (state.devices.isNotEmpty() || state.rooms.isNotEmpty()) {
             items += HomeItem.DevicesHeader(state.devices.size, state.groups.size)
+            if (!state.searching && state.rooms.isEmpty()) {
+                items += HomeItem.RoomEmpty
+            }
             state.sections.forEach { section ->
-                if (section.groupLabel != null || state.sections.size > 1) {
-                    items += HomeItem.GroupHeader(section.groupLabel)
-                }
-                section.devices.forEach { device ->
-                    items += HomeItem.DeviceCard(
-                        device = device,
-                        reading = state.latestReadings[device.mac],
-                        connected = state.connectedMac == device.mac,
+                // 搜索结果是平铺的设备清单，折叠状态不影响搜索可见性。
+                val collapsed = !state.searching && (
+                    section.room?.id?.let { it in state.collapsedRooms }
+                        ?: (HomeViewModel.UNASSIGNED_ROOM_ID in state.collapsedRooms)
                     )
+                if (!state.searching) {
+                    items += HomeItem.RoomHeader(
+                        roomId = section.room?.id,
+                        name = section.room?.name ?: getString(R.string.room_unassigned),
+                        deviceCount = section.devices.size,
+                        collapsed = collapsed,
+                        empty = section.room != null && section.devices.isEmpty(),
+                    )
+                }
+                if (!collapsed) {
+                    section.devices.forEach { device ->
+                        items += HomeItem.DeviceCard(
+                            device = device,
+                            reading = state.latestReadings[device.mac],
+                            connected = state.connectedMac == device.mac,
+                        )
+                    }
                 }
             }
         }
         items += HomeItem.ScenesHeader(state.scenes.size)
         items += HomeItem.SceneCards(state.scenes, sceneProgress)
         adapter.submitList(items)
+    }
+
+    /** 长按设备卡片：选择目标房间；首项为「未分配」用于移出房间。 */
+    private fun showRoomPicker(device: Device) {
+        val rooms = lastState.rooms
+        val labels = mutableListOf(getString(R.string.room_unassigned))
+        labels += rooms.map { it.name }
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.room_pick_title)
+            .setItems(labels.toTypedArray()) { _, which ->
+                val target = rooms.getOrNull(which - 1)
+                viewModel.assignRoom(device.mac, target?.id)
+                toast(
+                    if (target == null) getString(R.string.room_moved_unassigned)
+                    else getString(R.string.room_moved_to, target.name),
+                )
+            }
+            .setNegativeButton(R.string.action_cancel, null)
+            .show()
+    }
+
+    /** 房间管理：新建、点击行重命名、删除需二次确认。 */
+    private fun showRoomManager() {
+        val rooms = lastState.rooms
+        val context = requireContext()
+        val content = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(8), dp(20), dp(8))
+        }
+        if (rooms.isEmpty()) {
+            content.addView(TextView(context).apply {
+                setText(R.string.room_manage_empty)
+                setTextAppearance(R.style.TextAppearance_App_Caption)
+                setTextColor(context.getColor(R.color.text_secondary))
+            })
+        }
+        rooms.forEach { room ->
+            val row = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                minimumHeight = dp(48)
+                gravity = android.view.Gravity.CENTER_VERTICAL
+            }
+            row.addView(TextView(context).apply {
+                text = room.name
+                setTextAppearance(R.style.TextAppearance_App_Callout)
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                minimumHeight = dp(48)
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                setOnClickListener {
+                    promptRoomName(getString(R.string.room_rename), room.name) {
+                        viewModel.renameRoom(room.id, it)
+                    }
+                }
+            })
+            row.addView(TextView(context).apply {
+                setText(R.string.room_delete)
+                setTextAppearance(R.style.TextAppearance_App_Caption)
+                setTextColor(context.getColor(R.color.danger))
+                gravity = android.view.Gravity.CENTER
+                minimumWidth = dp(48)
+                minimumHeight = dp(48)
+                setOnClickListener {
+                    MaterialAlertDialogBuilder(context)
+                        .setTitle(R.string.room_delete_title)
+                        .setMessage(getString(R.string.room_delete_message, room.name))
+                        .setPositiveButton(R.string.room_delete) { _, _ ->
+                            viewModel.deleteRoom(room.id)
+                        }
+                        .setNegativeButton(R.string.action_cancel, null)
+                        .show()
+                }
+            })
+            content.addView(row)
+        }
+        val scroll = ScrollView(context).apply { addView(content) }
+        MaterialAlertDialogBuilder(context)
+            .setTitle(R.string.room_manage_title)
+            .setView(scroll)
+            .setPositiveButton(R.string.room_create) { _, _ ->
+                promptRoomName(getString(R.string.room_create), "") { viewModel.createRoom(it) }
+            }
+            .setNegativeButton(R.string.action_cancel, null)
+            .show()
+    }
+
+    private fun promptRoomName(title: String, initial: String, onConfirm: (String) -> Unit) {
+        val input = EditText(requireContext()).apply {
+            hint = getString(R.string.room_name_hint)
+            setText(initial)
+            setSelection(text.length)
+        }
+        val container = FrameLayout(requireContext()).apply {
+            setPadding(dp(24), dp(8), dp(24), 0)
+            addView(input)
+        }
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(title)
+            .setView(container)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                val name = input.text?.toString()?.trim().orEmpty()
+                if (name.isNotEmpty()) onConfirm(name)
+            }
+            .setNegativeButton(R.string.action_cancel, null)
+            .show()
     }
 
     private fun buildSortChips() {

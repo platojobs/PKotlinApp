@@ -28,15 +28,15 @@
 
 ## 2. 信息架构与五模块能力（v0.8.0）
 
-底部 `BottomNavigationView` 按米家式信息架构固定五项：**首页 / 智能 / 产品 / 市场 / 我的**。设备管理（搜索 / 排序 / 分组）属于首页，不再保留独立「设备」Tab；规则入口整体迁移到「智能」。
+底部 `BottomNavigationView` 按米家式信息架构固定五项：**首页 / 智能 / 产品 / 市场 / 我的**。设备管理（搜索 / 排序 / 房间分区 / 分组筛选）属于首页，不再保留独立「设备」Tab；规则入口整体迁移到「智能」。
 
 ### 首页 Home（`ui/home`）
-- 设备卡片网格：每张卡显示名称、连接状态、最近一条读数（等宽数字）与真实 RSSI 信号条；按分组分段展示，分组头可折叠。
-- 顶部保留搜索（别名 / 广播名 / 型号 / MAC）与排序（最近 / 名称 / 信号 / 添加时间），分组 Chip 来自 Room 真实分组。
+- 设备卡片网格：每张卡显示名称、连接状态、最近一条读数（等宽数字）与真实 RSSI 信号条；按**房间**分段展示，房间头可折叠，「未分配」固定最后。
+- 顶部保留搜索（别名 / 广播名 / 型号 / MAC）与排序（最近 / 名称 / 信号 / 添加时间）；分组 Chip 保留为辅助筛选，来自 Room 真实 `deviceGroup`。
 - 首卡上方一行「今日告警摘要」：条数来自 `RuleEvent` 当日真实触发计数，点击进入「智能」。
 - 下方「快捷场景」横向卡：展示本机前 3 个场景，点击即执行并 toast 汇总结果。
-- 点设备卡校验蓝牙连接权限后发起连接并进入详情；「扫描添加」弹层复用同一套 `BluetoothLeScanner`。
-- 三态：骨架延迟 300ms 且与真实列表同高；空态给出「还没有设备」+「开始扫描」；同步失败且无本地设备时给出可重试错误块。
+- 点设备卡校验蓝牙连接权限后发起连接并进入详情；长按设备卡可移动房间；「扫描添加」弹层复用同一套 `BluetoothLeScanner`。
+- 三态：骨架延迟 300ms 且与真实列表同高；无房间时「还没有房间」+「新建房间」，有房间无设备时房间内引导扫描，搜索无结果时回到「没有匹配设备」。
 
 ### 智能 Intelligence（`ui/intelligence`，v0.8.0 新增）
 - **自动化**：低 RSSI / 断开 / 绑定丢失三类本地规则的增删启停，以及最近触发记录；规则命中写 `RuleEvent` 并投递告警通知。
@@ -160,13 +160,14 @@ app/src/main/java/com/platojobs/pkotlinapp/
 
 ## 6. 数据层与多设备同步
 
-### Room 与迁移（当前 v10）
+### Room 与迁移（当前 v11）
 
-数据库 `device_dashboard.db` 当前版本 **10**，共 4 张表：
+数据库 `device_dashboard.db` 当前版本 **11**，共含设备、读数、规则、规则事件、扫描日志、场景、场景动作与房间等表：
 
 | 表 | 关键字段 |
 | --- | --- |
-| `devices` | `mac` 主键、`name`（用户别名）、`aliasDirty`（用户是否显式编辑过别名，默认 0）、`advertisedName`（广播名）、`lastRssi`、`lastSeenTimestamp`、`id`（客户端 UUID）、`platform`、`externalId`、`updatedAt`、`deletedAt`、`syncState(pending/synced)`、`deviceType/vendor/firmwareVersion/compatibility`（enrich 缓存）、`deviceTypeName`（catalog 展示名）、`deviceGroup`（云端分组，`NULL`=未上报/未知，`""`=已显式清空） |
+| `devices` | `mac` 主键、`name`（用户别名）、`aliasDirty`（用户是否显式编辑过别名，默认 0）、`advertisedName`（广播名）、`lastRssi`、`lastSeenTimestamp`、`id`（客户端 UUID）、`platform`、`externalId`、`updatedAt`、`deletedAt`、`syncState(pending/synced)`、`deviceType/vendor/firmwareVersion/compatibility`（enrich 缓存）、`deviceTypeName`（catalog 展示名）、`deviceGroup`（云端分组，`NULL`=未上报/未知，`""`=已显式清空）、`roomId`（本机房间归属，`NULL`=未分配） |
+| `rooms` | 自增 id、`name`、`sortOrder`、`createdAt`；仅本机维护，不参与云端同步 |
 | `rules` | 自增 id、`type`、`threshold`（RSSI 规则）、`enabled`、`createdAt`、`lastTriggeredTimestamp`；v10 新增 `metric`、`comparator`、`thresholdValue`、`consecutive`（指标规则；旧规则为 NULL/默认值） |
 | `rule_events` | 规则触发记录；v10 新增 `metric`、`value`、`thresholdValue`、`unit`，保存指标命中的触发值与阈值证据 |
 | `scan_logs` | 扫描日志 |
@@ -174,7 +175,8 @@ app/src/main/java/com/platojobs/pkotlinapp/
 - `MIGRATION_1_2` 使用 `ALTER TABLE ... ADD COLUMN` 扩展字段，再逐行回填客户端 UUID、`platform=android`、`externalId=规范化大写 MAC`、`updatedAt=lastSeenTimestamp`、`syncState=pending`，**不丢已有设备数据**。
 - `MIGRATION_2_3` 新增 4 个 enrich 可空列；`MIGRATION_3_4` 新增 `deviceTypeName` 与 `deviceGroup` 可空列；`MIGRATION_4_5` 新增 `advertisedName` 可空列，历史行保持 null，由展示层回退到别名/型号名；`MIGRATION_5_6` 新增 `aliasDirty INTEGER NOT NULL DEFAULT 0`，历史行默认 0；`MIGRATION_6_7` 新增 `readings`；`MIGRATION_7_8` 新增 `devices.createdAt`；`MIGRATION_8_9` 新增本机场景表。
 - `MIGRATION_9_10` 为 `rules` 增加 `metric/comparator/thresholdValue/consecutive`，为 `rule_events` 增加 `metric/value/thresholdValue/unit`。旧 RSSI 规则的 `type` 与 `threshold` **原样保留**（仍走 `rssi < threshold`），只回填 `comparator='<'` 与 `thresholdValue=threshold` 作为语义副本；其它旧规则保持默认值。`RuleMigrationTest` 用真实 SQLite 验证列、回填与旧规则字段不变。
-- 迁移后 schema 输出在 `app/schemas/com.platojobs.pkotlinapp.data.local.AppDatabase/10.json`。
+- `MIGRATION_10_11` 新增本机 `rooms` 表，并给 `devices` 增加可空 `roomId`。旧设备全部为 `NULL`（未分配），`deviceGroup` 原样保留；`RoomMigrationTest` 用真实 SQLite 验证设备数量/字段不变与 `roomId` 为 null。
+- 迁移后 schema 输出在 `app/schemas/com.platojobs.pkotlinapp.data.local.AppDatabase/11.json`。
 - 别名与广播名隔离：扫描只写 `advertisedName`，详情页编辑只写 `name`（alias），两者互不覆盖；列表/详情展示优先级为「用户别名 → 广播名 → catalog 型号名 → 未知设备」。
 - **别名清空语义**：`aliasDirty` 只在详情页保存且别名相对初始值发生变化时置 1（一旦置位保持），扫描路径永远不置位。置位后即使 `name` 为空，推送也会显式上报 `"alias":""`；未置位时不报空别名。服务端返回空别名时按「已清空」写回本地（`name=""`），展示层回退到广播名，旧别名不会被拉回复活。
 - `DeviceDao` 使用 `@Upsert insertOrUpdate`、`suspend getAllDevices`，并提供待同步查询、待同步计数、按 externalId 标记 synced 等同步专用方法。
@@ -561,6 +563,20 @@ Debug / Release 都可通过 `apiBaseUrl` 切换；发布前请传入正式域�
 - **无障碍**：扫描、添加设备、规则开关、导出、注销的触控区 ≥48dp；规则开关补 `stateDescription`（「已启用 / 已停用」）；图标补 `contentDescription`；图表整图播报「温度，最近 24 小时，最低 X 最高 Y，共 N 个数据点」，点选后更新为当前桶摘要。文字配色按 WCAG 计算全部 ≥4.5:1（`text_tertiary` 由 `#667085` 调深到 `#5F6A7D` 以覆盖 `surface_sunken` 组合），`BilingualAuditTest` 同时审计浅色/深色配色与触控尺寸。
 - **验证**：`FontScaleLayoutTest` 使用 Robolectric 在 `fontScale=2.0` 实测设备卡片、规则行与规则弹窗（高度 >0、不超父宽、弹窗可滚动），并断言图表刻度数为 3。
 
+### 6.11 房间（v0.13.0）
+
+- **数据模型**：`rooms(id, name, sortOrder, createdAt)` + `devices.roomId`（可空，`NULL` = 未分配），Room v11（`MIGRATION_10_11`）。`deviceGroup` 作为兼容字段保留，继续服务云同步与分组 Chip，但不再承担首页分区。
+- **迁移**：旧设备数量与字段原样保留，`roomId` 全部为 `NULL`，`deviceGroup` 不丢失；`RoomMigrationTest` 用真实 SQLite 覆盖 v10 → v11。
+- **首页分区**：房间按 `sortOrder → createdAt → id` 顺序渲染；每段一个可折叠房间头（房间名 + `共 N 台设备`），房间内设备继续使用当前排序；「未分配」固定最后，没有未分配设备时不渲染空分区。
+- **交互取舍**（避免搜索 / 排序 / 分组 Chip 与房间分区打架）：
+  - **搜索**：输入非空时平铺设备结果并隐藏房间头，折叠状态不参与过滤；清空搜索后恢复房间分区。
+  - **排序**：排序只在每个房间内部生效，不跨房间重排；房间顺序由 `sortOrder` 决定。
+  - **分组 Chip**：仍按 `deviceGroup` 过滤设备，激活时隐藏无匹配设备的房间；不改变设备所属房间，可与搜索叠加。
+- **房间管理**：首页设备区标题右侧「房间管理」；支持新建、点击行重命名、删除（二次确认文案写明「房间内设备会回到未分配」）。删除时先把设备 `roomId` 清空再删房间，设备落点为「未分配」。
+- **设备移入移出**：列表长按设备打开「移动到房间」（首项「未分配」即移出）；详情页「房间」行同样可改；本机还没有房间时，详情页可直接新建并归入当前设备。
+- **空态**：无房间且无设备 →「还没有房间」+「新建房间」；有房间但无设备 → 保留房间分区，房间头显示「该房间暂无设备」，点标题进入扫描；搜索无结果 → 沿用「没有匹配设备」空态。
+- **同步边界**：房间仅本机维护，不参与云端同步；扫描、编辑与云端拉取都用 `existing?.roomId` 保留本机归属，不会被同步覆盖。
+
 ---
 
 ## 7. 构建与运行
@@ -821,6 +837,7 @@ adb logcat -d -s ActivityTaskManager:I | grep "Displayed com.platojobs"
 | 同步 | Sync | 不使用 Upload 表示整条同步链路 |
 | 扫描 | Scan | 发现 BLE 设备；列表过滤仍用 Search |
 | 分组 | Group | 设备分组与规则分组统一 |
+| 房间 | Room | 本机房间分区；与云端 Group 不是同一概念 |
 | 告警 | Alert | 通知渠道、今日告警、最近触发 |
 | 接管码 | **Transfer Code** | 8 位账号迁移码；**英文禁用 pairing code**；蓝牙重新配对用 re-pair |
 | 分桶 | Bucket | 图表聚合单元 |
@@ -910,6 +927,7 @@ CI：GitHub Actions 的 `e2e-postgres` job 与该次运行同一脚本，日志�
 
 ## 16. 版本记录
 
+- `v0.13.0`：本机房间与首页分区。Room v11 新增 `rooms(id, name, sortOrder, createdAt)` 与可空 `devices.roomId`（`MIGRATION_10_11`），旧设备保持未分配、`deviceGroup` 原样保留；`RoomMigrationTest` 用真实 SQLite 验证升级。首页按房间分段、房间头可折叠、「未分配」固定最后；搜索时平铺结果并忽略折叠，排序只在房间内生效，分组 Chip 仅按 `deviceGroup` 过滤并隐藏空房间（决策见 §6.11）。房间支持新建/重命名/删除（二次确认，删除后设备回到未分配），设备可长按或详情页移入移出；空态区分「还没有房间」与「房间内无设备引导扫描」。房间仅本机、不参与同步，扫描/编辑/拉取均保留 `roomId`。`RoomRepositoryTest` 覆盖排序、重命名与删除落点；单测 227 全绿、`lintDebug` 0 issue、`assembleDebug`、fixture 与真 Postgres e2e 全绿，tag `v0.13.0`。
 - `v0.12.0`：与 iOS 配平的双语、超大字号与无障碍。全部文案拆为默认中文 `values/strings.xml` 与 `values-en/strings.xml`（457 条字符串 + 8 组 `plurals`，占位符全部命名参数），英文统一 Device/Reading/Sync/Scan/Group/Alert/**Transfer Code**/Bucket，禁止 pairing code；新增 `BilingualAuditTest` 校验两份资源 key/占位符/空值一致性、UI 层 Kotlin 无中文字面量、英文术语、配色对比度与 48dp 触控区。界面日期/数字改用 `Locale.getDefault()`，CSV 仍固定 `Locale.US`。200% 字号下首页降为单列、卡片与详情行自适应换行、规则弹窗可滚动、图表 Y 轴缩为 3 刻度且标签宽度自适应、市场 Chip 换行不省略；`FontScaleLayoutTest` 用 Robolectric 实测高度与父宽。无障碍补规则开关 `stateDescription`、图标 `contentDescription`、图表整图/选中摘要，`text_tertiary` 调深满足 `surface_sunken` 上 ≥4.5:1。单测 222 全绿、`lintDebug` 0 issue、`assembleDebug`、fixture 与真 Postgres e2e 全绿，tag `v0.12.0`。
 - `v0.11.0`：与 iOS 对齐的「有厚度」功能，Android 以规则模板替代 CSV 入口。**指标阈值规则**：`rules` 支持指标 + 比较符（`>`/`<`/`>=`/`<=`）+ 阈值 + 连续 N 条（1–5，默认 1）防抖，接入现有 `RuleEngine` 与读数入库链路（含后台采集），恢复通知只在确实触发过且通知已投递时发一条，节流沿用 `ruleId + mac`；命中事件落库并携带 `metric/value/thresholdValue/unit`，展示 `℃`/`%`/`bpm`。Room v10（`MIGRATION_9_10`）旧规则 `type/threshold` 不变并回填指标字段，旧规则升级后仍触发。**图表点选**：点按/长按选中最近桶，展示区间（本地时区）、min/max/avg/last/条数，点空白取消，不改 Y 轴、只用现有语义色；整图与选中态更新 `contentDescription`；命中几何为纯函数并补单测。**推荐规则**：智能页按设备真实出现过的指标生成模板（温度>30℃/湿度>70%/电量<20%/心率>120/CO₂>1000），一键写入 Room 立即生效；无读数显示真实空态。单测 211 全绿、`lintDebug` 0 issue、`assembleDebug`、fixture 与真 Postgres e2e 全绿，tag `v0.11.0`。
 - `v0.10.0`：跟随后端新增契约并升级真存储联调。`GET /sync/changes` 游标早于最老保留行时返回 `410 RESYNC_REQUIRED`（`cursor=0` 永不 410）；客户端收到后清空游标、只用 `cursor=0` 全量重拉一次，`pending` 设备/读数不丢弃并重新上传，服务端墓碑不覆盖更新的本地 pending；「我的」展示「云端变更记录已过期，已重新全量同步」，该分支与 401（重登）、503 `TIMEOUT`（指数退避）独立。`/auth/anonymous` 与 claim 返回 `expiresAt`（180 天 TTL），「我的」只读展示会话到期日；错误码映射补齐 `RESYNC_REQUIRED`/`TIMEOUT`/`IDEMPOTENCY_CONFLICT`；readings/changes/export 的 limit 在客户端收敛到 500/500/5000。新增 `scripts/e2e-postgres.sh` 与 `:app:e2ePostgres`，用 `stack-for-e2e.sh` + `seed-for-e2e.sh` 起真 Postgres，覆盖登录/push/changes/410（SQL 改 server_ts + cleanup）/series/metrics/export/注销 401；CI 新增并行 `e2e-postgres` job。单测新增 410/503/错误码/limit/expiresAt 用例；`testDebugUnitTest`、`lintDebug` 0 issue、`assembleDebug`、两套 e2e 全绿，tag `v0.10.0`。

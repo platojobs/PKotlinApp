@@ -98,6 +98,21 @@ internal object SceneMigrationSql {
     )
 }
 
+/** v10 -> v11 的本地房间；devices 增加可空 roomId，旧设备保持未分配。 */
+internal object RoomMigrationSql {
+    val V10_TO_V11 = listOf(
+        """
+        CREATE TABLE IF NOT EXISTS `rooms` (
+            `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+            `name` TEXT NOT NULL,
+            `sortOrder` INTEGER NOT NULL DEFAULT 0,
+            `createdAt` INTEGER NOT NULL
+        )
+        """.trimIndent(),
+        "ALTER TABLE devices ADD COLUMN roomId INTEGER",
+    )
+}
+
 @Database(
     entities = [
         DeviceEntity::class,
@@ -107,8 +122,9 @@ internal object SceneMigrationSql {
         ReadingEntity::class,
         SceneEntity::class,
         SceneActionEntity::class,
+        RoomEntity::class,
     ],
-    version = 10,
+    version = 11,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -124,6 +140,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun readingDao(): ReadingDao
 
     abstract fun sceneDao(): SceneDao
+
+    abstract fun roomDao(): RoomDao
 
     companion object {
         private const val DB_NAME = "device_dashboard.db"
@@ -233,6 +251,16 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v10 -> v11：新增本机房间表与设备归属列。
+         * 旧设备 roomId 为 null（未分配），deviceGroup 原样保留作为兼容字段。
+         */
+        val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                RoomMigrationSql.V10_TO_V11.forEach(db::execSQL)
+            }
+        }
+
         @Volatile
         private var instance: AppDatabase? = null
 
@@ -252,6 +280,7 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_7_8,
                     MIGRATION_8_9,
                     MIGRATION_9_10,
+                    MIGRATION_10_11,
                 )
                     .build()
                     .also { instance = it }

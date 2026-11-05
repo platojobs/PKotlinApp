@@ -70,6 +70,16 @@ data class Device(
     val aliasDirty: Boolean = false,
     /** 首次添加时间，只写一次；用于「按添加时间」排序。 */
     val createdAt: Long = lastSeenTimestamp,
+    /** 本地房间归属；null 表示未分配。仅本机维护，不参与云端同步。 */
+    val roomId: Long? = null,
+)
+
+/** 本机房间：用于首页分区，不参与云端同步。 */
+data class Room(
+    val id: Long,
+    val name: String,
+    val sortOrder: Int = 0,
+    val createdAt: Long = 0,
 )
 
 /**

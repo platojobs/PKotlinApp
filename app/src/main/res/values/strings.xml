@@ -551,4 +551,23 @@
     <string name="intelligence_scene_delete_failed">场景删除失败</string>
     <string name="intelligence_scene_status_success">成功</string>
     <string name="intelligence_scene_status_failure">失败</string>
+    <string name="room_title">房间</string>
+    <string name="room_unassigned">未分配</string>
+    <string name="room_manage">房间管理</string>
+    <string name="room_manage_title">房间管理</string>
+    <string name="room_manage_empty">还没有房间，先新建一个吧</string>
+    <string name="room_create">新建房间</string>
+    <string name="room_rename">重命名</string>
+    <string name="room_delete">删除</string>
+    <string name="room_delete_title">删除房间</string>
+    <string name="room_delete_message">删除「%1$s」后，房间内设备会回到未分配。</string>
+    <string name="room_name_hint">房间名称</string>
+    <string name="room_device_count">共 %1$d 台设备</string>
+    <string name="room_empty_title">还没有房间</string>
+    <string name="room_empty_hint">创建房间后，可按房间整理设备</string>
+    <string name="room_no_devices">该房间暂无设备</string>
+    <string name="room_pick_title">移动到房间</string>
+    <string name="room_a11y_header">%1$s，%2$s</string>
+    <string name="room_moved_to">已移动到「%1$s」</string>
+    <string name="room_moved_unassigned">已移出房间，回到未分配</string>
 </resources>

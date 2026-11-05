@@ -126,6 +126,16 @@ class DeviceAliasPersistenceTest {
             rows.remove(mac)
         }
 
+        override suspend fun assignRoom(mac: String, roomId: Long?) {
+            rows[mac]?.let { rows[mac] = it.copy(roomId = roomId) }
+        }
+
+        override suspend fun clearRoomAssignments(roomId: Long) {
+            rows.values.filter { it.roomId == roomId }.forEach {
+                rows[it.mac] = it.copy(roomId = null)
+            }
+        }
+
         override suspend fun tombstone(mac: String, timestamp: Long) {
             rows[mac]?.let {
                 rows[mac] = it.copy(

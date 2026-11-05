@@ -2,6 +2,8 @@ package com.platojobs.pkotlinapp.data.repository
 
 import com.platojobs.pkotlinapp.data.local.DeviceDao
 import com.platojobs.pkotlinapp.data.local.DeviceEntity
+import com.platojobs.pkotlinapp.data.local.RoomDao
+import com.platojobs.pkotlinapp.data.local.RoomEntity
 import com.platojobs.pkotlinapp.data.local.RuleDao
 import com.platojobs.pkotlinapp.data.local.RuleEntity
 import com.platojobs.pkotlinapp.data.local.RuleEventDao
@@ -23,6 +25,8 @@ import com.platojobs.pkotlinapp.domain.model.SyncState
 import com.platojobs.pkotlinapp.domain.model.normalizeExternalId
 import com.platojobs.pkotlinapp.domain.model.ruleTypeOf
 import com.platojobs.pkotlinapp.domain.repository.DeviceRepository
+import com.platojobs.pkotlinapp.domain.model.Room
+import com.platojobs.pkotlinapp.domain.repository.RoomRepository
 import com.platojobs.pkotlinapp.domain.repository.RuleEventRepository
 import com.platojobs.pkotlinapp.domain.repository.RuleRepository
 import com.platojobs.pkotlinapp.domain.repository.ScanLogRepository
@@ -63,6 +67,8 @@ class DeviceRepositoryImpl(
                     ?: System.currentTimeMillis(),
                 advertisedName = device.advertisedName ?: existing?.advertisedName,
                 group = device.group ?: existing?.group,
+                // 房间归属只由 assignRoom 修改；扫描/编辑设备时保留原值。
+                roomId = existing?.roomId ?: device.roomId,
                 deviceType = device.deviceType ?: existing?.deviceType,
                 deviceTypeName = device.deviceTypeName ?: existing?.deviceTypeName,
                 vendor = device.vendor ?: existing?.vendor,
@@ -90,6 +96,10 @@ class DeviceRepositoryImpl(
 
     override suspend fun deleteDevice(mac: String) {
         dao.tombstone(mac, System.currentTimeMillis())
+    }
+
+    override suspend fun assignRoom(mac: String, roomId: Long?) {
+        dao.assignRoom(mac, roomId)
     }
 }
 
@@ -252,6 +262,7 @@ private fun DeviceEntity.toDomain() = Device(
     advertisedName = advertisedName,
     aliasDirty = aliasDirty,
     createdAt = createdAt,
+    roomId = roomId,
 )
 
 private fun Device.toEntity() = DeviceEntity(
@@ -274,6 +285,7 @@ private fun Device.toEntity() = DeviceEntity(
     advertisedName = advertisedName,
     aliasDirty = aliasDirty,
     createdAt = createdAt,
+    roomId = roomId,
 )
 
 private fun RuleEntity.toDomain() = DeviceRule(
@@ -325,4 +337,41 @@ private fun ScanLog.toEntity() = ScanLogEntity(
     name = name,
     rssi = rssi,
     timestamp = timestamp,
+)
+
+class RoomRepositoryImpl(
+    private val dao: RoomDao,
+    private val deviceDao: DeviceDao,
+) : RoomRepository {
+
+    override fun observeRooms(): Flow<List<Room>> =
+        dao.observeRooms().map { list -> list.map { it.toDomain() } }
+
+    override suspend fun getRooms(): List<Room> = dao.getRooms().map { it.toDomain() }
+
+    override suspend fun createRoom(name: String): Long =
+        dao.insert(
+            RoomEntity(
+                name = name.trim(),
+                sortOrder = dao.getRooms().size,
+                createdAt = System.currentTimeMillis(),
+            ),
+        )
+
+    override suspend fun renameRoom(id: Long, name: String) {
+        dao.rename(id, name.trim())
+    }
+
+    /** 先清归属再删房间；即使中途失败留下悬空 roomId，展示层也按未分配处理。 */
+    override suspend fun deleteRoom(id: Long) {
+        deviceDao.clearRoomAssignments(id)
+        dao.delete(id)
+    }
+}
+
+private fun RoomEntity.toDomain() = Room(
+    id = id,
+    name = name,
+    sortOrder = sortOrder,
+    createdAt = createdAt,
 )

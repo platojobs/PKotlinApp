@@ -19,6 +19,7 @@ import com.platojobs.pkotlinapp.data.remote.ProductRepositoryImpl
 import com.platojobs.pkotlinapp.data.remote.RemoteMarketDataSource
 import com.platojobs.pkotlinapp.data.repository.DeviceRepositoryImpl
 import com.platojobs.pkotlinapp.data.repository.ReadingRepositoryImpl
+import com.platojobs.pkotlinapp.data.repository.RoomRepositoryImpl
 import com.platojobs.pkotlinapp.data.repository.RuleEventRepositoryImpl
 import com.platojobs.pkotlinapp.data.repository.RuleRepositoryImpl
 import com.platojobs.pkotlinapp.data.repository.ScanLogRepositoryImpl
@@ -40,6 +41,7 @@ import com.platojobs.pkotlinapp.domain.repository.MarketRepository
 import com.platojobs.pkotlinapp.domain.reading.ReadingRemote
 import com.platojobs.pkotlinapp.domain.repository.ProductRepository
 import com.platojobs.pkotlinapp.domain.repository.ReadingRepository
+import com.platojobs.pkotlinapp.domain.repository.RoomRepository
 import com.platojobs.pkotlinapp.domain.repository.RuleEventRepository
 import com.platojobs.pkotlinapp.domain.repository.RuleRepository
 import com.platojobs.pkotlinapp.domain.repository.ScanLogRepository
@@ -97,6 +99,11 @@ class AppContainer(context: Context) {
 
     val readingRepository: ReadingRepository by lazy {
         ReadingRepositoryImpl(database.readingDao())
+    }
+
+    /** 本地房间仓库：仅本机，不参与云端同步。 */
+    val roomRepository: RoomRepository by lazy {
+        RoomRepositoryImpl(database.roomDao(), database.deviceDao())
     }
 
     /** 本地场景仓库：仅本机，不参与云端同步。 */

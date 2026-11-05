@@ -12,6 +12,8 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.view.View
+import android.widget.EditText
+import android.widget.FrameLayout
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -34,6 +36,7 @@ import com.platojobs.pkotlinapp.databinding.DialogDeviceEditBinding
 import com.platojobs.pkotlinapp.databinding.ItemReadingBinding
 import com.platojobs.pkotlinapp.domain.model.displayDeviceTypeName
 import com.platojobs.pkotlinapp.domain.model.displayName
+import com.platojobs.pkotlinapp.domain.model.Room
 import com.platojobs.pkotlinapp.domain.model.unrecognizedDeviceTypeKey
 import com.platojobs.pkotlinapp.domain.reading.Reading
 import com.platojobs.pkotlinapp.domain.reading.ReadingMetrics
@@ -49,6 +52,7 @@ import com.platojobs.pkotlinapp.ui.common.applyHorizontalInsets
 import com.platojobs.pkotlinapp.ui.common.TimeFormat
 import com.platojobs.pkotlinapp.ui.common.applyTopInset
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import java.io.File
 import java.text.SimpleDateFormat
@@ -162,6 +166,7 @@ class DeviceDetailActivity : AppCompatActivity() {
         binding.readingsPermissionButton.setOnClickListener { openAppSettings() }
         binding.readingsExportButton.setOnClickListener { viewModel.exportReadings() }
         binding.readingsChart.setOnBucketSelectedListener { bucket -> renderChartSelection(bucket) }
+        binding.roomRow.setOnClickListener { showRoomPickerDialog() }
         binding.collectionControls.collectionSwitch.setOnCheckedChangeListener { _, checked ->
             if (settingCollectionSwitch) return@setOnCheckedChangeListener
             viewModel.setBackgroundCollectionEnabled(checked)
@@ -203,6 +208,10 @@ class DeviceDetailActivity : AppCompatActivity() {
                 }
                 launch {
                     viewModel.collectionStatus.collect { status -> renderCollectionStatus(status) }
+                }
+                launch {
+                    combine(viewModel.rooms, viewModel.roomId) { rooms, roomId -> rooms to roomId }
+                        .collect { (rooms, roomId) -> renderRoom(rooms, roomId) }
                 }
             }
         }
@@ -408,6 +417,46 @@ class DeviceDetailActivity : AppCompatActivity() {
                 val group = if (groupInput == initialGroup.orEmpty()) initialGroup else groupInput
                 viewModel.saveProfile(alias = alias, group = group)
             }
+            .show()
+    }
+
+    private fun renderRoom(rooms: List<Room>, roomId: Long?) {
+        binding.roomValue.text = rooms.firstOrNull { it.id == roomId }?.name
+            ?: getString(R.string.room_unassigned)
+    }
+
+    /** 移入/移出房间：「未分配」即移出；本机还没有房间时提供新建并归入。 */
+    private fun showRoomPickerDialog() {
+        val rooms = viewModel.rooms.value
+        val labels = mutableListOf(getString(R.string.room_unassigned)) + rooms.map { it.name }
+        val builder = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.room_pick_title)
+            .setItems(labels.toTypedArray()) { _, which ->
+                viewModel.assignRoom(rooms.getOrNull(which - 1)?.id)
+            }
+            .setNegativeButton(R.string.action_cancel, null)
+        if (rooms.isEmpty()) {
+            builder.setPositiveButton(R.string.room_create) { _, _ ->
+                promptNewRoom { viewModel.createRoomAndAssign(it) }
+            }
+        }
+        builder.show()
+    }
+
+    private fun promptNewRoom(onConfirm: (String) -> Unit) {
+        val input = EditText(this).apply { hint = getString(R.string.room_name_hint) }
+        val container = FrameLayout(this).apply {
+            val padding = (24 * resources.displayMetrics.density).toInt()
+            setPadding(padding, 0, padding, 0)
+            addView(input)
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.room_create)
+            .setView(container)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                input.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let(onConfirm)
+            }
+            .setNegativeButton(R.string.action_cancel, null)
             .show()
     }
 

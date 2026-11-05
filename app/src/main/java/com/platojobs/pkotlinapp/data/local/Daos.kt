@@ -44,6 +44,14 @@ interface DeviceDao {
     )
     suspend fun tombstone(mac: String, timestamp: Long)
 
+    /** 本地房间归属：null 表示移出房间回到「未分配」。 */
+    @Query("UPDATE devices SET roomId = :roomId WHERE mac = :mac")
+    suspend fun assignRoom(mac: String, roomId: Long?)
+
+    /** 删除房间前把房间内设备回到未分配，避免悬空 roomId。 */
+    @Query("UPDATE devices SET roomId = NULL WHERE roomId = :roomId")
+    suspend fun clearRoomAssignments(roomId: Long)
+
     @Query("SELECT * FROM devices WHERE syncState = 'pending' ORDER BY updatedAt ASC LIMIT :limit")
     suspend fun pendingDevices(limit: Int): List<DeviceEntity>
 
@@ -87,6 +95,26 @@ interface DeviceDao {
 
     @Query("DELETE FROM devices WHERE externalId = :externalId")
     suspend fun deleteByExternalId(externalId: String)
+}
+
+/** 本地房间 DAO：房间与设备归属仅存本机。 */
+@Dao
+interface RoomDao {
+
+    @Query("SELECT * FROM rooms ORDER BY sortOrder ASC, createdAt ASC, id ASC")
+    fun observeRooms(): Flow<List<RoomEntity>>
+
+    @Query("SELECT * FROM rooms ORDER BY sortOrder ASC, createdAt ASC, id ASC")
+    suspend fun getRooms(): List<RoomEntity>
+
+    @Insert
+    suspend fun insert(room: RoomEntity): Long
+
+    @Query("UPDATE rooms SET name = :name WHERE id = :id")
+    suspend fun rename(id: Long, name: String)
+
+    @Query("DELETE FROM rooms WHERE id = :id")
+    suspend fun delete(id: Long)
 }
 
 /** 指标聚合行：离线时替代服务端 `/readings/metrics` 的本地兜底。 */

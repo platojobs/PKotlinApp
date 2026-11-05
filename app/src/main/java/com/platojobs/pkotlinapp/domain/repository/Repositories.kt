@@ -8,6 +8,7 @@ import com.platojobs.pkotlinapp.domain.model.ProductModel
 import com.platojobs.pkotlinapp.domain.model.RuleComparator
 import com.platojobs.pkotlinapp.domain.model.RuleEvent
 import com.platojobs.pkotlinapp.domain.model.RuleType
+import com.platojobs.pkotlinapp.domain.model.Room
 import com.platojobs.pkotlinapp.domain.model.ScanLog
 import com.platojobs.pkotlinapp.domain.reading.Reading
 import com.platojobs.pkotlinapp.domain.reading.ReadingMetric
@@ -29,6 +30,23 @@ interface DeviceRepository {
     fun observeDevice(mac: String): Flow<Device?>
 
     suspend fun deleteDevice(mac: String)
+
+    /** 把设备移入房间；[roomId] 为 null 时回到「未分配」。 */
+    suspend fun assignRoom(mac: String, roomId: Long?)
+}
+
+/** 本机房间：仅设备归属，不参与云端同步。 */
+interface RoomRepository {
+    fun observeRooms(): Flow<List<Room>>
+
+    suspend fun getRooms(): List<Room>
+
+    suspend fun createRoom(name: String): Long
+
+    suspend fun renameRoom(id: Long, name: String)
+
+    /** 删除房间，并把房间内设备统一回到「未分配」。 */
+    suspend fun deleteRoom(id: Long)
 }
 
 interface RuleRepository {

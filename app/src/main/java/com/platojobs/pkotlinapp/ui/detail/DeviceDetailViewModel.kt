@@ -17,6 +17,7 @@ import com.platojobs.pkotlinapp.domain.export.ReadingCsvRow
 import com.platojobs.pkotlinapp.domain.export.ReadingPager
 import com.platojobs.pkotlinapp.domain.model.Device
 import com.platojobs.pkotlinapp.domain.model.DeviceInfo
+import com.platojobs.pkotlinapp.domain.model.Room
 import com.platojobs.pkotlinapp.domain.model.toOfflineDeviceInfo
 import com.platojobs.pkotlinapp.domain.reading.Reading
 import com.platojobs.pkotlinapp.domain.reading.ReadingMetrics
@@ -28,6 +29,7 @@ import com.platojobs.pkotlinapp.domain.reading.ReadingSummary
 import com.platojobs.pkotlinapp.domain.repository.DeviceInfoRepository
 import com.platojobs.pkotlinapp.domain.repository.DeviceRepository
 import com.platojobs.pkotlinapp.domain.repository.ReadingRepository
+import com.platojobs.pkotlinapp.domain.repository.RoomRepository
 import com.platojobs.pkotlinapp.domain.rule.RuleEngine
 import java.io.File
 import kotlinx.coroutines.Job
@@ -35,12 +37,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -101,8 +105,29 @@ class DeviceDetailViewModel(
     private val exportDir: File,
     private val settings: AppSettings,
     private val collectionSession: CollectionSession,
+    private val roomRepository: RoomRepository,
     private val now: () -> Long = System::currentTimeMillis,
 ) : ViewModel() {
+
+    /** 本机房间列表与当前设备归属。 */
+    val rooms: StateFlow<List<Room>> = roomRepository.observeRooms()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val roomId: StateFlow<Long?> = deviceRepository.observeDevice(mac)
+        .map { it?.roomId }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    fun assignRoom(targetRoomId: Long?) {
+        viewModelScope.launch { deviceRepository.assignRoom(mac, targetRoomId) }
+    }
+
+    /** 详情页尚无房间时的新建入口：建好后直接把当前设备放进去。 */
+    fun createRoomAndAssign(name: String) {
+        if (name.isBlank()) return
+        viewModelScope.launch {
+            val id = roomRepository.createRoom(name)
+            deviceRepository.assignRoom(mac, id)
+        }
+    }
 
     val connectionState: StateFlow<BleConnectionState> = bleConnectionManager.state
     val rssi: StateFlow<Int?> = bleConnectionManager.rssi
@@ -499,6 +524,7 @@ class DeviceDetailViewModel(
                     exportDir = File(app.cacheDir, "exports"),
                     settings = container.settings,
                     collectionSession = container.collectionSession,
+                    roomRepository = container.roomRepository,
                 )
             }
         }

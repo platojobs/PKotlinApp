@@ -16,6 +16,7 @@ import com.platojobs.pkotlinapp.data.prefs.DeviceSortMode
 import com.platojobs.pkotlinapp.data.sync.SyncManager
 import com.platojobs.pkotlinapp.data.sync.SyncScheduler
 import com.platojobs.pkotlinapp.domain.model.Device
+import com.platojobs.pkotlinapp.domain.model.Room
 import com.platojobs.pkotlinapp.domain.model.ScanLog
 import com.platojobs.pkotlinapp.domain.model.ScannedDevice
 import com.platojobs.pkotlinapp.domain.model.displayName
@@ -23,6 +24,7 @@ import com.platojobs.pkotlinapp.domain.reading.Reading
 import com.platojobs.pkotlinapp.domain.repository.DeviceRepository
 import com.platojobs.pkotlinapp.domain.repository.ReadingRepository
 import com.platojobs.pkotlinapp.domain.repository.RuleEventRepository
+import com.platojobs.pkotlinapp.domain.repository.RoomRepository
 import com.platojobs.pkotlinapp.domain.repository.ScanLogRepository
 import com.platojobs.pkotlinapp.domain.repository.SceneRepository
 import com.platojobs.pkotlinapp.domain.rule.RuleEngine
@@ -46,15 +48,18 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.Calendar
 
-/** 首页按分组分段的设备列表。 */
+/** 首页按房间分段的设备列表；[room] 为 null 表示「未分配」。 */
 data class DeviceSection(
-    val groupLabel: String?,
+    val room: Room?,
     val devices: List<Device>,
 )
 
 data class HomeUiState(
     val devices: List<Device> = emptyList(),
     val sections: List<DeviceSection> = emptyList(),
+    val rooms: List<Room> = emptyList(),
+    val collapsedRooms: Set<Long> = emptySet(),
+    val searching: Boolean = false,
     val latestReadings: Map<String, Reading> = emptyMap(),
     val connectedMac: String? = null,
     val alertCountToday: Int = 0,
@@ -81,6 +86,7 @@ class HomeViewModel(
     private val readingRepository: ReadingRepository,
     private val ruleEventRepository: RuleEventRepository,
     private val sceneRepository: SceneRepository,
+    private val roomRepository: RoomRepository,
     private val sceneExecutor: SceneExecutor,
     private val scanLogRepository: ScanLogRepository,
     private val bleScanner: BleScanner,
@@ -107,6 +113,9 @@ class HomeViewModel(
     /** null = 全部分组；"" = 未分组；其他为真实分组名。 */
     private val _selectedGroup = MutableStateFlow<String?>(null)
 
+    /** 折叠的房间；“未分配”用 [UNASSIGNED_ROOM_ID]。 */
+    private val _collapsedRooms = MutableStateFlow<Set<Long>>(emptySet())
+
     private val _loaded = MutableStateFlow(false)
 
     private val _sceneProgress = MutableStateFlow<SceneProgress?>(null)
@@ -125,31 +134,33 @@ class HomeViewModel(
             deviceRepository.observeDevices().onEach { _loaded.value = true },
             readingRepository.observeLatestPerDevice(),
             ruleEventRepository.observeCountBetween(dayWindow.first, dayWindow.second),
-        ) { devices, readings, alerts ->
-            Triple(devices, readings, alerts)
+            roomRepository.observeRooms(),
+        ) { devices, readings, alerts, rooms ->
+            HomeContent(devices, readings, alerts, rooms)
         },
         sceneRepository.observeScenes(),
-        combine(_query, _sortMode, _selectedGroup) { query, sort, group ->
-            Triple(query, sort, group)
+        combine(_query, _sortMode, _selectedGroup, _collapsedRooms) { query, sort, group, collapsed ->
+            HomeFilters(query, sort, group, collapsed)
         },
         bleConnectionManager.state,
         combine(_loaded, syncManager.status) { loaded, status -> loaded to status.lastError },
     ) { content, scenes, filters, connection, status ->
-        val (devices, readings, alertCount) = content
-        val (query, sort, group) = filters
         val (loaded, syncError) = status
-        val newestPerDevice = readings.groupBy { it.deviceId }.mapValues { it.value.first() }
+        val newestPerDevice = content.readings.groupBy { it.deviceId }.mapValues { it.value.first() }
         HomeUiState(
-            devices = devices,
-            sections = sectionsOf(devices, query, group, sort),
+            devices = content.devices,
+            sections = sectionsOf(content.devices, content.rooms, filters),
+            rooms = content.rooms,
+            collapsedRooms = filters.collapsed,
+            searching = filters.query.isNotBlank(),
             latestReadings = newestPerDevice,
             connectedMac = (connection as? BleConnectionState.Connected)?.mac,
-            alertCountToday = alertCount,
+            alertCountToday = content.alerts,
             scenes = scenes,
-            groups = devices.mapNotNull { it.group?.takeIf(String::isNotBlank) }.distinct().sorted(),
-            selectedGroup = group,
-            query = query,
-            sortMode = sort,
+            groups = content.devices.mapNotNull { it.group?.takeIf(String::isNotBlank) }.distinct().sorted(),
+            selectedGroup = filters.group,
+            query = filters.query,
+            sortMode = filters.sort,
             loading = !loaded,
             syncError = syncError,
         )
@@ -170,6 +181,30 @@ class HomeViewModel(
 
     fun setGroup(group: String?) {
         _selectedGroup.value = group
+    }
+
+    /** 折叠/展开房间；[roomId] 为 [UNASSIGNED_ROOM_ID] 表示未分配分区。 */
+    fun toggleRoom(roomId: Long) {
+        _collapsedRooms.update { if (roomId in it) it - roomId else it + roomId }
+    }
+
+    fun createRoom(name: String) {
+        if (name.isBlank()) return
+        viewModelScope.launch { roomRepository.createRoom(name) }
+    }
+
+    fun renameRoom(id: Long, name: String) {
+        if (name.isBlank()) return
+        viewModelScope.launch { roomRepository.renameRoom(id, name) }
+    }
+
+    fun deleteRoom(id: Long) {
+        viewModelScope.launch { roomRepository.deleteRoom(id) }
+    }
+
+    /** [roomId] 为 null 时移出房间，回到「未分配」。 */
+    fun assignRoom(mac: String, roomId: Long?) {
+        viewModelScope.launch { deviceRepository.assignRoom(mac, roomId) }
     }
 
     fun runScene(scene: Scene) {
@@ -194,28 +229,53 @@ class HomeViewModel(
 
     private fun sectionsOf(
         devices: List<Device>,
-        query: String,
-        selectedGroup: String?,
-        sort: DeviceSortMode,
+        rooms: List<Room>,
+        filters: HomeFilters,
     ): List<DeviceSection> {
-        val normalizedQuery = query.trim()
+        val normalizedQuery = filters.query.trim()
         val filtered = devices.filter { device ->
             normalizedQuery.isEmpty() ||
                 device.mac.contains(normalizedQuery, ignoreCase = true) ||
                 device.displayName()?.contains(normalizedQuery, ignoreCase = true) == true
         }.filter { device ->
-            when (selectedGroup) {
+            when (filters.group) {
                 null -> true
                 "" -> device.group.isNullOrBlank()
-                else -> device.group == selectedGroup
+                else -> device.group == filters.group
             }
-        }.sortedWith(comparatorFor(sort))
+        }.sortedWith(comparatorFor(filters.sort))
 
-        return filtered
-            .groupBy { it.group?.takeIf(String::isNotBlank) }
-            .toSortedMap(compareBy<String?> { it == null }.thenBy { it.orEmpty() })
-            .map { (group, items) -> DeviceSection(groupLabel = group, devices = items) }
+        // 搜索时平铺结果，不与房间分区互相打架；清空搜索恢复房间分区。
+        if (normalizedQuery.isNotEmpty()) {
+            return listOf(DeviceSection(room = null, devices = filtered))
+        }
+
+        val knownRoomIds = rooms.mapTo(mutableSetOf()) { it.id }
+        val byRoom = filtered.groupBy { device ->
+            device.roomId?.takeIf { it in knownRoomIds }
+        }
+        val roomSections = rooms.map { room ->
+            DeviceSection(room = room, devices = byRoom[room.id].orEmpty())
+        }.filter { section -> filters.group == null || section.devices.isNotEmpty() }
+        // 「未分配」固定排最后；没有未分配设备时不渲染空分区。
+        val unassigned = byRoom[null].orEmpty()
+        return if (unassigned.isEmpty()) roomSections
+        else roomSections + DeviceSection(room = null, devices = unassigned)
     }
+
+    private data class HomeContent(
+        val devices: List<Device>,
+        val readings: List<Reading>,
+        val alerts: Int,
+        val rooms: List<Room>,
+    )
+
+    private data class HomeFilters(
+        val query: String,
+        val sort: DeviceSortMode,
+        val group: String?,
+        val collapsed: Set<Long>,
+    )
 
     private fun comparatorFor(sort: DeviceSortMode): Comparator<Device> = when (sort) {
         DeviceSortMode.RECENT -> compareByDescending { it.lastSeenTimestamp }
@@ -320,6 +380,9 @@ class HomeViewModel(
         private const val MAX_LIVE_DEVICES = 100
         private const val DATABASE_WRITE_INTERVAL_MS = 2_000L
 
+        /** 未分配分区在折叠集合中的哨兵 id。 */
+        const val UNASSIGNED_ROOM_ID = -1L
+
         private fun todayWindow(): Pair<Long, Long> {
             val calendar = Calendar.getInstance().apply {
                 set(Calendar.HOUR_OF_DAY, 0)
@@ -340,6 +403,7 @@ class HomeViewModel(
                     readingRepository = container.readingRepository,
                     ruleEventRepository = container.ruleEventRepository,
                     sceneRepository = container.sceneRepository,
+                    roomRepository = container.roomRepository,
                     sceneExecutor = container.sceneExecutor,
                     scanLogRepository = container.scanLogRepository,
                     bleScanner = container.bleScanner,

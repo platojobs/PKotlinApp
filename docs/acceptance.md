@@ -1,9 +1,9 @@
-# 真机验收清单（v0.16.0）
+# 真机验收清单（v0.17.0）
 
 本清单用于「执行人不在开发现场」时也能照着做完验收。每项都写明**操作步骤、预期现象、失败判定**。
 所有结果请记录到文末的「验收记录表」；未实际执行的项不要填 PASS。
 
-- 适用版本：`versionName = 0.16.0`（`versionCode = 24`）
+- 适用版本：`versionName = 0.17.0`（`versionCode = 25`）
 - 应用包名：`com.platojobs.pkotlinapp`
 - 主界面：`com.platojobs.pkotlinapp.ui.MainActivity`
 - 设备详情：`com.platojobs.pkotlinapp.ui.detail.DeviceDetailActivity`
@@ -357,7 +357,7 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
 
 ---
 
-## 7. Room v1 → v2 → v3 → v4 → v5 → v6 → v7 → v8 → v9 → v10 → v11 → v12 → v13 → v14 迁移
+## 7. Room v1 → v2 → v3 → v4 → v5 → v6 → v7 → v8 → v9 → v10 → v11 → v12 → v13 → v14 → v15 迁移
 
 > 需要 v0.3.1 的 Debug APK 作为「旧版本」。若手头没有，可从 tag 构建：
 >
@@ -509,6 +509,20 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
      ```
 - 预期：`user_version = 14`；旧家庭/设备/房间/读数数据原样保留；`feedback_drafts` 新行 `state = pending`，重开 App 后草稿仍显示「未发送」。
 - 失败判定：版本不是 14、既有表数据丢失、升级后崩溃、草稿重开即丢失或状态被伪造成已发送。
+
+### M12 v14 → v15 房间 pending 编辑迁移（v0.17.0 新增）
+
+- 前置：v0.16.0 包（Room v14）已登录并同步过，至少有一个房间和一台已归属设备。
+- 步骤：
+  1. 覆盖安装 v0.17.0，打开首页确认原有房间、设备归属、家庭切换均正常；
+  2. 修改一个房间名称（保持离线或立即杀进程前操作），重新打开确认本地名称保留且显示「未同步」；
+  3. 导出数据库查询：
+     ```bash
+     sqlite3 /tmp/device_dashboard.db "PRAGMA user_version;"
+     sqlite3 /tmp/device_dashboard.db "SELECT id, name, sortOrder, pendingEdit, serverName, serverSortOrder FROM rooms;"
+     ```
+- 预期：`user_version = 15`；旧房间/设备/家庭/读数数据原样保留；旧房间默认 `pendingEdit = 0`、`serverName/serverSortOrder` 为 `NULL`；本地未同步的改名 `pendingEdit = 1`，联网同步成功后回到 0。
+- 失败判定：版本不是 15、既有数据丢失、旧房间被误标 pending、升级后崩溃。
 
 ### 7.2 离线缓存与分组验收（v0.3.5 新增）
 
@@ -824,6 +838,29 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
 6. **无障碍与大字号**：200% 字号下帮助与反馈弹窗内容可滚动、不截断；新增按钮/行触达 ≥48dp，读屏可读出问题与草稿条目。
 - 失败判定：反馈伪装成已发送、杀进程后草稿丢失、版本号硬编码、文档入口 404、200% 字号文字被裁切。
 
+### 7.25 家庭结构增量同步验收（v0.17.0 新增）
+
+前置：两台设备各有独立账号（A 为 owner、B 为成员），后端为 PJGoIoT v0.15.0（openapi 0.11.0）。
+
+1. **改名 / 建房 / 重排双向可见**：A 在「我的 → 家庭管理」改家庭名、新建两个房间并调整顺序；B 不点手动同步，等待后台同步后确认家庭名、房间名与顺序都更新，且 A/B 看到的成员数一致。
+2. **新成员基线**：C 从未加入过，A 签发邀请码、C 领取；C 首次同步后应看到家庭名与全部房间（来自 `GET /households` 全量基线），而不是空房间。
+3. **删房不删设备**：A 删除一个房间，B 同步后该房间消失，原房间内设备回到「未分配」且仍可打开详情，设备没有被静默删除。
+4. **转让与移除可见性**：A 把所有权转让给 B，双方角色刷新（A 变成员、B 变 owner）；B 移除 A 后再改名，A 的后续同步不再出现该家庭结构变更，但 A 仍能读到离开前的历史（旧家庭名/旧房间），这属正常语义。
+5. **未知 entity 不卡同步**：后端新增未知 entity 时（可在测试环境向 `change_log` 插入一条 `automation_rule`），客户端同步仍推进游标，下次同步不会重复卡住；`SyncUnknownEntityTest` 固定该行为。
+6. **pending 优先**：离线修改房间名后恢复网络但先别同步，让 A 在另一台设备改名同一房间；本机同步时本地名称与「未同步」标记不被覆盖，联网成功后本地值上传并采用服务端回读值。
+7. **410 重拉**：服务端清理过期 change_log 后旧游标返回 `410 RESYNC_REQUIRED`，客户端清游标并 `cursor=0` 全量重拉，pending 房间编辑不丢失。
+- 失败判定：未知 entity 卡住游标、删房连带删设备、新成员看不到房间基线、被移除成员仍收到新结构变更、pending 编辑被服务端覆盖、410 后 pending 丢失。
+
+### 7.26 「设备与服务市场」验收（v0.17.0 新增）
+
+1. **无虚构商品**：默认进入「市场」不出现任何商品名、价格、库存、销量；页面只展示兼容性、选购指南与服务入口。
+2. **兼容性查询**：选择「Nordic UART」等类型，核对可解析指标、GATT 服务 UUID 与限制文案；指标必须与「产品」页同类型设备的 `ReadingUuids.supported` 一致，NUS 类型提示「设备端需按 `metric=value` 逐行输出」。
+3. **选购指南**：三个场景（健康监测 / 环境采集 / 多设备组网）的推荐类型与「依据」来自真实能力；若 catalog 没有匹配类型，界面应如实显示「没有匹配的型号」，不编造推荐。
+4. **服务入口**：配对向导打开扫描弹窗；连接排障打开帮助中心对应条目；采集省电跳到「我的」采集卡，三条均不是死链。
+5. **示例数据**：打开「显示示例条目」开关后出现条目，每条固定标注「示例数据，不代表真实在售」，且无库存/价格/销量；关闭开关后列表消失，重启 App 仍保持关闭。
+6. **三态与无障碍**：断网时走统一错误态并可重试；空 catalog 走空态；200% 字号下 Chip 与卡片换行不截断，开关与卡片触达 ≥48dp，读屏可读出类型与限制。
+- 失败判定：出现真实感商品名/价格/库存/销量、指标与产品页不一致、推荐无依据、服务入口死链、示例开关不持久化、加载/空/错误出现第二套组件。
+
 ## 8. Release 包安装与 R8 生效验证
 
 ### L1 构建
@@ -929,6 +966,7 @@ apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk
 | S3 | 读数同步/离线补传 |  |  |  |
 | S4 | 0/1/60 点图表 |  |  |  |
 | M6 | v7→v8 添加时间 |  |  |  |
+| M12 | v14→v15 房间 pending 列 |  |  |  |
 | T1 | 告警通知渠道/投递 |  |  |  |
 | T2 | 通知节流与恢复 |  |  |  |
 | T3 | 通知权限拒绝提示 |  |  |  |

@@ -77,6 +77,25 @@ login="$(curl -fsS -X POST "$BASE_URL/api/v1/auth/anonymous")" || fail "匿名�
 TOKEN="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])' <<<"$login")"
 USER_ID="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["userId"])' <<<"$login")"
 
+# 结构变更（household / room）先写入，保证过期的那条是结构变更，用于验证「结构缺口触发 410」。
+home_json="$(curl -fsS -X POST "$BASE_URL/api/v1/households" \
+    -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"name":"e2e-410-home"}')" || fail "创建家庭失败"
+HOME_ID="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])' <<<"$home_json")"
+
+room_json="$(curl -fsS -X POST "$BASE_URL/api/v1/households/$HOME_ID/rooms" \
+    -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"name":"e2e-410-room","sortOrder":0}')" || fail "创建房间失败"
+
+rename_result="$(curl -sS -w '\n%{http_code}' -X PATCH "$BASE_URL/api/v1/households/$HOME_ID" \
+    -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"name":"e2e-410-renamed"}')"
+RENAME_CODE="${rename_result##*$'\n'}"
+[[ "$RENAME_CODE" == "200" ]] || fail "家庭改名失败（HTTP ${RENAME_CODE}）"
+
 payload="$(python3 - <<'PY'
 import datetime as dt
 import json
@@ -107,10 +126,14 @@ PUSH_CODE="${push_result##*$'\n'}"
 OLDEST_SEQ="$(docker exec "$PG_CONTAINER" psql -U pjgoiot -d pjgoiot_e2e -tAc \
     "SELECT MIN(seq) FROM change_log WHERE user_id = '${USER_ID}'" | tr -d '[:space:]')"
 [[ "$OLDEST_SEQ" =~ ^[0-9]+$ ]] || fail "读取最老 seq 失败：${OLDEST_SEQ}"
-echo "[E2E:pg] 用户 ${USER_ID} 最老 seq=${OLDEST_SEQ}，把 server_ts 改到 100 天前"
+STRUCT_OLDEST_SEQ="$(docker exec "$PG_CONTAINER" psql -U pjgoiot -d pjgoiot_e2e -tAc \
+    "SELECT MIN(seq) FROM change_log WHERE user_id = '${USER_ID}' AND entity IN ('household','room')" | tr -d '[:space:]')"
+[[ "$STRUCT_OLDEST_SEQ" =~ ^[0-9]+$ ]] || fail "读取最老结构变更 seq 失败：${STRUCT_OLDEST_SEQ}"
+[[ "$STRUCT_OLDEST_SEQ" == "$OLDEST_SEQ" ]] || fail "最老变更不是结构变更（struct=${STRUCT_OLDEST_SEQ} all=${OLDEST_SEQ}）"
+echo "[E2E:pg] 用户 ${USER_ID} 最老结构变更 seq=${STRUCT_OLDEST_SEQ}（也是整体最老），把 server_ts 改到 100 天前"
 
 docker exec "$PG_CONTAINER" psql -U pjgoiot -d pjgoiot_e2e -c \
-    "UPDATE change_log SET server_ts = now() - interval '100 days' WHERE user_id = '${USER_ID}' AND seq = ${OLDEST_SEQ}" \
+    "UPDATE change_log SET server_ts = now() - interval '100 days' WHERE user_id = '${USER_ID}' AND seq = ${STRUCT_OLDEST_SEQ}" \
     >/dev/null || fail "SQL 改写 server_ts 失败"
 
 echo "[E2E:pg] 运行 cleanup（change_log 保留 90 天）"
@@ -119,8 +142,8 @@ echo "[E2E:pg] 运行 cleanup（change_log 保留 90 天）"
     -change-log-retention-days 90 \
     -idempotency-retention-days 7) || fail "cleanup 执行失败"
 
-OLD_CURSOR=$((OLDEST_SEQ - 1))
-((OLD_CURSOR > 0)) || fail "旧游标为 0，无法验证 410（seed 应先产生更早的 seq）"
+OLD_CURSOR=$((STRUCT_OLDEST_SEQ - 1))
+((OLD_CURSOR > 0)) || fail "旧游标为 0，无法验证 410（结构变更应先于设备变更）"
 
 resp="$(curl -sS -w '\n%{http_code}' "$BASE_URL/api/v1/sync/changes?cursor=${OLD_CURSOR}" \
     -H "Authorization: Bearer $TOKEN")"
@@ -144,11 +167,16 @@ BODY="${resp%$'\n'*}"
 python3 -c '
 import json, sys
 body = json.loads(sys.argv[1])
-if not (body.get("changes") or []):
+changes = body.get("changes") or []
+if not changes:
     raise SystemExit("cursor=0 全量重拉应返回剩余变更")
-print("cursor=0 changes=%d nextCursor=%s" % (len(body["changes"]), body.get("nextCursor")))
+entities = {c.get("entity") for c in changes}
+if not {"household", "room"} & entities:
+    raise SystemExit("cursor=0 重拉应包含 household/room 结构变更，实际 entities=%r" % sorted(entities))
+print("cursor=0 changes=%d nextCursor=%s entities=%r" % (
+    len(changes), body.get("nextCursor"), sorted(entities)))
 ' "$BODY" || fail "cursor=0 全量重拉内容异常"
-echo "[E2E:pg] cursor=0 从未返回 410，剩余变更已拉回"
+echo "[E2E:pg] cursor=0 从未返回 410，剩余结构变更已拉回"
 
 echo "[E2E:pg] 通过：postgres @ ${BASE_URL}"
-echo "[E2E:pg] 覆盖：匿名登录/expiresAt → push 设备+读数 → changes/limit → 410 全量重拉 → series/metrics → export/limit → 注销 401"
+echo "[E2E:pg] 覆盖：匿名登录/expiresAt → push 设备+读数 → changes/limit → 结构缺口 410 全量重拉（household/room）→ series/metrics → export/limit → 注销 401"

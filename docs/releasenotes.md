@@ -6,6 +6,22 @@
 
 ---
 
+## v0.17.0
+
+**主题：接入后端 v0.15.0 的家庭结构增量同步，市场改为「设备与服务市场」且不造假**
+
+- 契约升级：对齐 PJGoIoT v0.15.0（openapi 0.11.0），`change_log` 新增 `household`（`name/ownerUserId/role/memberCount/deleted`）与 `room`（`householdId/name/sortOrder/deleted`）两个 entity，op 为 `upsert`/`delete`。
+- 未知 entity：解析层按 `entity` 显式分派，`user_device` → 设备记录、`household`/`room` → `StructuralChange`，其余一律丢弃；`nextCursor` 无条件推进。`SyncUnknownEntityTest` 用固定 JSON（含未知 `automation_rule`）锁定「跳过未知、cursor 仍从 8 前进到 9」。
+- `household upsert`：更新本地家庭名、接收者本人角色与成员数；本地没有该家庭（刚被邀请加入）时在同一次应用内触发一次 `GET /households` 全量基线，不依赖增量补房间/成员（后端不回放历史）。
+- `household delete`：整段移除该家庭的房间、共享设备、设备归属与家庭行；当前家庭失效时回落个人家庭，不做逐房间删除。
+- `room upsert`：按 `sortOrder` 插入或更新（新增/改名/重排）；`room delete`：删除本地房间并把该房间下设备的 `roomId/remoteRoomId` 清空，设备本身保留为「未分配」。
+- pending 房间编辑优先：Room v15（`MIGRATION_14_15`）为 `rooms` 增加 `pendingEdit INTEGER NOT NULL DEFAULT 0`、`serverName TEXT`、`serverSortOrder INTEGER`。重命名/重排在本地先落库并置 pending；随后收到同房间 `upsert` 只把服务端值暂存到 `serverName/serverSortOrder`，不覆盖本地；下次同步 `flushPendingRoomEdits` 先上传本地值，成功后清 pending 并采用服务端回读值。重排 409 先放弃 pending 再合并，避免死循环。
+- 成员移除语义：被移除后服务端不再向其扇出后续结构变更，但离开前的历史行仍在其 `change_log` 中可读；客户端按正常语义处理，不做脏数据清理。
+- 410 沿用：结构变更与设备变更共享保留期，`410 RESYNC_REQUIRED` 仍清游标 → `cursor=0` 全量重拉，pending 编辑保留并在重拉后继续合并。
+- 市场改造：删除虚构商品列表、`MarketAdapter` 与 `item_market.xml`，市场页改为「设备与服务市场」。兼容性查询按设备类型展示 `ReadingUuids.supported` 判定的可解析指标、`ProductCatalog` 的 GATT 服务与推导出的限制（NUS 需设备端按 `metric=value` 逐行输出、无解析指标、无 GATT 服务、固件未知）。选购指南按健康监测 / 环境采集 / 多设备组网推荐类型并给出 `ScenarioEvidence`，无匹配时如实返回空。服务入口三条直达：配对向导 → 扫描弹窗、连接排障 → 帮助中心排障条目、采集省电 → 「我的」采集卡。
+- 示例数据：`GET /markets` 条目仅在开关打开时展示，固定标注「示例数据，不代表真实在售」，不显示库存/价格/销量；开关默认关闭并持久化。加载/空/错误继续复用 `ThreeStateHost`。
+- 测试与 CI：新增 `HouseholdStructuralSyncTest`（改名/角色/计数、缺家庭基线、整段删除、房间落序、删房保设备、pending 优先、移除后历史）、`SyncUnknownEntityTest`、`RoomStructuralMigrationTest`（真实 SQLite v14→v15，既有数据保留）、`MarketInsightsTest`；e2e 补结构同步全链路（建房/改名/重排双视角、无关账号不可见、新成员不回放房间、转让后角色、移除后不再收到新结构但保留历史），真 Postgres 410 分支改为结构缺口（最早变更是 `household`，过期后旧游标 410，`cursor=0` 拉回 household/room）。单测 278 全绿，`lintDebug` 0 issue，`assembleDebug`、fixture 与真 Postgres e2e 全绿；tag `v0.17.0`。
+
 ## v0.16.0
 
 **主题：接入后端 v0.14.0 的所有权转让与 `isSelf`，产品页做成真实目录，「我的」补齐帮助 / 反馈 / 关于**

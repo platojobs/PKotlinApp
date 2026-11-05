@@ -617,6 +617,20 @@ Debug / Release 都可通过 `apiBaseUrl` 切换；发布前请传入正式域�
 - **意见反馈**：表单为类型下拉 + 描述 + 可选联系方式；当前版本没有反馈接口，提交先落本地 `feedback_drafts` 队列（Room v14），提示「已保存到本地待发队列（未发送）」，列表可重试/删除，绝不伪装发送成功。
 - **关于**：版本号与构建类型取自 `BuildConfig`，并提供开源许可、隐私政策、数据安全的现有文档入口（浏览器打开）。
 
+### 6.15 家庭结构增量同步与「设备与服务市场」（v0.17.0）
+
+- **后端契约（PJGoIoT v0.15.0 / openapi 0.11.0）**：`change_log` 新增 `household` 与 `room` 两个 entity，`payload` 与设备共用联合体结构（`name`、`ownerUserId`、`role`、`memberCount`、`sortOrder`、`deleted`）。`household` 更新家庭名、接收者本人角色与成员数；`room` 按 `sortOrder` 新增/改名/删除。
+- **未知 entity 必须跳过但游标前进**：`SyncChangeDto` 的 `payload` 仍是宽松 DTO，解析层 `toSyncChangeEntry()` 按 `entity` **显式分派**，绝不用「能解析成设备就当设备」的启发式。未知 entity 返回 null，`nextCursor` 无条件写入；否则服务端每新增一种 entity，旧客户端都会卡在同一条变更上。`SyncUnknownEntityTest` 用固定 JSON（含未知 `automation_rule`）锁定「设备 + 3 条结构、未知被丢弃、cursor=9」。
+- **household upsert**：存在则更新本地名称、接收者角色、成员数；本地没有该家庭（刚被邀请加入）时置 `baselineRequired` 并在同一次应用内跑一遍 `GET /households` 全量基线——后端不回放历史，增量补不出房间和成员。
+- **household delete**：整段移除该家庭的房间、共享设备、设备归属与家庭行，当前家庭失效时回落个人家庭；不做逐房间 delete。
+- **room upsert**：不存在则按 `remoteId/householdId/sortOrder` 插入；存在则更新名称与顺序。**room delete**：删除本地房间并清空该房间下设备的 `roomId/remoteRoomId`，设备本身保留（回到「未分配」而不是被静默删除）。
+- **pending 房间编辑优先**：Room v15（`MIGRATION_14_15`）为 `rooms` 增加 `pendingEdit`（默认 0）、`serverName`、`serverSortOrder`。重命名/重排在本地先落库并置 `pendingEdit`；此时收到同房间 `upsert` 只把服务端值写进 `serverName/serverSortOrder` 暂存，不覆盖界面；下次同步 `flushPendingRoomEdits` 先上传本地值，成功后清 pending 并采用服务端回读值。重排 409 时先放弃 pending 再合并服务端，避免死循环。`HouseholdStructuralSyncTest` 固定「本地 pending 优先、服务端值落库待合并」。
+- **成员移除语义**：被移除后不再收到后续结构变更（服务端按当前成员扇出），但离开前的历史行仍在 `change_log` 里可读。客户端把这种情况当正常语义，不做「脏数据」清理。
+- **410 不变**：结构变更与设备变更共享同一保留期；收到 `410 RESYNC_REQUIRED` 仍走清游标 → `cursor=0` 全量重拉，pending 编辑保留并在重拉后继续合并。
+- **市场改为真实内容**：删除虚构商品列表与 `MarketAdapter`，页面改为「设备与服务市场」。兼容性由 `ProductCatalog` 的服务 UUID 与 `ReadingUuids.supported` 推导可解析指标、所需 GATT 服务与已知限制（NUS 必须按 `metric=value` 逐行输出、无解析指标、无 GATT 服务、固件未知），不写第二份真值。选购指南按 健康监测 / 环境采集 / 多设备组网 给出推荐类型与 `ScenarioEvidence`（依据是真实能力，不是营销话术），无匹配时如实返回空。服务入口三条：配对向导直达扫描弹窗、连接排障打开帮助中心排障条目、采集省电直达「我的」采集卡。
+- **示例数据默认隐藏**：市场条目（来自 `GET /markets`）只在用户打开开关后展示，并固定标注「示例数据，不代表真实在售」，不显示库存/价格/销量；开关默认关闭且持久化。
+- **三态复用**：市场页仍使用现有 `ThreeStateHost`，未新增第二套加载/空/错误组件。
+
 ---
 
 ## 7. 构建与运行
@@ -626,7 +640,7 @@ export JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk-21.jdk/Contents/Home
 
 ./gradlew assembleDebug        # Debug APK
 ./gradlew lintDebug            # Lint
-./gradlew testDebugUnitTest    # 单元测试：266 个（含规则防抖/恢复/迁移、图表命中、推荐模板、双语/无障碍/200% 字号、家庭转让/isSelf、产品目录、反馈队列）
+./gradlew testDebugUnitTest    # 单元测试：278 个（含规则防抖/恢复/迁移、图表命中、推荐模板、双语/无障碍/200% 字号、家庭结构同步/未知 entity、市场洞察、反馈队列）
 ./gradlew assembleRelease      # 签名 Release APK
 ./gradlew bundleRelease        # 签名 Release AAB
 
@@ -943,23 +957,23 @@ Content-Type: application/json
 
 1. 调 `PJGoIoT/scripts/stack-for-e2e.sh`：Docker 起 `postgres:16-alpine`（自动选空闲端口）、迁移到最新版本、Go 进程以 `STORE=postgres` 启动 API，输出 `BASE_URL`；
 2. 调 `scripts/seed-for-e2e.sh`：写入真实迁移 seed 关联的 ESP32-C3-DevKitM-1 与 24 条读数，并从 API 读回校验；
-3. 跑 `:app:e2ePostgres`：与 fixture 套件共用用例，另加 postgres 专属断言——匿名登录/claim 的 `expiresAt`（180 天）、push 设备+读数、changes、readings/changes/export 的 limit 边界（500/500/5000 通过，501/501/5001 返回 400）、series/metrics、注销 204 后 401；家庭链路在两种存储下一致覆盖：服务端计数、邀请码列表无明文、撤销后 claim 404、重排缺项 409、owner 带成员退出 409、移除成员后对方 404、owner 退出 204；
-4. 410 分支：匿名登录 → push 2 台设备 → SQL 把该用户最老 `seq` 的 `server_ts` 改到 100 天前 → 跑 `cmd/cleanup`（change_log 保留 90 天）→ `cursor=最老seq-1` 断言 `410 RESYNC_REQUIRED` → `cursor=0` 断言 200 且返回剩余变更；
+3. 跑 `:app:e2ePostgres`：与 fixture 套件共用用例，另加 postgres 专属断言——匿名登录/claim 的 `expiresAt`（180 天）、push 设备+读数、changes、readings/changes/export 的 limit 边界（500/500/5000 通过，501/501/5001 返回 400）、series/metrics、注销 204 后 401；家庭链路在两种存储下一致覆盖：服务端计数、邀请码列表无明文、撤销后 claim 404、重排缺项 409、owner 带成员退出 409、移除成员后对方 404、owner 退出 204；结构同步链路（v0.17.0）覆盖：建房/改名/建房/重排后两个账号各自收到 role 正确的 `household` upsert 与最新 `room.sortOrder`、无关账号零结构行、新成员只收到加入时 upsert 不回放房间、转让后双方角色、移除后不再收到新结构但保留离开前历史；
+4. 410 分支：匿名登录 → 先建家庭/房间并改名（让最早一条变更是 `household`）→ push 2 台设备 → SQL 把该用户最老结构变更的 `server_ts` 改到 100 天前 → 跑 `cmd/cleanup`（change_log 保留 90 天）→ `cursor=最老seq-1` 断言 `410 RESYNC_REQUIRED` → `cursor=0` 断言 200 且返回剩余 `household/room` 变更；
 5. 无论成功失败都停栈；失败时把 `api.log` 复制到 `E2E_LOG_DIR`，供 CI artifact 上传。
 
-本机真实执行输出（2026-11-05，Docker 29.5.2，`cursor` 为该次实际 seq）：
+本机真实执行输出（2026-11-06，Docker 29.5.2，`cursor` 为该次实际 seq）：
 
 ```text
-[E2E:pg] 用户 b63dc736-001e-4a7f-bb75-46e9ebfeee3f 最老 seq=18，把 server_ts 改到 100 天前
+[E2E:pg] 用户 c5820d8b-90d8-45be-8f3c-85172a40693f 最老结构变更 seq=55（也是整体最老），把 server_ts 改到 100 天前
 [E2E:pg] 运行 cleanup（change_log 保留 90 天）
-清理完成 readings_deleted=0 readings_cutoff=2016-11-07T09:58:54Z retention_days=3650
-change_log_deleted=1 change_log_cutoff=2026-08-07T09:58:54Z change_log_retention_days=90
-idempotency_keys_deleted=0 idempotency_cutoff=2026-10-29T09:58:54Z idempotency_retention_days=7
+清理完成 readings_deleted=0 readings_cutoff=2016-11-07T17:07:40Z retention_days=3650
+change_log_deleted=1 change_log_cutoff=2026-08-07T17:07:40Z change_log_retention_days=90
+idempotency_keys_deleted=0 idempotency_cutoff=2026-10-29T17:07:40Z idempotency_retention_days=7
 tokens_deleted=0 pairing_codes_deleted=0
-[E2E:pg] 410 校验通过：cursor=17 → RESYNC_REQUIRED
-cursor=0 changes=1 nextCursor=19
-[E2E:pg] cursor=0 从未返回 410，剩余变更已拉回
-[E2E:pg] 通过：postgres @ http://127.0.0.1:50911
+[E2E:pg] 410 校验通过：cursor=54 → RESYNC_REQUIRED
+cursor=0 changes=4 nextCursor=59 entities=['household', 'room', 'user_device']
+[E2E:pg] cursor=0 从未返回 410，剩余结构变更已拉回
+[E2E:pg] 通过：postgres @ http://127.0.0.1:56293
 ```
 
 CI：GitHub Actions 的 `e2e-postgres` job 与该次运行同一脚本，日志与测试报告见
@@ -967,6 +981,7 @@ CI：GitHub Actions 的 `e2e-postgres` job 与该次运行同一脚本，日志�
 
 ## 16. 版本记录
 
+- `v0.17.0`：接入后端 v0.15.0（openapi 0.11.0）的家庭结构增量同步，并把「市场」改成不造假的产品内容。`change_log` 解析按 `entity` 显式分派：`household`/`room` 进入 `StructuralChange`，未知 entity 直接丢弃但 `nextCursor` 无条件前进（`SyncUnknownEntityTest` 用固定 JSON 锁定）。`household upsert` 更新名称/接收者角色/成员数，本地缺该家庭时同一次内跑 `GET /households` 全量基线；`household delete` 整段移除房间、共享设备、归属与家庭行；`room upsert` 按 `sortOrder` 落序，`room delete` 删房间并清空设备归属但保留设备本身。Room v15（`MIGRATION_14_15`）为 `rooms` 增加 `pendingEdit/serverName/serverSortOrder`：本地未同步房间编辑优先，收到同房间结构 upsert 只暂存服务端值，下次同步先上传本地值再合并；重排 409 先放弃 pending。成员移除后不再收到新结构、离开前历史仍可读，按正常语义处理；`410 RESYNC_REQUIRED` 仍清游标后 `cursor=0` 全量重拉。市场删除虚构商品与 `MarketAdapter`：兼容性由 `ProductCatalog` 服务 UUID + `ReadingUuids.supported` 推导指标/GATT 服务/限制（NUS 逐行输出），选购指南按健康/环境/组网给出带证据的推荐，无匹配如实为空；配对向导、连接排障、采集省电三条入口直达真实功能；示例条目默认隐藏且固定标注「示例数据，不代表真实在售」。新增 `HouseholdStructuralSyncTest`、`SyncUnknownEntityTest`、`RoomStructuralMigrationTest`（v14→v15 真实 SQLite）、`MarketInsightsTest`；e2e 补结构同步全链路（改名/建房/删房/转让/移除后可见性/新成员不回放历史），真 Postgres 410 分支改为结构缺口（过期一条 `household` 后旧游标 410、`cursor=0` 拉回 household/room）。单测 278 全绿、`lintDebug` 0 issue、`assembleDebug`、fixture 与真 Postgres e2e 全绿，tag `v0.17.0`。
 - `v0.16.0`：接入后端 v0.14.0 的所有权转让与 `isSelf`，产品页升级为真实产品目录，「我的」补齐帮助中心 / 意见反馈 / 关于三入口。Room v14（`MIGRATION_13_14`）新增 `feedback_drafts` 表（id/category/description/contact/createdAt/state，默认 `pending`）。成员 DTO 增加 `isSelf`，本机不再按用户名/id 猜「这一行是我」；owner 长按其他成员行可并列选择「移除成员 / 转让所有权」，`isSelf` 为真或非 owner 时两者都不出现。转让二次确认写明降级后果；403/404/409 统一可读提示并刷新家庭与成员；成功及失败后都重拉成员与能力矩阵，入口随角色收起。老后端成员列表全缺 `isSelf` 或转让返回 405 时静默隐藏入口。产品页按 `deviceType` 分组为健康/环境/网关·中继/其他（Chip 带 catalog 数量徽标），详情页展示类型说明、`ReadingUuids.supported` 判定的可解析指标、兼容性/固件/GATT 服务与同类型「我的设备」，列表与详情复用 `ThreeStateHost`。帮助中心为 5 条可展开 FAQ（答案对齐 409 退出、7 天读数保留、冲突以服务端为准）；意见反馈落本地待发队列，无远端时如实标注「未发送」并支持重试/删除；关于页版本号/构建类型取 `BuildConfig`，许可/隐私/数据安全复用现有文档。新增 `FeedbackStoreTest`、`FeedbackMigrationTest`（v13→v14，真实 SQLite）、`ProductCatalogTest`、`ProductsUiStateTest`、`HouseholdDtoContractTest`（`isSelf` 缺失/真假与转让请求序列化）；e2e 补「isSelf 双视角 → member 转让 403 → 未知目标 404 → 转让成功降级 → 旧 owner 改名/签发 403 → 新 owner 移除并退出」，fixture 与真 Postgres 均通过。单测 266 全绿、`lintDebug` 0 issue、`assembleDebug`，tag `v0.16.0`。
 - `v0.15.0`：接入后端 v0.13.0 的家庭管理能力。Room v13（`MIGRATION_12_13`）为 `households` 增加 `roomCount`，统一保存服务端 `memberCount/deviceCount/roomCount` 真实数字，首页 Chip 与家庭卡片不再数本地缓存。新增 `DELETE /households/{id}/members/{userId}`（owner 移除成员，本地刷新计数并重拉设备清理共享行）、`POST /households/{id}/leave`（成员退出，owner 有其他成员时 409；本地删除该家庭房间/共享设备/归属并回落个人家庭）、`GET /households/{id}/invitations`（只取 `codeHashPrefix`/状态/过期时间，绝无明文）与 `DELETE .../invitations/{invitationId}`、`PUT /households/{id}/rooms/order`（整段集合排序）。409 机读判定为 HTTP 409 + `error.code`（后端 v0.13.0 无 `ROOM_SET_MISMATCH`），重排冲突自动重拉并提示「房间列表已变化，已刷新」，离线保留本地顺序标「未同步」。`householdCapabilities()` 统一 owner/member 可见性：member 看不到重命名、邀请码签发/撤销与成员移除，owner 带成员退出时提示「请先转让所有权或移除其他成员」。新增 `HouseholdRepositoryTest`（成员移除清理、退出回落、邀请码列表/撤销、重排 409 重试、离线排序）、`HouseholdMigrationTest` v12→v13 与 owner/member 能力单测；fixture 与真 Postgres e2e 补「服务端计数 → 邀请码列表无明文 → 撤销后 claim 404 → 重排缺项 409 → owner 带成员退出 409 → 移除成员后对方 404 → owner 退出 204」。单测 245 全绿、`lintDebug` 0 issue、`assembleDebug`、两套 e2e 全绿，tag `v0.15.0`。
 - `v0.14.0`：家庭接上后端，房间真正归属家庭并支持成员共享。Room v12（`MIGRATION_11_12`）新增 `households` 表，`rooms` 增加 `remoteId/householdId`，`devices` 增加 `householdId/remoteRoomId/pendingRoomPatch/pendingRoomLocalId/pendingHouseholdRemoteId/shared`；设备归属选择反规范化 `devices.remoteRoomId` 而不是映射表（单一可选属性、PATCH 按设备粒度，理由见 §6.12）。登录/手动同步/重登三条路径拉 `GET /households` 并持久化当前家庭，切换家庭按家庭拉房间与设备。首次接入按规范化名称认领服务端同名房间、其余按本地顺序上传，绝不静默丢弃本机房间，`planRoomMerge` + `HouseholdMigrationTest` 覆盖。设备房间归属只走 `PATCH /my/devices`（不塞 push，避免 LWW），失败保留 pending 重试，4xx 清 pending 并回读服务端。「我的」新增家庭管理（角色/成员、创建、8 位邀请码 + 服务端倒计时 + 复制 + 重新生成、加入家庭复用配对码规范化与 404/429 文案）；首页仅在多家庭时显示可见切换 Chip；服务端房间为权威来源，未上传房间与离线状态明确标注「未同步」；403/404/429/离线全部降级为可读提示。fixture 与真 Postgres e2e 均跑通「创建家庭 → 邀请码 → 第二账号领取 → 成员可见设备 → member 改房间 403 → 跨家庭 404」；单测 235 全绿、`lintDebug` 0 issue、`assembleDebug` 全绿，tag `v0.14.0`。

@@ -8,7 +8,9 @@ import com.platojobs.pkotlinapp.data.remote.ReadingPageResponse
 import com.platojobs.pkotlinapp.data.remote.ReadingSeriesResponse
 import com.platojobs.pkotlinapp.data.remote.ReadingSummaryResponse
 import com.platojobs.pkotlinapp.data.remote.Reported
+import com.platojobs.pkotlinapp.data.remote.SyncChangeDto
 import com.platojobs.pkotlinapp.data.remote.SyncChangesResponse
+import com.platojobs.pkotlinapp.data.remote.SyncDeviceDto
 import com.platojobs.pkotlinapp.data.remote.SyncPushRequest
 import com.platojobs.pkotlinapp.data.remote.SyncPushResponse
 import com.platojobs.pkotlinapp.data.remote.SyncScanRecordDto
@@ -1360,6 +1362,260 @@ class E2eContractTest {
             assertEquals(
                 204,
                 post("/households/$transferHomeId/leave", "{}", successor.token).code,
+            )
+        }
+
+        // ---- v0.15.0：家庭结构变更写入 change_log（household / room） ----
+        // 翻页收集：cursor 是不透明值，必须一直跟随 nextCursor，直到 hasMore=false。
+        fun structuralEvents(token: String, fromCursor: Long): List<SyncChangeDto> {
+            val collected = mutableListOf<SyncChangeDto>()
+            var cursor = fromCursor
+            var guard = 0
+            while (guard++ < 20) {
+                val result = getWithQuery(
+                    "/sync/changes",
+                    token,
+                    listOf("cursor" to cursor.toString(), "limit" to "100"),
+                )
+                assertEquals(200, result.code)
+                val page = changesResponseAdapter.fromJson(result.body) ?: error("empty changes body")
+                collected += page.changes.orEmpty()
+                if (page.hasMore != true) return collected
+                val next = page.nextCursor ?: error("hasMore without nextCursor")
+                assertTrue("changes cursor did not advance: $cursor -> $next", next > cursor)
+                cursor = next
+            }
+            error("changes pagination did not terminate")
+        }
+
+        fun latestCursor(token: String): Long =
+            structuralEvents(token, 0L).maxOfOrNull { it.seq ?: 0L } ?: 0L
+
+        fun householdUpserts(events: List<SyncChangeDto>, homeId: String): List<SyncDeviceDto> =
+            events
+                .filter { it.entity == "household" && it.entityId == homeId && it.op == "upsert" }
+                .mapNotNull { it.payload }
+
+        /** 每个房间最后一次 upsert 的 sortOrder；重复条目以最后一条为准（服务端按 seq 升序返回）。 */
+        fun roomOrders(events: List<SyncChangeDto>, homeId: String): Map<String, Int> =
+            events
+                .filter {
+                    it.entity == "room" &&
+                        it.op == "upsert" &&
+                        it.payload?.householdId == homeId &&
+                        it.payload?.deleted != true
+                }
+                .mapNotNull { entry ->
+                    val roomId = entry.entityId ?: return@mapNotNull null
+                    val order = entry.payload?.sortOrder ?: return@mapNotNull null
+                    roomId to order
+                }
+                .toMap()
+
+        val structHomeName = "e2e-struct"
+        val structCreateCursor = latestCursor(user.token)
+        val structHomeId = captureStep("struct: owner creates a household") {
+            val result = post("/households", """{"name":"$structHomeName"}""", user.token)
+            assertEquals(201, result.code)
+            parseMap(result.body)["id"] as? String ?: error("missing household id")
+        }
+
+        step("struct: household create emits a receiver-scoped upsert") {
+            val upserts = householdUpserts(structuralEvents(user.token, structCreateCursor), structHomeId)
+            assertEquals(1, upserts.size)
+            val payload = upserts.single()
+            assertEquals(structHomeName, payload.name)
+            assertEquals(user.userId, payload.ownerUserId)
+            assertEquals("owner", payload.role)
+            assertEquals(1, payload.memberCount)
+            assertFalse(payload.deleted ?: false)
+        }
+
+        val structInviteCode = captureStep("struct: owner issues an invitation") {
+            val created = post("/households/$structHomeId/invitations", "{}", user.token)
+            assertEquals(201, created.code)
+            parseMap(created.body)["code"] as? String ?: error("missing invite code")
+        }
+
+        val structMember = captureStep("struct: second account claims the invitation") {
+            val session = newAnonymousSession("struct member")
+            val result = post(
+                "/households/invitations/claim",
+                claimBody(structInviteCode),
+                session.token,
+            )
+            assertEquals(200, result.code)
+            assertEquals(structHomeId, parseMap(result.body)["id"])
+            session
+        }
+
+        step("struct: new member only receives the join-time household upsert") {
+            val events = structuralEvents(structMember.token, 0L)
+            val payload = householdUpserts(events, structHomeId).single()
+            assertEquals("member", payload.role)
+            assertEquals(2, payload.memberCount)
+            assertEquals(user.userId, payload.ownerUserId)
+            // 后端不回放历史房间结构，客户端只能靠 GET /households 补基线。
+            assertEquals(0, events.count { it.entity == "room" })
+        }
+
+        val structRenameCursor = latestCursor(user.token)
+        val structMemberCursor = latestCursor(structMember.token)
+        val livingRoomId = captureStep("struct: owner creates the first room") {
+            val result = post(
+                "/households/$structHomeId/rooms",
+                """{"name":"客厅","sortOrder":0}""",
+                user.token,
+            )
+            assertEquals(201, result.code)
+            parseMap(result.body)["id"] as? String ?: error("missing room id")
+        }
+        val bedroomId = captureStep("struct: owner creates the second room") {
+            val result = post(
+                "/households/$structHomeId/rooms",
+                """{"name":"卧室","sortOrder":1}""",
+                user.token,
+            )
+            assertEquals(201, result.code)
+            parseMap(result.body)["id"] as? String ?: error("missing room id")
+        }
+        step("struct: owner renames the household") {
+            val result = patch(
+                "/households/$structHomeId",
+                """{"name":"e2e-struct-改名"}""",
+                user.token,
+            )
+            assertEquals(200, result.code)
+        }
+        step("struct: owner reorders rooms") {
+            val result = put(
+                "/households/$structHomeId/rooms/order",
+                """{"roomIds":["$bedroomId","$livingRoomId"]}""",
+                user.token,
+            )
+            assertEquals(200, result.code)
+        }
+
+        step("struct: rename reaches both accounts with the receiver-specific role") {
+            val views = listOf(
+                user.token to "owner",
+                structMember.token to "member",
+            )
+            val cursors = mapOf(user.token to structRenameCursor, structMember.token to structMemberCursor)
+            views.forEach { (token, role) ->
+                val events = structuralEvents(token, cursors.getValue(token))
+                val payload = householdUpserts(events, structHomeId).last()
+                assertEquals("e2e-struct-改名", payload.name)
+                assertEquals(2, payload.memberCount)
+                assertEquals(role, payload.role)
+                assertEquals(user.userId, payload.ownerUserId)
+            }
+        }
+
+        step("struct: room upserts carry householdId and the reordered sortOrder") {
+            val cursors = mapOf(user.token to structRenameCursor, structMember.token to structMemberCursor)
+            cursors.forEach { (token, cursor) ->
+                val orders = roomOrders(structuralEvents(token, cursor), structHomeId)
+                assertEquals(0, orders[bedroomId] ?: -1)
+                assertEquals(1, orders[livingRoomId] ?: -1)
+            }
+        }
+
+        step("struct: unrelated account sees no structural rows for this household") {
+            val outsider = newAnonymousSession("struct outsider")
+            val events = structuralEvents(outsider.token, 0L)
+            assertEquals(0, events.count { it.entity == "household" || it.entity == "room" })
+        }
+
+        val beforeTransferOwner = latestCursor(user.token)
+        val beforeTransferMember = latestCursor(structMember.token)
+        step("struct: ownership transfer publishes receiver-specific roles") {
+            val result = post(
+                "/households/$structHomeId/transfer-ownership",
+                """{"userId":"${structMember.userId}"}""",
+                user.token,
+            )
+            assertEquals(200, result.code)
+            val previousOwnerView = householdUpserts(
+                structuralEvents(user.token, beforeTransferOwner),
+                structHomeId,
+            ).last()
+            assertEquals("member", previousOwnerView.role)
+            assertEquals(structMember.userId, previousOwnerView.ownerUserId)
+            val newOwnerView = householdUpserts(
+                structuralEvents(structMember.token, beforeTransferMember),
+                structHomeId,
+            ).last()
+            assertEquals("owner", newOwnerView.role)
+            assertEquals(structMember.userId, newOwnerView.ownerUserId)
+        }
+
+        val removedCursor = latestCursor(user.token)
+        step("struct: new owner removes the previous owner and renames afterwards") {
+            assertEquals(
+                204,
+                delete("/households/$structHomeId/members/${user.userId}", structMember.token).code,
+            )
+            assertEquals(404, get("/households/$structHomeId", user.token).code)
+            assertEquals(
+                200,
+                patch("/households/$structHomeId", """{"name":"e2e-struct-移除后再改名"}""", structMember.token).code,
+            )
+        }
+
+        step("struct: removed member stops receiving new structural changes") {
+            val events = structuralEvents(user.token, removedCursor)
+            assertEquals(0, events.count { it.entity == "household" && it.entityId == structHomeId })
+            assertEquals(
+                0,
+                events.count {
+                    it.entity == "room" && it.entityId in setOf(livingRoomId, bedroomId)
+                },
+            )
+        }
+
+        step("struct: removed member still reads pre-departure structural history") {
+            val events = structuralEvents(user.token, 0L)
+            assertTrue(
+                "removed member should keep historical household rows",
+                events.any { it.entity == "household" && it.entityId == structHomeId && it.op == "upsert" },
+            )
+        }
+
+        step("struct: remaining member sees the post-removal rename with memberCount 1") {
+            val payload = householdUpserts(structuralEvents(structMember.token, 0L), structHomeId).last()
+            assertEquals("e2e-struct-移除后再改名", payload.name)
+            assertEquals(1, payload.memberCount)
+            assertEquals("owner", payload.role)
+        }
+
+        val lateInviteCode = captureStep("struct: owner issues a late invitation") {
+            val created = post("/households/$structHomeId/invitations", "{}", structMember.token)
+            assertEquals(201, created.code)
+            parseMap(created.body)["code"] as? String ?: error("missing invite code")
+        }
+        val lateMember = captureStep("struct: late account claims the invitation") {
+            val session = newAnonymousSession("struct late member")
+            val result = post(
+                "/households/invitations/claim",
+                claimBody(lateInviteCode),
+                session.token,
+            )
+            assertEquals(200, result.code)
+            session
+        }
+        step("struct: late member gets only the join-time upsert, not room history") {
+            val events = structuralEvents(lateMember.token, 0L)
+            val payload = householdUpserts(events, structHomeId).single()
+            assertEquals("member", payload.role)
+            assertEquals(2, payload.memberCount)
+            assertEquals("e2e-struct-移除后再改名", payload.name)
+            assertEquals(0, events.count { it.entity == "room" })
+        }
+        step("struct: remaining member removes the late member (204)") {
+            assertEquals(
+                204,
+                delete("/households/$structHomeId/members/${lateMember.userId}", structMember.token).code,
             )
         }
 

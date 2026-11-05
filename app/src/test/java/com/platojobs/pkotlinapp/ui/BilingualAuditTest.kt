@@ -249,8 +249,8 @@ class BilingualAuditTest {
         assertTrue("图标缺少 contentDescription：${violations.joinToString()}", violations.isEmpty())
 
         val market = File(resDir, "layout/fragment_market.xml").readText()
-        assertFalse("市场筛选不应放在 HorizontalScrollView 中（无法换行）", market.contains("HorizontalScrollView"))
-        assertTrue("市场筛选 ChipGroup 应允许换行", market.contains("""android:id="@+id/vendorFilters""""))
-        assertTrue("市场筛选 ChipGroup 应关闭单行", Regex("""android:id="@\+id/vendorFilters"[\s\S]*?singleLine="false"""").containsMatchIn(market))
+        assertFalse("类型选择不应放在 HorizontalScrollView 中（无法换行）", market.contains("HorizontalScrollView"))
+        assertTrue("设备类型 ChipGroup 应存在", market.contains("""android:id="@+id/deviceTypeChips""""))
+        assertTrue("设备类型 ChipGroup 应关闭单行", Regex("""android:id="@\+id/deviceTypeChips"[\s\S]*?singleLine="false"""").containsMatchIn(market))
     }
 }

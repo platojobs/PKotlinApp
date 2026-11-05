@@ -189,21 +189,50 @@
     <string name="product_detail_not_found_title">Product not found</string>
     <string name="product_detail_not_found_hint">The catalog may have changed. Go back and reload</string>
 
-    <string name="market_subtitle">Accessories and firmware information only, no purchasing</string>
-    <string name="market_empty_title">No market data</string>
+    <string name="market_subtitle">Device and service market: compatibility, scenario picks, pairing and troubleshooting</string>
     <string name="market_empty_hint">Check your network connection and try again</string>
     <string name="market_error">Load failed: %1$s</string>
-    <string name="market_version">SKU: %1$s</string>
-    <string name="market_compatibility">Compatibility: %1$s</string>
-    <string name="market_vendor">Vendor: %1$s</string>
-    <string name="market_filter_all">All</string>
-    <string name="market_filter_vendor_group">Vendor filter</string>
-    <string name="market_filter_compatibility_group">Compatibility filter</string>
-    <string name="market_filter_selected">Selected</string>
-    <string name="market_filter_not_selected">Not selected</string>
-    <string name="market_filter_empty_title">No accessories match</string>
-    <string name="market_filter_empty_hint">Adjust the vendor or compatibility filter and try again.</string>
-    <string name="market_filter_reset">Clear filters</string>
+    <string name="market_compat_title">Compatibility check</string>
+    <string name="market_compat_hint">Pick a device type to see the metrics this app can parse, the required GATT services and known limits.</string>
+    <string name="market_compat_chip_group">Device type selection</string>
+    <string name="market_compat_chip_content">View compatibility for %1$s</string>
+    <string name="market_compat_empty">The device catalog has no type to inspect yet</string>
+    <string name="market_compat_category">Category: %1$s · Vendor: %2$s</string>
+    <string name="market_compat_metrics">Parsable metrics: %1$s</string>
+    <string name="market_compat_no_metrics">Parsable metrics: none (services exist, but the app has no parser for them)</string>
+    <string name="market_compat_services">Required GATT services: %1$s</string>
+    <string name="market_compat_no_services">Required GATT services: not listed in the catalog</string>
+    <string name="market_compat_limitations">Known limits:</string>
+    <string name="market_limitation_nus">NUS is a text channel: the device must emit `metric=value` line by line for the app to parse.</string>
+    <string name="market_limitation_no_metric">The catalog lists GATT services, but the app implements no matching measurement characteristic, so readings cannot be parsed.</string>
+    <string name="market_limitation_no_services">The catalog has no GATT service list; compatibility depends on what the device actually advertises.</string>
+    <string name="market_limitation_firmware">No firmware version is listed; compatibility depends on the firmware actually installed.</string>
+    <string name="market_unknown_value">Not listed</string>
+    <string name="market_guide_title">Buying guide</string>
+    <string name="market_guide_hint">Scenario suggestions backed by the app\'s real capabilities, not marketing copy.</string>
+    <string name="market_guide_scenario_health">Health monitoring</string>
+    <string name="market_guide_scenario_environment">Environment collection</string>
+    <string name="market_guide_scenario_network">Multi-device network</string>
+    <string name="market_guide_recommended">Suggested types: %1$s</string>
+    <string name="market_guide_evidence">Evidence: parsable %1$s. Types matched: %2$d; GATT services: up to %3$d.</string>
+    <string name="market_guide_no_match">No type in the catalog has the parsability this scenario needs. Check the GATT services the device advertises first.</string>
+    <string name="market_guide_card_content">%1$s: %2$s</string>
+    <string name="market_services_title">Service entry points</string>
+    <string name="market_services_hint">Every entry goes straight to a real feature, not a placeholder link.</string>
+    <string name="market_service_pairing_title">Pairing guide</string>
+    <string name="market_service_pairing_desc">Open scanning and pair step by step using the advertised name and signal strength.</string>
+    <string name="market_service_trouble_title">Connection troubleshooting</string>
+    <string name="market_service_trouble_desc">See the real steps for failing to connect and readings not refreshing.</string>
+    <string name="market_service_power_title">Collection power tips</string>
+    <string name="market_service_power_desc">Jump to the background collection switch and enable it only when needed.</string>
+    <string name="market_service_content">%1$s. %2$s</string>
+    <string name="market_accessories_title">Sample entries</string>
+    <string name="market_accessories_note">These entries come from the device catalog and are sample data only, not products on sale. Stock, price and sales are never shown.</string>
+    <string name="market_accessories_toggle">Show sample entries</string>
+    <string name="market_accessories_unavailable">Sample entries are unavailable; the rest of the page is unaffected.</string>
+    <string name="market_accessory_meta">Vendor: %1$s · Category: %2$s</string>
+    <string name="market_accessory_compat">Compatibility: %1$s</string>
+    <string name="market_accessory_version">Firmware: %1$s</string>
 
     <string name="sync_banner_local_only">Network sync unavailable. Local-only mode; local data still works normally</string>
     <string name="profile_sync_title">Sync status</string>
@@ -344,7 +373,7 @@
     <string name="profile_location_not_required">Location permission is not required on this Android version</string>
     <string name="profile_logs_desc">Scan records are stored in the local Room database</string>
 
-    <string name="market_disclaimer">This page only shows accessory and firmware information. It does not support ordering, payment or orders.</string>
+    <string name="market_disclaimer">This page supports no ordering, payment or orders. Sample entries are hidden by default and never show stock or price.</string>
 
     <string name="rule_event_low_rssi">%1$s signal %2$d dBm, below threshold %3$d dBm</string>
     <string name="rule_event_disconnected">%1$s disconnected</string>

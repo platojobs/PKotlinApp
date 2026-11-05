@@ -160,6 +160,26 @@ class MainActivity : AppCompatActivity() {
         binding.bottomNav.selectedItemId = R.id.nav_intelligence
     }
 
+    /** 市场「配对向导」：切到首页并打开扫描弹窗。 */
+    fun openScan() {
+        switchToTab(R.id.nav_home)
+        (supportFragmentManager.findFragmentByTag("home") as? HomeFragment)?.showScanDialog()
+    }
+
+    /** 市场「采集省电建议」：切到「我的」并滚动到后台采集卡片。 */
+    fun openProfileCollection() {
+        switchToTab(R.id.nav_profile)
+        (supportFragmentManager.findFragmentByTag("profile") as? ProfileFragment)
+            ?.scrollToCollection()
+    }
+
+    private fun switchToTab(itemId: Int) {
+        if (binding.bottomNav.selectedItemId != itemId) {
+            binding.bottomNav.selectedItemId = itemId
+        }
+        supportFragmentManager.executePendingTransactions()
+    }
+
     /** 各 Fragment 在 onViewCreated 里把主滚动容器交给大标题联动。 */
     fun attachHeaderScroll(scrollable: View?) {
         recyclerListener?.let { listener ->

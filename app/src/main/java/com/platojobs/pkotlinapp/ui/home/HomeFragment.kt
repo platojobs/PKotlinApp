@@ -483,9 +483,13 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         )
     }
 
-    private fun openScanDialog() {
+    /** 供「市场」页服务入口直达配对向导。 */
+    fun showScanDialog() {
+        if (!isAdded) return
         ScanDialogFragment().show(childFragmentManager, ScanDialogFragment.TAG)
     }
+
+    private fun openScanDialog() = showScanDialog()
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 

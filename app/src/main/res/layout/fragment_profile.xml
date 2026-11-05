@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/profileScroll"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:fillViewport="true">
@@ -467,6 +468,7 @@
         </com.google.android.material.card.MaterialCardView>
 
         <com.google.android.material.card.MaterialCardView
+            android:id="@+id/collectionCard"
     style="@style/Widget.App.Card"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -578,87 +580,9 @@
 
         </com.google.android.material.card.MaterialCardView>
 
-        <com.google.android.material.card.MaterialCardView
-    style="@style/Widget.App.Card"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/card_gap"
-            app:cardCornerRadius="@dimen/radius_12"
-            app:cardElevation="@dimen/elevation_0">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="@dimen/card_padding">
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/profile_about_title"
-                    android:textAppearance="@style/TextAppearance.App.Headline" />
-
-                <TextView
-                    android:id="@+id/versionText"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="@dimen/space_8"
-                    android:textAppearance="@style/TextAppearance.App.Body" />
-
-                <TextView
-                    android:id="@+id/buildTypeText"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:textAppearance="@style/TextAppearance.App.Caption"
-                    android:textColor="@color/text_secondary" />
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="@dimen/space_8"
-                    android:text="@string/profile_about_desc"
-                    android:textAppearance="@style/TextAppearance.App.Caption"
-                    android:textColor="@color/text_secondary" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/licenseButton"
-                    style="?attr/materialButtonOutlinedStyle"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="@dimen/space_8"
-                    android:minHeight="@dimen/touch_min"
-                    android:text="@string/profile_about_licenses" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/privacyButton"
-                    style="?attr/materialButtonOutlinedStyle"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="@dimen/space_8"
-                    android:minHeight="@dimen/touch_min"
-                    android:text="@string/profile_about_privacy" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/securityButton"
-                    style="?attr/materialButtonOutlinedStyle"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="@dimen/space_8"
-                    android:minHeight="@dimen/touch_min"
-                    android:text="@string/profile_about_security" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/githubButton"
-                    style="?attr/materialButtonOutlinedStyle"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="@dimen/space_8"
-                    android:minHeight="@dimen/touch_min"
-                    android:text="@string/profile_github" />
-
-            </LinearLayout>
-
-        </com.google.android.material.card.MaterialCardView>
+        <include
+            android:id="@+id/aboutCard"
+            layout="@layout/profile_about_card" />
 
     </LinearLayout>
 

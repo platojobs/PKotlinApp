@@ -51,6 +51,7 @@ import com.platojobs.pkotlinapp.domain.household.householdCapabilities
 import com.platojobs.pkotlinapp.domain.sync.SyncStatus
 import com.platojobs.pkotlinapp.ui.common.BlePermissions
 import com.platojobs.pkotlinapp.ui.common.FileSharing
+import com.platojobs.pkotlinapp.ui.common.HelpCenterDialog
 import com.platojobs.pkotlinapp.ui.common.NotificationPermission
 import com.platojobs.pkotlinapp.ui.common.TimeFormat
 import kotlinx.coroutines.flow.collect
@@ -86,26 +87,37 @@ class ProfileFragment : Fragment() {
         return binding.root
     }
 
+    /** 市场页「采集省电建议」直达后台采集卡片。 */
+    fun scrollToCollection() {
+        val view = _binding ?: return
+        view.profileScroll.post {
+            view.profileScroll.smoothScrollTo(0, view.collectionCard.top)
+        }
+    }
+
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
         binding.logsList.layoutManager = LinearLayoutManager(requireContext())
         binding.logsList.adapter = scanLogAdapter
 
-        binding.versionText.text = getString(
+        binding.aboutCard.versionText.text = getString(
             R.string.profile_version,
             BuildConfig.VERSION_NAME,
             BuildConfig.VERSION_CODE,
         )
-        binding.buildTypeText.text = getString(R.string.profile_build_type, BuildConfig.BUILD_TYPE)
+        binding.aboutCard.buildTypeText.text =
+            getString(R.string.profile_build_type, BuildConfig.BUILD_TYPE)
 
         binding.openSettingsButton.setOnClickListener { openAppSettings() }
-        binding.githubButton.setOnClickListener { openRepository() }
-        binding.helpCenterButton.setOnClickListener { showHelpCenter() }
+        binding.aboutCard.githubButton.setOnClickListener { openRepository() }
+        binding.helpCenterButton.setOnClickListener {
+            HelpCenterDialog.show(requireContext())
+        }
         binding.feedbackButton.setOnClickListener { showFeedbackDialog() }
-        binding.licenseButton.setOnClickListener { openUrl(LICENSE_URL) }
-        binding.privacyButton.setOnClickListener { openUrl(PRIVACY_URL) }
-        binding.securityButton.setOnClickListener { openUrl(DATA_SAFETY_URL) }
+        binding.aboutCard.licenseButton.setOnClickListener { openUrl(LICENSE_URL) }
+        binding.aboutCard.privacyButton.setOnClickListener { openUrl(PRIVACY_URL) }
+        binding.aboutCard.securityButton.setOnClickListener { openUrl(DATA_SAFETY_URL) }
         binding.clearLogsButton.setOnClickListener { confirmClearLogs() }
         binding.syncNowButton.setOnClickListener { viewModel.manualSync() }
         binding.reloginButton.setOnClickListener { confirmRelogin() }
@@ -753,52 +765,6 @@ class ProfileFragment : Fragment() {
     }
 
     // ---- 帮助中心 / 意见反馈 / 关于文档 ----
-
-    /** 本地结构化 FAQ：问题可展开，答案与实际行为一致（含 409 与 7 天保留等真实规则）。 */
-    private fun showHelpCenter() {
-        val faqs = listOf(
-            R.string.help_faq_pairing_q to R.string.help_faq_pairing_a,
-            R.string.help_faq_connect_q to R.string.help_faq_connect_a,
-            R.string.help_faq_readings_q to R.string.help_faq_readings_a,
-            R.string.help_faq_sync_q to R.string.help_faq_sync_a,
-            R.string.help_faq_leave_q to R.string.help_faq_leave_a,
-        )
-        val context = requireContext()
-        val padding = resources.getDimensionPixelSize(R.dimen.card_padding)
-        val gap = resources.getDimensionPixelSize(R.dimen.space_8)
-        val container = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(padding, gap, padding, gap)
-        }
-        faqs.forEach { (questionRes, answerRes) ->
-            val question = TextView(context).apply {
-                setText(questionRes)
-                setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_TitleSmall)
-                minHeight = resources.getDimensionPixelSize(R.dimen.touch_min)
-                gravity = android.view.Gravity.CENTER_VERTICAL
-                isClickable = true
-                isFocusable = true
-                contentDescription = getString(questionRes)
-            }
-            val answer = TextView(context).apply {
-                setText(answerRes)
-                setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodyMedium)
-                visibility = View.GONE
-            }
-            question.setOnClickListener {
-                answer.visibility =
-                    if (answer.visibility == View.VISIBLE) View.GONE else View.VISIBLE
-            }
-            container.addView(question)
-            container.addView(answer)
-        }
-        val scroll = ScrollView(context).apply { addView(container) }
-        MaterialAlertDialogBuilder(context)
-            .setTitle(R.string.help_title)
-            .setView(scroll)
-            .setPositiveButton(R.string.action_close, null)
-            .show()
-    }
 
     /**
      * 反馈表单：类型 + 描述 + 可选联系方式。

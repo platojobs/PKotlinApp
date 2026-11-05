@@ -78,6 +78,16 @@ class AppSettings(context: Context) {
             prefs.edit { putBoolean(KEY_ONBOARDING_COMPLETED, value) }
         }
 
+    /**
+     * 市场页是否展示商品条目。默认关闭：
+     * 商品条目只是 catalog 示例，不代表真实在售，也不展示库存/价格。
+     */
+    var marketShowSampleProducts: Boolean
+        get() = prefs.getBoolean(KEY_MARKET_SAMPLE_PRODUCTS, false)
+        set(value) {
+            prefs.edit { putBoolean(KEY_MARKET_SAMPLE_PRODUCTS, value) }
+        }
+
     /** 后台采集开关：连接设备后是否用前台服务保持 notify 采集。 */
     var backgroundCollectionEnabled: Boolean
         get() = prefs.getBoolean(KEY_BACKGROUND_COLLECTION, false)
@@ -105,6 +115,7 @@ class AppSettings(context: Context) {
         private const val KEY_ALERT_THROTTLE_MINUTES = "alert_throttle_minutes"
         private const val KEY_DEVICE_SORT = "device_sort_mode"
         private const val KEY_BACKGROUND_COLLECTION = "background_collection_enabled"
+        private const val KEY_MARKET_SAMPLE_PRODUCTS = "market_show_sample_products"
         private const val KEY_ALERTS_MUTED_UNTIL = "alerts_muted_until"
         private const val KEY_ONBOARDING_COMPLETED = "onboarding_completed"
     }

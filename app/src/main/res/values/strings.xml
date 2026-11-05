@@ -191,21 +191,50 @@
     <string name="product_detail_not_found_title">未找到该产品</string>
     <string name="product_detail_not_found_hint">产品目录可能已更新，请返回后重新加载</string>
 
-    <string name="market_subtitle">仅展示配件与固件信息，不含交易能力</string>
-    <string name="market_empty_title">暂无市场数据</string>
+    <string name="market_subtitle">设备与服务市场：查兼容性、按场景选型、直达配对与排障</string>
     <string name="market_empty_hint">检查网络连接后重试加载</string>
     <string name="market_error">加载失败：%1$s</string>
-    <string name="market_version">SKU：%1$s</string>
-    <string name="market_compatibility">兼容性：%1$s</string>
-    <string name="market_vendor">厂商：%1$s</string>
-    <string name="market_filter_all">全部</string>
-    <string name="market_filter_vendor_group">厂商筛选</string>
-    <string name="market_filter_compatibility_group">兼容性筛选</string>
-    <string name="market_filter_selected">已选中</string>
-    <string name="market_filter_not_selected">未选中</string>
-    <string name="market_filter_empty_title">没有符合条件的配件</string>
-    <string name="market_filter_empty_hint">调整厂商或兼容性筛选后再试。</string>
-    <string name="market_filter_reset">清除筛选</string>
+    <string name="market_compat_title">兼容性查询</string>
+    <string name="market_compat_hint">选择设备类型，查看本应用能解析的指标、所需 GATT 服务与已知限制。</string>
+    <string name="market_compat_chip_group">设备类型选择</string>
+    <string name="market_compat_chip_content">查看 %1$s 的兼容性</string>
+    <string name="market_compat_empty">设备目录中还没有可查询的类型</string>
+    <string name="market_compat_category">分类：%1$s · 厂商：%2$s</string>
+    <string name="market_compat_metrics">可解析指标：%1$s</string>
+    <string name="market_compat_no_metrics">可解析指标：无（目录声明了服务，但应用尚未实现对应解析）</string>
+    <string name="market_compat_services">所需 GATT 服务：%1$s</string>
+    <string name="market_compat_no_services">所需 GATT 服务：目录未登记</string>
+    <string name="market_compat_limitations">已知限制：</string>
+    <string name="market_limitation_nus">NUS 为文本通道，设备需按 `metric=value` 逐行输出，应用逐行解析。</string>
+    <string name="market_limitation_no_metric">目录登记了 GATT 服务，但应用没有实现对应测量特征，读数无法解析。</string>
+    <string name="market_limitation_no_services">目录没有 GATT 服务清单，兼容性需以实际设备广播为准。</string>
+    <string name="market_limitation_firmware">目录没有固件版本，兼容性以设备实际固件为准。</string>
+    <string name="market_unknown_value">未登记</string>
+    <string name="market_guide_title">选购指南</string>
+    <string name="market_guide_hint">按使用场景给出类型建议，依据是应用真实支持的能力，不是营销文案。</string>
+    <string name="market_guide_scenario_health">健康监测</string>
+    <string name="market_guide_scenario_environment">环境采集</string>
+    <string name="market_guide_scenario_network">多设备组网</string>
+    <string name="market_guide_recommended">建议类型：%1$s</string>
+    <string name="market_guide_evidence">依据：可解析 %1$s；匹配类型 %2$d 个，最多需要 %3$d 个 GATT 服务。</string>
+    <string name="market_guide_no_match">当前目录中没有满足该场景解析能力的类型，建议先确认设备广播的 GATT 服务。</string>
+    <string name="market_guide_card_content">%1$s：%2$s</string>
+    <string name="market_services_title">服务入口</string>
+    <string name="market_services_hint">每条入口直达对应功能，不是占位链接。</string>
+    <string name="market_service_pairing_title">配对向导</string>
+    <string name="market_service_pairing_desc">打开扫描，按广播名与信号强度逐步完成配对。</string>
+    <string name="market_service_trouble_title">连接排障</string>
+    <string name="market_service_trouble_desc">查看连不上、读数不刷新的排查步骤。</string>
+    <string name="market_service_power_title">采集省电建议</string>
+    <string name="market_service_power_desc">跳转到后台采集开关，按需开启以降低耗电。</string>
+    <string name="market_service_content">%1$s。%2$s</string>
+    <string name="market_accessories_title">示例条目</string>
+    <string name="market_accessories_note">以下条目来自设备目录，仅为示例数据，不代表真实在售；不展示库存、价格与销量。</string>
+    <string name="market_accessories_toggle">显示示例条目</string>
+    <string name="market_accessories_unavailable">示例条目暂时不可用，其余内容不受影响。</string>
+    <string name="market_accessory_meta">厂商：%1$s · 分类：%2$s</string>
+    <string name="market_accessory_compat">兼容性：%1$s</string>
+    <string name="market_accessory_version">固件：%1$s</string>
 
     <string name="sync_banner_local_only">网络同步不可用，当前为纯本地模式；本地数据仍可正常使用</string>
     <string name="profile_sync_title">同步状态</string>
@@ -346,7 +375,7 @@
     <string name="profile_location_not_required">当前系统版本无需定位权限</string>
     <string name="profile_logs_desc">扫描记录保存在本机 Room 数据库</string>
 
-    <string name="market_disclaimer">本页仅展示配件与固件信息，不提供下单、支付或订单能力。</string>
+    <string name="market_disclaimer">本页不提供下单、支付或订单能力；示例条目默认隐藏，且不展示库存与价格。</string>
 
     <string name="rule_event_low_rssi">%1$s 信号 %2$d dBm，低于阈值 %3$d dBm</string>
     <string name="rule_event_disconnected">%1$s 已断开连接</string>

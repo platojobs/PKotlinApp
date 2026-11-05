@@ -5,6 +5,7 @@ import com.platojobs.pkotlinapp.data.remote.HouseholdCreateRequest
 import com.platojobs.pkotlinapp.data.remote.HouseholdDto
 import com.platojobs.pkotlinapp.data.remote.HouseholdInvitationClaimRequest
 import com.platojobs.pkotlinapp.data.remote.HouseholdInvitationInfoDto
+import com.platojobs.pkotlinapp.data.remote.HouseholdOwnershipTransferRequest
 import com.platojobs.pkotlinapp.data.remote.HouseholdPatchRequest
 import com.platojobs.pkotlinapp.data.remote.HouseholdRoomCreateRequest
 import com.platojobs.pkotlinapp.data.remote.HouseholdRoomDto
@@ -29,6 +30,7 @@ import com.platojobs.pkotlinapp.domain.household.HouseholdSnapshot
 import com.platojobs.pkotlinapp.domain.household.InvitationStatus
 import com.platojobs.pkotlinapp.domain.household.InviteCodeInvalidException
 import com.platojobs.pkotlinapp.domain.household.InviteRateLimitedException
+import com.platojobs.pkotlinapp.domain.household.OwnershipTransferUnsupportedException
 import com.platojobs.pkotlinapp.domain.household.RemoteDeviceRef
 import com.platojobs.pkotlinapp.domain.sync.Rfc3339
 import retrofit2.HttpException
@@ -39,8 +41,8 @@ import retrofit2.HttpException
  * 错误语义：
  * - 403 → [HouseholdForbiddenException]（member 改家庭/房间/签发邀请码）；
  * - 404 → [HouseholdNotFoundException]（跨家庭不可见，避免泄露存在性）；
- * - 409 → [HouseholdConflictException]，只带 `error.code`（当前为 `CONFLICT`）作为机读判定，
- *   不解析 message；
+ * - 409 → [HouseholdConflictException]，只带 `error.code` 作为机读判定（v0.14.0 起重排为
+ *   `ROOM_SET_MISMATCH`，更早为 `CONFLICT`），不解析 message；
  * - 领取邀请码的 404 → [InviteCodeInvalidException]，429 → [InviteRateLimitedException]；
  * - 401 沿用同步的 [com.platojobs.pkotlinapp.domain.sync.AuthExpiredException]。
  */
@@ -48,6 +50,9 @@ class RemoteHouseholdDataSource(
     private val api: SyncApi,
     private val tokenStore: TokenStore,
 ) : HouseholdRemote {
+
+    /** 成员列表 `isSelf` 缺失或转让路由 405 时置 false，UI 据此隐藏入口。 */
+    private var transferCapable = true
 
     override suspend fun listHouseholds(): List<HouseholdSnapshot> = withToken { auth ->
         api.households(auth).items.orEmpty().mapNotNull { it.toSnapshot() }
@@ -65,12 +70,18 @@ class RemoteHouseholdDataSource(
         }
 
     override suspend fun members(remoteId: String): List<HouseholdMember> = withToken { auth ->
-        api.householdMembers(auth, remoteId).items.orEmpty().map {
+        val items = api.householdMembers(auth, remoteId).items.orEmpty()
+        // v0.14.0 起每条成员都带 isSelf；全部缺失说明是老后端，提前隐藏转让入口。
+        if (items.isNotEmpty() && items.none { it.isSelf != null }) {
+            transferCapable = false
+        }
+        items.map {
             HouseholdMember(
                 userId = it.userId.orEmpty(),
                 role = HouseholdRole.parse(it.role),
                 kind = it.kind.orEmpty(),
                 joinedAt = Rfc3339.parse(it.joinedAt) ?: 0L,
+                isSelf = it.isSelf == true,
             )
         }
     }
@@ -82,6 +93,31 @@ class RemoteHouseholdDataSource(
     override suspend fun leave(remoteId: String) = withToken { auth ->
         api.leaveHousehold(auth, remoteId)
     }
+
+    /**
+     * 转让所有权。403/404/409 统一由 [withToken] 转成可读异常；
+     * 405（方法不存在）说明老后端没有该路由，标记能力不可用供 UI 隐藏。
+     */
+    override suspend fun transferOwnership(
+        remoteId: String,
+        userId: String,
+    ): HouseholdSnapshot = try {
+        withToken { auth ->
+            api.transferHouseholdOwnership(
+                auth,
+                remoteId,
+                HouseholdOwnershipTransferRequest(userId),
+            ).toSnapshot() ?: throw IllegalStateException("转让家庭响应缺少 id")
+        }
+    } catch (e: HttpException) {
+        if (e.code() == 405) {
+            transferCapable = false
+            throw OwnershipTransferUnsupportedException()
+        }
+        throw e
+    }
+
+    override fun supportsOwnershipTransfer(): Boolean = transferCapable
 
     override suspend fun createInvitation(remoteId: String): HouseholdInvitation = withToken { auth ->
         val response = api.createHouseholdInvitation(auth, remoteId)

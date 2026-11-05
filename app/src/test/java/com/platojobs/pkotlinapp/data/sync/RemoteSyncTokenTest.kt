@@ -230,6 +230,13 @@ class RemoteSyncTokenTest {
             id: String,
         ) = Unit
 
+        override suspend fun transferHouseholdOwnership(
+            authorization: String,
+            id: String,
+            body: com.platojobs.pkotlinapp.data.remote.HouseholdOwnershipTransferRequest,
+        ): com.platojobs.pkotlinapp.data.remote.HouseholdDto =
+            com.platojobs.pkotlinapp.data.remote.HouseholdDto()
+
         override suspend fun householdInvitations(
             authorization: String,
             id: String,

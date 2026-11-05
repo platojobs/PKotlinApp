@@ -379,6 +379,17 @@ class ProfileFragment : Fragment() {
             .show()
     }
 
+    private fun confirmTransferOwnership(member: HouseholdMember) {
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.household_transfer_title)
+            .setMessage(getString(R.string.household_transfer_message, shortUserId(member.userId)))
+            .setNegativeButton(R.string.action_cancel, null)
+            .setPositiveButton(R.string.household_transfer_action) { _, _ ->
+                viewModel.transferOwnership(member.userId)
+            }
+            .show()
+    }
+
     private fun copyInviteCode() {
         val code = viewModel.invite.value.code ?: return
         val clipboard = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -406,7 +417,7 @@ class ProfileFragment : Fragment() {
         }.orEmpty()
 
         // owner 才能改家庭名、签发/撤销邀请码；member 一律隐藏这些入口。
-        val capabilities = householdCapabilities(household)
+        val capabilities = householdCapabilities(household, viewModel.supportsOwnershipTransfer())
         val owner = capabilities.canManage
         section.householdRenameButton.visibility = if (owner) View.VISIBLE else View.GONE
         section.householdInviteTitle.visibility = if (owner) View.VISIBLE else View.GONE
@@ -423,7 +434,10 @@ class ProfileFragment : Fragment() {
 
     private fun renderMembers(members: List<HouseholdMember>) {
         val section = binding.householdSection
-        val owner = householdCapabilities(viewModel.currentHousehold.value).canRemoveMembers
+        val capabilities = householdCapabilities(
+            viewModel.currentHousehold.value,
+            viewModel.supportsOwnershipTransfer(),
+        )
         section.householdMembersList.removeAllViews()
         if (members.isEmpty()) {
             section.householdMembersList.addView(memberRow(getString(R.string.household_members_empty)))
@@ -434,19 +448,47 @@ class ProfileFragment : Fragment() {
             val role = getString(
                 if (isOwnerRow) R.string.household_role_owner else R.string.household_role_member,
             )
+            val selfMark = if (member.isSelf) getString(R.string.household_member_self_mark) else ""
             val row = memberRow(
-                getString(R.string.household_member_row, shortUserId(member.userId), role),
+                getString(R.string.household_member_row, shortUserId(member.userId), role, selfMark),
             )
-            // owner 可长按移除其他成员；owner 自己与 member 都没有这个入口。
-            if (owner && !isOwnerRow) {
+            // 服务端 isSelf 标记「这一行是我」：自己的行不出现移除/转让入口。
+            val actionable = capabilities.canRemoveMembers && !member.isSelf && !isOwnerRow
+            if (actionable) {
                 row.isLongClickable = true
                 row.setOnLongClickListener {
-                    confirmRemoveMember(member)
+                    showMemberActions(member)
                     true
                 }
             }
             section.householdMembersList.addView(row)
         }
+    }
+
+    /** 长按其他成员：移除与转让并列，两个动作互斥地作用于同一行。 */
+    private fun showMemberActions(member: HouseholdMember) {
+        val capabilities = householdCapabilities(
+            viewModel.currentHousehold.value,
+            viewModel.supportsOwnershipTransfer(),
+        )
+        val actions = mutableListOf<CharSequence>()
+        if (capabilities.canRemoveMembers) {
+            actions += getString(R.string.household_member_remove_action)
+        }
+        if (capabilities.canTransferOwnership) {
+            actions += getString(R.string.household_transfer_action)
+        }
+        if (actions.isEmpty()) return
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(getString(R.string.household_member_actions_title, shortUserId(member.userId)))
+            .setItems(actions.toTypedArray()) { _, which ->
+                when (actions[which].toString()) {
+                    getString(R.string.household_transfer_action) -> confirmTransferOwnership(member)
+                    else -> confirmRemoveMember(member)
+                }
+            }
+            .setNegativeButton(R.string.action_cancel, null)
+            .show()
     }
 
     private fun renderInvitations(list: List<HouseholdInvitationInfo>) {

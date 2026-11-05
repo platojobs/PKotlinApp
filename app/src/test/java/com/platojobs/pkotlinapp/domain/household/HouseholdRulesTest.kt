@@ -119,6 +119,7 @@ class HouseholdRulesTest {
 
         assertTrue(caps.canManage)
         assertTrue(caps.canRemoveMembers)
+        assertTrue(caps.canTransferOwnership)
         assertFalse(caps.canLeave)
         assertTrue(caps.leaveBlockedByMembers)
     }
@@ -129,6 +130,7 @@ class HouseholdRulesTest {
 
         assertFalse(caps.canManage)
         assertFalse(caps.canRemoveMembers)
+        assertFalse(caps.canTransferOwnership)
         assertTrue(caps.canLeave)
         assertFalse(caps.leaveBlockedByMembers)
     }
@@ -139,7 +141,21 @@ class HouseholdRulesTest {
 
         assertTrue(caps.canManage)
         assertFalse(caps.canRemoveMembers)
+        assertFalse(caps.canTransferOwnership)
         assertTrue(caps.canLeave)
+    }
+
+    @Test
+    fun `old backend without isSelf hides ownership transfer`() {
+        val caps = householdCapabilities(
+            household(role = HouseholdRole.OWNER, memberCount = 2),
+            transferSupported = false,
+        )
+
+        assertTrue(caps.canManage)
+        assertTrue(caps.canRemoveMembers)
+        assertFalse(caps.canTransferOwnership)
+        assertFalse(caps.canLeave)
     }
 
     @Test

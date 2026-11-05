@@ -12,6 +12,7 @@
     <string name="action_delete">Delete</string>
     <string name="action_edit">Edit</string>
     <string name="action_confirm">OK</string>
+    <string name="action_close">Close</string>
     <string name="action_open_settings">Open app settings</string>
     <string name="action_disconnect">Disconnect</string>
     <string name="action_scan">Start scan</string>
@@ -157,12 +158,36 @@
     <string name="detail_encryption_disabled">Not encrypted</string>
     <string name="detail_encryption_changed">Latest encryption broadcast: %1$s</string>
 
-    <string name="products_subtitle">Model library: vendor, firmware version and GATT services/characteristics</string>
+    <string name="products_subtitle">Browse the catalog by device type: description, parsed metrics and compatibility</string>
     <string name="products_empty_title">No model data</string>
     <string name="products_empty_hint">Check your network connection and try again</string>
     <string name="products_error">Load failed: %1$s</string>
     <string name="product_firmware">Firmware %1$s</string>
     <string name="product_services">GATT services and characteristics</string>
+    <string name="product_category_all">All</string>
+    <string name="product_category_health">Health</string>
+    <string name="product_category_environment">Environment</string>
+    <string name="product_category_gateway">Gateway / relay</string>
+    <string name="product_category_other">Other</string>
+    <string name="product_category_chip">%1$s %2$d</string>
+    <string name="product_metric_heart_rate">Heart rate</string>
+    <string name="product_metric_battery">Battery</string>
+    <string name="product_metric_temperature">Temperature</string>
+    <string name="product_metric_nus">NUS passthrough</string>
+    <string name="product_my_devices">My devices: %1$d</string>
+    <string name="product_open_description">View product details for %1$s</string>
+    <string name="product_detail_title">Product details</string>
+    <string name="product_detail_description">Device type description</string>
+    <string name="product_detail_metrics">Supported metrics</string>
+    <string name="product_detail_metrics_empty">This app does not parse metrics for this device type yet</string>
+    <string name="product_detail_compatibility">Compatibility and firmware</string>
+    <string name="product_detail_features">Capabilities: %1$s</string>
+    <string name="product_detail_firmware">Firmware version %1$s</string>
+    <string name="product_detail_my_devices">My devices</string>
+    <string name="product_detail_my_devices_hint">You have no devices of this type yet</string>
+    <string name="product_detail_device_row">%1$s</string>
+    <string name="product_detail_not_found_title">Product not found</string>
+    <string name="product_detail_not_found_hint">The catalog may have changed. Go back and reload</string>
 
     <string name="market_subtitle">Accessories and firmware information only, no purchasing</string>
     <string name="market_empty_title">No market data</string>
@@ -227,6 +252,47 @@
     <string name="profile_build_type">Build type: %1$s</string>
     <string name="profile_about_desc">A reference BLE device data panel built with pure Kotlin and Views</string>
     <string name="profile_github">Project repository</string>
+
+    <string name="profile_support_title">Help and support</string>
+    <string name="profile_help_center">Help center</string>
+    <string name="profile_feedback">Send feedback</string>
+    <string name="profile_feedback_pending">Unsent feedback drafts: %1$d</string>
+    <string name="profile_about_licenses">Open source licenses</string>
+    <string name="profile_about_privacy">Privacy policy</string>
+    <string name="profile_about_security">Data safety</string>
+
+    <string name="help_title">Help center</string>
+    <string name="help_faq_pairing_q">What if the Transfer Code is rejected?</string>
+    <string name="help_faq_pairing_a">A Transfer Code is 8 uppercase letters and digits; the input is converted to uppercase automatically. Check for extra spaces and make sure the code has not expired. Generating a new code invalidates the old one immediately. Too many attempts trigger rate limiting, and the screen shows the remaining wait time.</string>
+    <string name="help_faq_connect_q">The device is found but connection fails. What should I do?</string>
+    <string name="help_faq_connect_a">Make sure Bluetooth is on, and confirm scan and connect permissions under Profile → Permission check. Android 11 and below also need location permission; connection fails if any permission is missing. If it still fails, unpair the device in system Bluetooth settings and scan again from Home.</string>
+    <string name="help_faq_readings_q">Readings stop refreshing or the chart has no new data?</string>
+    <string name="help_faq_readings_a">Readings are written only while the device is connected, through its notify characteristics. The chart shows local stored records: synced data is kept for 7 days, while unsynced records are retained. Reconnect from the device detail screen and watch for new readings.</string>
+    <string name="help_faq_sync_q">How are sync conflicts handled?</string>
+    <string name="help_faq_sync_a">The server version wins, and the local pending change is replaced; Profile → Sync status shows the latest conflict count. If you need to keep local edits, continue editing after the sync completes.</string>
+    <string name="help_faq_leave_q">How do I leave a household?</string>
+    <string name="help_faq_leave_a">A regular member can leave directly from Profile → Household; shared devices of that household are then removed from this device. An owner with other members cannot leave directly (the server returns 409). Transfer ownership to another member, or remove the other members first, then leave.</string>
+
+    <string name="feedback_title">Send feedback</string>
+    <string name="feedback_backend_hint">This version has no feedback backend yet. Submissions stay on this device and are clearly marked as unsent.</string>
+    <string name="feedback_category_label">Feedback type</string>
+    <string name="feedback_category_bug">Bug</string>
+    <string name="feedback_category_connection">Connection issue</string>
+    <string name="feedback_category_sync">Sync issue</string>
+    <string name="feedback_category_other">Other</string>
+    <string name="feedback_description_label">Description</string>
+    <string name="feedback_description_hint">Describe what happened, the steps you took, and what you expected</string>
+    <string name="feedback_contact_label">Contact (optional)</string>
+    <string name="feedback_contact_hint">Email or phone number for follow-up</string>
+    <string name="feedback_submit">Submit</string>
+    <string name="feedback_sent">Feedback sent</string>
+    <string name="feedback_queued_unsent">Saved to the local queue (not sent)</string>
+    <string name="feedback_retry_unsent">Still not sent: the draft is kept on this device</string>
+    <string name="feedback_description_required">Enter a description</string>
+    <string name="feedback_pending_title">Unsent drafts</string>
+    <string name="feedback_pending_empty">No unsent drafts</string>
+    <string name="feedback_pending_row">%1$s · %2$s (not sent)</string>
+    <string name="feedback_retry">Retry sending</string>
 
     <string name="scan_log_clear_title">Clear scan logs</string>
     <string name="scan_log_clear_message">Clear all local scan logs?</string>
@@ -571,7 +637,8 @@
     <string name="household_role_member">Member</string>
     <string name="household_members_title">Members</string>
     <string name="household_members_empty">No member info yet (not synced)</string>
-    <string name="household_member_row">%1$s · %2$s</string>
+    <string name="household_member_row">%1$s · %2$s%3$s</string>
+    <string name="household_member_self_mark"> (you)</string>
     <string name="household_create">Create household</string>
     <string name="household_name_hint">Household name</string>
     <string name="household_created">Household created: %1$s</string>
@@ -602,6 +669,11 @@
     <string name="household_member_remove_message">After removal, their devices return to their personal household and are no longer shared here. Remove this member?</string>
     <string name="household_member_remove_action">Remove</string>
     <string name="household_member_removed">Member removed</string>
+    <string name="household_member_actions_title">Member %1$s: choose an action</string>
+    <string name="household_transfer_title">Transfer ownership</string>
+    <string name="household_transfer_message">After transferring you become a regular member and lose the ability to rename the household, issue invitations, and remove members; the other person becomes the owner. Transfer to %1$s?</string>
+    <string name="household_transfer_action">Transfer ownership</string>
+    <string name="household_transferred">Ownership transferred; you are now a regular member</string>
     <string name="household_rename">Rename household</string>
     <string name="household_renamed">Renamed to: %1$s</string>
     <string name="household_leave">Leave household</string>

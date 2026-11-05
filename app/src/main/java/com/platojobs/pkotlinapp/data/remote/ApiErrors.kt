@@ -21,8 +21,11 @@ object ApiErrorCodes {
     const val BAD_REQUEST = "BAD_REQUEST"
     const val UNAVAILABLE = "UNAVAILABLE"
 
-    /** 409：owner 带成员退出、房间集合不一致（v0.13.0 契约使用 `CONFLICT`）。 */
+    /** 409：owner 带成员退出等通用冲突。 */
     const val CONFLICT = "CONFLICT"
+
+    /** 409：整段房间重排集合不一致（v0.14.0 起可作为机读判定，无需解析 message）。 */
+    const val ROOM_SET_MISMATCH = "ROOM_SET_MISMATCH"
 }
 
 data class ApiErrorDto(

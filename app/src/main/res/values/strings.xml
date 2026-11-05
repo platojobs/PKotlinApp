@@ -12,6 +12,7 @@
     <string name="action_delete">删除</string>
     <string name="action_edit">编辑</string>
     <string name="action_confirm">确定</string>
+    <string name="action_close">关闭</string>
     <string name="action_open_settings">打开应用设置</string>
     <string name="action_disconnect">断开连接</string>
     <string name="action_scan">开始扫描</string>
@@ -159,12 +160,36 @@
     <string name="detail_encryption_disabled">未加密</string>
     <string name="detail_encryption_changed">最近一次加密广播：%1$s</string>
 
-    <string name="products_subtitle">型号库：厂商、固件版本与 GATT 服务/特征</string>
+    <string name="products_subtitle">按设备类型浏览目录，查看说明、可解析指标与兼容性</string>
     <string name="products_empty_title">暂无型号数据</string>
     <string name="products_empty_hint">检查网络连接后重试加载</string>
     <string name="products_error">加载失败：%1$s</string>
     <string name="product_firmware">固件 %1$s</string>
     <string name="product_services">GATT 服务与特征</string>
+    <string name="product_category_all">全部</string>
+    <string name="product_category_health">健康</string>
+    <string name="product_category_environment">环境</string>
+    <string name="product_category_gateway">网关 / 中继</string>
+    <string name="product_category_other">其他</string>
+    <string name="product_category_chip">%1$s %2$d</string>
+    <string name="product_metric_heart_rate">心率</string>
+    <string name="product_metric_battery">电量</string>
+    <string name="product_metric_temperature">温度</string>
+    <string name="product_metric_nus">NUS 透传</string>
+    <string name="product_my_devices">我的设备 %1$d 台</string>
+    <string name="product_open_description">查看 %1$s 的产品详情</string>
+    <string name="product_detail_title">产品详情</string>
+    <string name="product_detail_description">设备类型说明</string>
+    <string name="product_detail_metrics">支持的指标</string>
+    <string name="product_detail_metrics_empty">当前 App 尚未实现该类型的指标解析</string>
+    <string name="product_detail_compatibility">兼容性与固件</string>
+    <string name="product_detail_features">支持能力：%1$s</string>
+    <string name="product_detail_firmware">固件版本 %1$s</string>
+    <string name="product_detail_my_devices">我的设备</string>
+    <string name="product_detail_my_devices_hint">你还没有这类设备</string>
+    <string name="product_detail_device_row">%1$s</string>
+    <string name="product_detail_not_found_title">未找到该产品</string>
+    <string name="product_detail_not_found_hint">产品目录可能已更新，请返回后重新加载</string>
 
     <string name="market_subtitle">仅展示配件与固件信息，不含交易能力</string>
     <string name="market_empty_title">暂无市场数据</string>
@@ -229,6 +254,47 @@
     <string name="profile_build_type">构建类型：%1$s</string>
     <string name="profile_about_desc">纯 Kotlin + View 体系的 BLE 设备数据面板参考实现</string>
     <string name="profile_github">项目仓库</string>
+
+    <string name="profile_support_title">帮助与支持</string>
+    <string name="profile_help_center">帮助中心</string>
+    <string name="profile_feedback">意见反馈</string>
+    <string name="profile_feedback_pending">本地待发反馈：%1$d 条（未发送）</string>
+    <string name="profile_about_licenses">开源许可</string>
+    <string name="profile_about_privacy">隐私政策</string>
+    <string name="profile_about_security">数据安全</string>
+
+    <string name="help_title">帮助中心</string>
+    <string name="help_faq_pairing_q">配对时提示 Transfer Code 无效怎么办？</string>
+    <string name="help_faq_pairing_a">Transfer Code 为 8 位大写字母与数字，输入框会自动转成大写。请确认没有多余空格、没有使用已过期的码；重新生成后旧码会立即失效。连续尝试过多会触发频率限制，界面会显示剩余等待时间。</string>
+    <string name="help_faq_connect_q">搜索到设备但连接失败怎么办？</string>
+    <string name="help_faq_connect_a">请确认蓝牙已开启，并在「我的 → 权限自检」中确认蓝牙扫描、连接权限已授权；Android 11 及以下还需要定位权限。任一项未授权时连接会直接失败。若仍然失败，可先在系统蓝牙设置中取消配对，再回到首页重新扫描。</string>
+    <string name="help_faq_readings_q">读数不刷新或图表没有新数据？</string>
+    <string name="help_faq_readings_a">读数只在设备连接期间从通知特征写入本机，断开后不会产生新数据。图表展示的是本地已落库记录：已同步数据只保留 7 天，待上传记录不会被清理。请先在设备详情重新连接，再观察最新读数。</string>
+    <string name="help_faq_sync_q">同步冲突会怎样处理？</string>
+    <string name="help_faq_sync_a">冲突时以服务端版本为准，本机对应的待同步修改会被覆盖；「我的 → 同步状态」会显示最近一次冲突条数。若要保留本机修改，请在同步完成后再继续编辑。</string>
+    <string name="help_faq_leave_q">如何退出家庭？</string>
+    <string name="help_faq_leave_a">普通成员可在「我的 → 家庭」直接退出，退出后该家庭的共享设备会从本机移除。owner 还有其他成员时不能直接退出（服务端返回 409）；需要先把所有权转让给其他成员，或先移除其他成员，之后才能退出。</string>
+
+    <string name="feedback_title">意见反馈</string>
+    <string name="feedback_backend_hint">当前版本尚未接入反馈服务端；提交内容只保存在本机，状态会如实标注「未发送」。</string>
+    <string name="feedback_category_label">反馈类型</string>
+    <string name="feedback_category_bug">功能异常</string>
+    <string name="feedback_category_connection">连接问题</string>
+    <string name="feedback_category_sync">同步问题</string>
+    <string name="feedback_category_other">其他</string>
+    <string name="feedback_description_label">问题描述</string>
+    <string name="feedback_description_hint">请描述遇到的现象、操作步骤与期望结果</string>
+    <string name="feedback_contact_label">联系方式（可选）</string>
+    <string name="feedback_contact_hint">邮箱或手机号，便于进一步沟通</string>
+    <string name="feedback_submit">提交</string>
+    <string name="feedback_sent">反馈已发送</string>
+    <string name="feedback_queued_unsent">已保存到本地待发队列（未发送）</string>
+    <string name="feedback_retry_unsent">仍未发送：草稿已保留在本机</string>
+    <string name="feedback_description_required">请填写问题描述</string>
+    <string name="feedback_pending_title">未发送草稿</string>
+    <string name="feedback_pending_empty">暂无未发送草稿</string>
+    <string name="feedback_pending_row">%1$s · %2$s（未发送）</string>
+    <string name="feedback_retry">重试发送</string>
 
     <string name="scan_log_clear_title">清空扫描日志</string>
     <string name="scan_log_clear_message">确定清空全部本地扫描日志吗？</string>
@@ -575,7 +641,8 @@
     <string name="household_role_member">成员</string>
     <string name="household_members_title">家庭成员</string>
     <string name="household_members_empty">暂无成员信息（未同步）</string>
-    <string name="household_member_row">%1$s · %2$s</string>
+    <string name="household_member_row">%1$s · %2$s%3$s</string>
+    <string name="household_member_self_mark">（我）</string>
     <string name="household_create">创建家庭</string>
     <string name="household_name_hint">家庭名称</string>
     <string name="household_created">已创建家庭：%1$s</string>
@@ -606,6 +673,11 @@
     <string name="household_member_remove_message">移除后，对方的设备会回到其个人家庭，本家庭不再共享这些设备。确定移除吗？</string>
     <string name="household_member_remove_action">移除</string>
     <string name="household_member_removed">已移除成员</string>
+    <string name="household_member_actions_title">成员 %1$s：选择操作</string>
+    <string name="household_transfer_title">转让所有权</string>
+    <string name="household_transfer_message">转让后你将降为普通成员，失去改家庭名、签发邀请码和移除成员的权限；对方将成为家庭所有者。确定转让给 %1$s 吗？</string>
+    <string name="household_transfer_action">转让所有权</string>
+    <string name="household_transferred">已转让所有权，你当前是普通成员</string>
     <string name="household_rename">重命名家庭</string>
     <string name="household_renamed">已重命名为：%1$s</string>
     <string name="household_leave">退出家庭</string>

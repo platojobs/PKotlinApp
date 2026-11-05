@@ -116,7 +116,11 @@ data class HouseholdMemberDto(
     val role: String? = null,
     val kind: String? = null,
     val joinedAt: String? = null,
+    /** 服务端（v0.14.0 起）标记该行是否为当前账号；缺失表示老后端。 */
+    val isSelf: Boolean? = null,
 )
+
+data class HouseholdOwnershipTransferRequest(val userId: String)
 
 data class HouseholdMemberListResponse(
     val items: List<HouseholdMemberDto>? = null,
@@ -516,6 +520,14 @@ interface SyncApi {
         @Header("Authorization") authorization: String,
         @Path("id") id: String,
     )
+
+    /** 转让所有权：仅 owner 可调用，目标必须是同家庭的其他成员。 */
+    @POST("api/v1/households/{id}/transfer-ownership")
+    suspend fun transferHouseholdOwnership(
+        @Header("Authorization") authorization: String,
+        @Path("id") id: String,
+        @Body body: HouseholdOwnershipTransferRequest,
+    ): HouseholdDto
 
     @POST("api/v1/households/{id}/invitations")
     suspend fun createHouseholdInvitation(

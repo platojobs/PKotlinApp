@@ -6,6 +6,7 @@ import com.platojobs.pkotlinapp.data.local.HouseholdDao
 import com.platojobs.pkotlinapp.data.local.HouseholdEntity
 import com.platojobs.pkotlinapp.data.local.RoomDao
 import com.platojobs.pkotlinapp.data.local.RoomEntity
+import com.platojobs.pkotlinapp.data.remote.ApiErrorCodes
 import com.platojobs.pkotlinapp.data.sync.SyncPrefs
 import com.platojobs.pkotlinapp.domain.household.Household
 import com.platojobs.pkotlinapp.domain.household.HouseholdConflictException
@@ -226,6 +227,20 @@ class HouseholdRepository(
     }
 
     /**
+     * 转让所有权：服务端把目标成员升为 owner，调用者降为 member。
+     * 成功后刷新家庭与成员列表，能力矩阵随角色变化自动收起管理入口。
+     */
+    suspend fun transferOwnership(userId: String): Household = mutex.withLock {
+        val row = currentRow() ?: throw HouseholdNotFoundException()
+        remote.transferOwnership(row.remoteId, userId)
+        runCatching { refreshLocked() }
+        currentRow()?.toDomain() ?: row.toDomain()
+    }
+
+    /** 服务端是否支持转让所有权（老后端为 false，UI 直接隐藏入口）。 */
+    fun supportsOwnershipTransfer(): Boolean = remote.supportsOwnershipTransfer()
+
+    /**
      * 退出家庭：服务端删除成员关系（owner 且无其他成员时家庭本身被删除）。
      * 本地清掉该家庭的房间、设备归属与共享设备，再回落到个人家庭。
      */
@@ -281,7 +296,14 @@ class HouseholdRepository(
         } catch (e: HouseholdConflictException) {
             // 集合不一致：服务端是权威来源，重新拉取后让用户看到最新顺序。
             runCatching { mergeRooms(row) }
-            throw RoomSetMismatchException()
+            // v0.14.0 起 409 带 ROOM_SET_MISMATCH；更早版本为 CONFLICT，语义相同。
+            if (e.code == null ||
+                e.code == ApiErrorCodes.ROOM_SET_MISMATCH ||
+                e.code == ApiErrorCodes.CONFLICT
+            ) {
+                throw RoomSetMismatchException()
+            }
+            throw e
         } catch (e: java.io.IOException) {
             // 离线：保留本地顺序，等下次同步再整段提交。
             _status.value = _status.value.copy(

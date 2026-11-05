@@ -1251,6 +1251,118 @@ class E2eContractTest {
             assertEquals(404, get("/households/$householdId", user.token).code)
         }
 
+        // ---- v0.14.0：成员 isSelf 与所有权转让 ----
+        val transferHomeId = captureStep("transfer: owner creates a separate household") {
+            val result = post("/households", """{"name":"e2e-transfer"}""", user.token)
+            assertEquals(201, result.code)
+            parseMap(result.body)["id"] as? String ?: error("missing household id")
+        }
+
+        val transferCode = captureStep("transfer: owner issues an invitation") {
+            val created = post("/households/$transferHomeId/invitations", "{}", user.token)
+            assertEquals(201, created.code)
+            parseMap(created.body)["code"] as? String ?: error("missing invite code")
+        }
+
+        val successor = captureStep("transfer: successor claims the invitation") {
+            val session = newAnonymousSession("ownership successor")
+            val result = post(
+                "/households/invitations/claim",
+                claimBody(transferCode),
+                session.token,
+            )
+            assertEquals(200, result.code)
+            assertEquals(transferHomeId, parseMap(result.body)["id"])
+            session
+        }
+
+        fun membersOf(token: String): List<Map<*, *>> {
+            val result = get("/households/$transferHomeId/members", token)
+            assertEquals(200, result.code)
+            return (parseMap(result.body)["items"] as? List<*>).orEmpty()
+                .mapNotNull { it as? Map<*, *> }
+        }
+
+        step("transfer: member list marks the caller via isSelf") {
+            val ownerView = membersOf(user.token)
+            assertEquals(2, ownerView.size)
+            assertEquals(true, ownerView.firstOrNull { it["userId"] == user.userId }?.get("isSelf"))
+            assertEquals(
+                false,
+                ownerView.firstOrNull { it["userId"] == successor.userId }?.get("isSelf"),
+            )
+            val successorView = membersOf(successor.token)
+            assertEquals(
+                true,
+                successorView.firstOrNull { it["userId"] == successor.userId }?.get("isSelf"),
+            )
+            assertEquals(
+                false,
+                successorView.firstOrNull { it["userId"] == user.userId }?.get("isSelf"),
+            )
+        }
+
+        step("transfer: member cannot transfer ownership (403)") {
+            val result = post(
+                "/households/$transferHomeId/transfer-ownership",
+                """{"userId":"${successor.userId}"}""",
+                successor.token,
+            )
+            assertEquals(403, result.code)
+            assertEquals(
+                "FORBIDDEN",
+                (parseMap(result.body)["error"] as? Map<*, *>)?.get("code"),
+            )
+        }
+
+        step("transfer: unknown target returns 404") {
+            val result = post(
+                "/households/$transferHomeId/transfer-ownership",
+                """{"userId":"00000000-0000-0000-0000-000000000000"}""",
+                user.token,
+            )
+            assertEquals(404, result.code)
+        }
+
+        step("transfer: owner hands ownership to the successor") {
+            val result = post(
+                "/households/$transferHomeId/transfer-ownership",
+                """{"userId":"${successor.userId}"}""",
+                user.token,
+            )
+            assertEquals(200, result.code)
+            val body = parseMap(result.body)
+            // 响应直接反映转让后的身份：调用者降为 member，owner 指向接任者。
+            assertEquals("member", body["role"])
+            assertEquals(successor.userId, body["ownerUserId"])
+        }
+
+        step("transfer: old owner loses structural permissions (403)") {
+            assertEquals(
+                403,
+                patch("/households/$transferHomeId", """{"name":"旧 owner 改名"}""", user.token).code,
+            )
+            assertEquals(
+                403,
+                post("/households/$transferHomeId/invitations", "{}", user.token).code,
+            )
+            val roles = membersOf(user.token)
+            assertEquals("member", roles.firstOrNull { it["userId"] == user.userId }?.get("role"))
+            assertEquals("owner", roles.firstOrNull { it["userId"] == successor.userId }?.get("role"))
+        }
+
+        step("transfer: new owner removes the previous owner, then leaves (204)") {
+            assertEquals(
+                204,
+                delete("/households/$transferHomeId/members/${user.userId}", successor.token).code,
+            )
+            assertEquals(404, get("/households/$transferHomeId", user.token).code)
+            assertEquals(
+                204,
+                post("/households/$transferHomeId/leave", "{}", successor.token).code,
+            )
+        }
+
         println("[E2E] SUMMARY: household contract cases passed")
 
         step("account: delete returns 204 and revokes every token of the account") {

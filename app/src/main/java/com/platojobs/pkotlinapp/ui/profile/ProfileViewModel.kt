@@ -29,6 +29,7 @@ import com.platojobs.pkotlinapp.domain.household.HouseholdInvitationInfo
 import com.platojobs.pkotlinapp.domain.household.HouseholdMember
 import com.platojobs.pkotlinapp.domain.household.HouseholdRole
 import com.platojobs.pkotlinapp.domain.household.HouseholdSyncStatus
+import com.platojobs.pkotlinapp.domain.household.OwnershipTransferUnsupportedException
 import com.platojobs.pkotlinapp.domain.household.classifyHouseholdError
 import com.platojobs.pkotlinapp.domain.model.ScanLog
 import com.platojobs.pkotlinapp.domain.repository.ScanLogRepository
@@ -451,6 +452,37 @@ class ProfileViewModel(
             }
         }
     }
+
+    /**
+     * owner 转让所有权：成功后自己降为 member，立即刷新成员与能力矩阵。
+     * 403/404/409 都给可读提示并重新拉取家庭详情；老后端无该路由则静默隐藏入口。
+     */
+    fun transferOwnership(userId: String) {
+        if (_householdBusy.value) return
+        viewModelScope.launch {
+            _householdBusy.value = true
+            try {
+                householdRepository.transferOwnership(userId)
+                _members.value = runCatching { householdRepository.members() }
+                    .getOrDefault(_members.value)
+                _invitations.value = emptyList()
+                _accountMessage.emit(appContext.getString(R.string.household_transferred))
+            } catch (e: OwnershipTransferUnsupportedException) {
+                // 老后端：入口随能力矩阵消失，不弹错误。
+                runCatching { householdRepository.refreshHouseholds() }
+                _members.value = runCatching { householdRepository.members() }
+                    .getOrDefault(_members.value)
+            } catch (e: Exception) {
+                refreshHousehold()
+                _accountMessage.emit(householdErrorText(e))
+            } finally {
+                _householdBusy.value = false
+            }
+        }
+    }
+
+    /** 服务端是否支持转让所有权：老后端为 false，UI 隐藏入口。 */
+    fun supportsOwnershipTransfer(): Boolean = householdRepository.supportsOwnershipTransfer()
 
     /** 退出当前家庭：owner 还有其他成员时服务端 409，文案可读。 */
     fun leaveHousehold() {

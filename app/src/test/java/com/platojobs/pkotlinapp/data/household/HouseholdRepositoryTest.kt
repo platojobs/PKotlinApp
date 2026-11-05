@@ -7,6 +7,7 @@ import com.platojobs.pkotlinapp.domain.household.HouseholdConflictException
 import com.platojobs.pkotlinapp.domain.household.HouseholdInvitation
 import com.platojobs.pkotlinapp.domain.household.HouseholdInvitationInfo
 import com.platojobs.pkotlinapp.domain.household.HouseholdMember
+import com.platojobs.pkotlinapp.domain.household.HouseholdNotFoundException
 import com.platojobs.pkotlinapp.domain.household.HouseholdRemote
 import com.platojobs.pkotlinapp.domain.household.HouseholdRole
 import com.platojobs.pkotlinapp.domain.household.HouseholdRoom
@@ -14,12 +15,14 @@ import com.platojobs.pkotlinapp.domain.household.HouseholdSnapshot
 import com.platojobs.pkotlinapp.domain.household.InvitationStatus
 import com.platojobs.pkotlinapp.domain.household.RemoteDeviceRef
 import com.platojobs.pkotlinapp.domain.household.RoomSetMismatchException
+import com.platojobs.pkotlinapp.domain.household.householdCapabilities
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -89,6 +92,24 @@ class HouseholdRepositoryTest {
         assertEquals(1, family?.memberCount)
         assertEquals(0, family?.deviceCount)
         assertEquals(listOf("user-2"), remote.removedMembers)
+    }
+
+    @Test
+    fun `transferring ownership downgrades caller and hides manage entries`() = runBlocking {
+        seedFamilyWithSharedDevice()
+        repo.switchHousehold(FAMILY)
+        assertEquals(HouseholdRole.OWNER, repo.currentHousehold.value?.role)
+
+        val result = repo.transferOwnership("user-2")
+
+        assertEquals(listOf("user-2"), remote.transfers)
+        assertEquals(HouseholdRole.MEMBER, result.role)
+        // 角色已落库，UI 的 currentHousehold Flow 会在下一帧收到同一份刷新结果。
+        assertEquals("member", db.householdDao().findByRemoteId(FAMILY)?.role)
+        val caps = householdCapabilities(result, repo.supportsOwnershipTransfer())
+        assertFalse(caps.canManage)
+        assertFalse(caps.canRemoveMembers)
+        assertFalse(caps.canTransferOwnership)
     }
 
     @Test
@@ -214,6 +235,7 @@ class HouseholdRepositoryTest {
         val removedMembers = mutableListOf<String>()
         val revokedInvitations = mutableListOf<String>()
         val leftHouseholds = mutableListOf<String>()
+        val transfers = mutableListOf<String>()
         var conflictOnReorder = false
         var offline = false
         var lastReorder: List<String>? = null
@@ -231,13 +253,25 @@ class HouseholdRepositoryTest {
             snapshot(remoteId, name)
 
         override suspend fun members(remoteId: String): List<HouseholdMember> = listOf(
-            HouseholdMember("user-1", HouseholdRole.OWNER, "user", NOW),
+            HouseholdMember("user-1", HouseholdRole.OWNER, "user", NOW, isSelf = true),
             HouseholdMember("user-2", HouseholdRole.MEMBER, "user", NOW),
         )
 
         override suspend fun removeMember(remoteId: String, userId: String) {
             failIfOffline()
             onRemoveMember(userId)
+        }
+
+        override suspend fun transferOwnership(
+            remoteId: String,
+            userId: String,
+        ): HouseholdSnapshot {
+            failIfOffline()
+            transfers += userId
+            val row = householdRows[remoteId] ?: throw HouseholdNotFoundException()
+            // 转让后调用者降为 member，目标升为 owner。
+            householdRows[remoteId] = row.copy(role = HouseholdRole.MEMBER)
+            return householdRows[remoteId]!!
         }
 
         override suspend fun leave(remoteId: String) {

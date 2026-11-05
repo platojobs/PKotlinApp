@@ -34,6 +34,8 @@ data class HouseholdMember(
     val role: HouseholdRole,
     val kind: String,
     val joinedAt: Long,
+    /** 服务端 v0.14.0 起直接标记「这一行是我」，不再靠用户名或 id 比对。 */
+    val isSelf: Boolean = false,
 )
 
 data class HouseholdInvitation(
@@ -105,13 +107,16 @@ class HouseholdServerUnavailableException(cause: Throwable? = null) :
 /**
  * 409：owner 带成员退出、整段重排集合不一致。
  *
- * 后端 v0.13.0 尚未提供 `ROOM_SET_MISMATCH`，因此机读判定只用 HTTP 409 + `error.code`
- * （当前为 `CONFLICT`），不解析人类可读的 message。
+ * 机读判定只用 HTTP 409 + `error.code`，不解析人类可读的 message。
+ * 后端 v0.14.0 起重排返回 `ROOM_SET_MISMATCH`，更早版本为 `CONFLICT`。
  */
 class HouseholdConflictException(val code: String? = null) : RuntimeException("conflict")
 
 /** 重排时房间集合已变化：仓库已重新拉取，调用方提示「已刷新」即可。 */
 class RoomSetMismatchException : RuntimeException("room set changed")
+
+/** 老后端没有转让所有权路由（404/405）：UI 隐藏入口，不弹错误。 */
+class OwnershipTransferUnsupportedException : RuntimeException("ownership transfer unsupported")
 
 /** 家庭接口的远程访问抽象，便于单测替换。 */
 interface HouseholdRemote {
@@ -121,6 +126,16 @@ interface HouseholdRemote {
     suspend fun members(remoteId: String): List<HouseholdMember>
     suspend fun removeMember(remoteId: String, userId: String)
     suspend fun leave(remoteId: String)
+
+    /** 转让所有权；老后端没有该路由时抛 [HouseholdNotFoundException]。 */
+    suspend fun transferOwnership(remoteId: String, userId: String): HouseholdSnapshot
+
+    /**
+     * 服务端是否支持转让所有权。默认 true；远程实现可用成员列表里 `isSelf`
+     * 是否存在来探测老后端，从而提前隐藏入口而不是等用户点击后报错。
+     */
+    fun supportsOwnershipTransfer(): Boolean = true
+
     suspend fun createInvitation(remoteId: String): HouseholdInvitation
     suspend fun listInvitations(remoteId: String): List<HouseholdInvitationInfo>
     suspend fun revokeInvitation(remoteId: String, invitationId: String)

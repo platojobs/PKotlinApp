@@ -114,19 +114,29 @@ fun classifyHouseholdError(error: Throwable): HouseholdErrorKind = when (error) 
 data class HouseholdCapabilities(
     val canManage: Boolean,
     val canRemoveMembers: Boolean,
+    val canTransferOwnership: Boolean,
     val canLeave: Boolean,
     /** owner 还有其他成员：展示「请先转让所有权或移除其他成员」。 */
     val leaveBlockedByMembers: Boolean,
 )
 
-fun householdCapabilities(household: Household?): HouseholdCapabilities {
-    if (household == null) return HouseholdCapabilities(false, false, false, false)
+/**
+ * @param transferSupported 服务端是否支持转让所有权（老后端不返回 `isSelf`、无该路由时传 false）。
+ */
+fun householdCapabilities(
+    household: Household?,
+    transferSupported: Boolean = true,
+): HouseholdCapabilities {
+    if (household == null) {
+        return HouseholdCapabilities(false, false, false, false, false)
+    }
     val owner = household.role == HouseholdRole.OWNER
     val hasOtherMembers = household.memberCount > 1
     val leaveBlocked = !household.isPersonal && owner && hasOtherMembers
     return HouseholdCapabilities(
         canManage = owner,
         canRemoveMembers = owner && hasOtherMembers,
+        canTransferOwnership = owner && hasOtherMembers && transferSupported,
         canLeave = !household.isPersonal && !leaveBlocked,
         leaveBlockedByMembers = leaveBlocked,
     )

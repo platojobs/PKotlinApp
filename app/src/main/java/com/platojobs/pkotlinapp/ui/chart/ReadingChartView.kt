@@ -51,9 +51,9 @@ class ReadingChartView @JvmOverloads constructor(
         linePaint.color = ContextCompat.getColor(context, R.color.chart_line)
         linePaint.strokeWidth = 2.dp
         linePaint.strokeCap = Paint.Cap.ROUND
-        pointPaint.color = ContextCompat.getColor(context, R.color.chart_point)
+        pointPaint.color = ContextCompat.getColor(context, R.color.chart_line_2)
         labelPaint.color = ContextCompat.getColor(context, R.color.text_secondary)
-        labelPaint.textSize = 10.sp
+        labelPaint.textSize = resources.getDimension(R.dimen.chart_label_text_size)
         updateContentDescription()
     }
 

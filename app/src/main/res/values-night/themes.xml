@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <style name="Theme.PKotlinApp" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:windowBackground">@color/canvas</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@color/canvas</item>
+        <item name="android:colorAccent">@color/primary</item>
+
+        <item name="colorPrimary">@color/primary</item>
+        <item name="colorOnPrimary">@color/on_primary</item>
+        <item name="colorPrimaryContainer">@color/chart_band</item>
+        <item name="colorOnPrimaryContainer">@color/primary_text</item>
+        <item name="colorSecondary">@color/primary</item>
+        <item name="colorOnSecondary">@color/on_primary</item>
+        <item name="colorSurface">@color/surface</item>
+        <item name="colorSurfaceVariant">@color/surface_sunken</item>
+        <item name="colorOnSurface">@color/text_primary</item>
+        <item name="colorOnSurfaceVariant">@color/text_secondary</item>
+        <item name="colorOutline">@color/border</item>
+        <item name="colorError">@color/danger</item>
+        <item name="colorErrorContainer">@color/danger_bg</item>
+        <item name="colorOnErrorContainer">@color/danger</item>
+        <item name="android:textColorPrimary">@color/text_primary</item>
+        <item name="android:textColorSecondary">@color/text_secondary</item>
+        <item name="android:textColorHint">@color/text_tertiary</item>
+
+        <item name="materialButtonStyle">@style/Widget.App.Button.Primary</item>
+        <item name="materialButtonOutlinedStyle">@style/Widget.App.Button.Secondary</item>
+        <item name="materialCardViewStyle">@style/Widget.App.Card</item>
+        <item name="chipStyle">@style/Widget.App.Chip</item>
+    </style>
+
+</resources>

@@ -12,6 +12,8 @@ import com.platojobs.pkotlinapp.domain.reading.Reading
 import com.platojobs.pkotlinapp.domain.reading.ReadingMetric
 import com.platojobs.pkotlinapp.domain.reading.ReadingSample
 import com.platojobs.pkotlinapp.domain.reading.ReadingSummary
+import com.platojobs.pkotlinapp.domain.scene.Scene
+import com.platojobs.pkotlinapp.domain.scene.SceneAction
 import kotlinx.coroutines.flow.Flow
 
 interface DeviceRepository {
@@ -45,6 +47,9 @@ interface RuleRepository {
 interface RuleEventRepository {
     fun observeRecent(limit: Int = 20): Flow<List<RuleEvent>>
 
+    /** 指定时间窗内的真实触发条数（首页今日告警摘要）。 */
+    fun observeCountBetween(from: Long, to: Long): Flow<Int>
+
     suspend fun getRecent(limit: Int): List<RuleEvent>
 
     suspend fun add(event: RuleEvent): Long
@@ -75,6 +80,9 @@ interface ReadingRepository {
     ): Flow<List<Reading>>
 
     suspend fun getRecent(deviceId: String, metric: String, limit: Int): List<Reading>
+
+    /** 每台设备最近一条读数（首页卡片）。 */
+    fun observeLatestPerDevice(): Flow<List<Reading>>
 
     /** 本地 24h 汇总（离线可用）。 */
     suspend fun summary(deviceId: String, metric: String, hours: Int = 24): ReadingSummary
@@ -107,4 +115,16 @@ interface ProductRepository {
 
 interface MarketRepository {
     suspend fun fetchMarketItems(): List<MarketItem>
+}
+
+/** 本地场景仓库：仅本机存储，无远端同步接口。 */
+interface SceneRepository {
+    fun observeScenes(): Flow<List<Scene>>
+
+    suspend fun getScenes(): List<Scene>
+
+    /** [id] 为 null 表示新建；保存时整体替换动作列表。 */
+    suspend fun saveScene(id: Long?, name: String, actions: List<SceneAction>): Long
+
+    suspend fun deleteScene(id: Long)
 }

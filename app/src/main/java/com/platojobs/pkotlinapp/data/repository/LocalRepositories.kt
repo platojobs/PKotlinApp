@@ -8,6 +8,10 @@ import com.platojobs.pkotlinapp.data.local.RuleEventDao
 import com.platojobs.pkotlinapp.data.local.RuleEventEntity
 import com.platojobs.pkotlinapp.data.local.ScanLogDao
 import com.platojobs.pkotlinapp.data.local.ScanLogEntity
+import com.platojobs.pkotlinapp.data.local.SceneActionEntity
+import com.platojobs.pkotlinapp.data.local.SceneDao
+import com.platojobs.pkotlinapp.data.local.SceneEntity
+import com.platojobs.pkotlinapp.data.local.SceneWithActions
 import com.platojobs.pkotlinapp.domain.model.Device
 import com.platojobs.pkotlinapp.domain.model.DeviceRule
 import com.platojobs.pkotlinapp.domain.model.PLATFORM_ANDROID
@@ -21,6 +25,10 @@ import com.platojobs.pkotlinapp.domain.repository.DeviceRepository
 import com.platojobs.pkotlinapp.domain.repository.RuleEventRepository
 import com.platojobs.pkotlinapp.domain.repository.RuleRepository
 import com.platojobs.pkotlinapp.domain.repository.ScanLogRepository
+import com.platojobs.pkotlinapp.domain.repository.SceneRepository
+import com.platojobs.pkotlinapp.domain.scene.Scene
+import com.platojobs.pkotlinapp.domain.scene.SceneAction
+import com.platojobs.pkotlinapp.domain.scene.SceneActionType
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.util.UUID
@@ -117,6 +125,9 @@ class RuleEventRepositoryImpl(
     override fun observeRecent(limit: Int): Flow<List<RuleEvent>> =
         dao.observeRecent(limit).map { list -> list.map { it.toDomain() } }
 
+    override fun observeCountBetween(from: Long, to: Long): Flow<Int> =
+        dao.observeCountBetween(from, to)
+
     override suspend fun getRecent(limit: Int): List<RuleEvent> =
         dao.getRecent(limit).map { it.toDomain() }
 
@@ -128,7 +139,6 @@ class RuleEventRepositoryImpl(
 class ScanLogRepositoryImpl(
     private val dao: ScanLogDao,
 ) : ScanLogRepository {
-
     override fun observeRecent(limit: Int): Flow<List<ScanLog>> =
         dao.observeRecent(limit).map { list -> list.map { it.toDomain() } }
 
@@ -138,6 +148,68 @@ class ScanLogRepositoryImpl(
 
     override suspend fun clear() = dao.clear()
 }
+
+class SceneRepositoryImpl(
+    private val dao: SceneDao,
+) : SceneRepository {
+
+    override fun observeScenes(): Flow<List<Scene>> =
+        dao.observeAll().map { rows -> rows.map { it.toDomain() } }
+
+    override suspend fun getScenes(): List<Scene> =
+        dao.getAll().map { it.toDomain() }
+
+    override suspend fun saveScene(
+        id: Long?,
+        name: String,
+        actions: List<SceneAction>,
+    ): Long {
+        val sceneId = if (id == null) {
+            dao.insertScene(
+                SceneEntity(name = name, createdAt = System.currentTimeMillis()),
+            )
+        } else {
+            dao.rename(id, name)
+            dao.deleteActions(id)
+            id
+        }
+        if (actions.isNotEmpty()) {
+            dao.insertActions(
+                actions.mapIndexed { index, action ->
+                    SceneActionEntity(
+                        sceneId = sceneId,
+                        position = index,
+                        type = action.type.name,
+                        deviceMac = action.deviceMac,
+                        muteMinutes = action.muteMinutes,
+                    )
+                },
+            )
+        }
+        return sceneId
+    }
+
+    override suspend fun deleteScene(id: Long) {
+        dao.delete(id)
+    }
+}
+
+private fun SceneWithActions.toDomain(): Scene = Scene(
+    id = scene.id,
+    name = scene.name,
+    createdAt = scene.createdAt,
+    actions = actions
+        .sortedBy { it.position }
+        .mapNotNull { entity ->
+            val type = runCatching { SceneActionType.valueOf(entity.type) }.getOrNull()
+                ?: return@mapNotNull null
+            SceneAction(
+                type = type,
+                deviceMac = entity.deviceMac,
+                muteMinutes = entity.muteMinutes,
+            )
+        },
+)
 
 private fun DeviceEntity.toDomain() = Device(
     mac = mac,

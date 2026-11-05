@@ -10,11 +10,12 @@
     android:orientation="vertical">
 
     <com.google.android.material.card.MaterialCardView
+    style="@style/Widget.App.Card"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
         app:cardCornerRadius="12dp"
-        app:cardElevation="1dp">
+        app:cardElevation="0dp">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -26,14 +27,14 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="@string/account_migration_title"
-                android:textAppearance="?attr/textAppearanceTitleMedium" />
+                android:textAppearance="@style/TextAppearance.App.Headline" />
 
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="2dp"
                 android:text="@string/account_migration_desc"
-                android:textAppearance="?attr/textAppearanceBodySmall"
+                android:textAppearance="@style/TextAppearance.App.Caption"
                 android:textColor="@color/text_secondary" />
 
             <TextView
@@ -44,7 +45,7 @@
                 android:fontFamily="monospace"
                 android:gravity="center"
                 android:letterSpacing="0.2"
-                android:textAppearance="?attr/textAppearanceHeadlineSmall"
+                android:textAppearance="@style/TextAppearance.App.Headline"
                 android:visibility="gone" />
 
             <TextView
@@ -53,7 +54,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
                 android:gravity="center"
-                android:textAppearance="?attr/textAppearanceBodySmall"
+                android:textAppearance="@style/TextAppearance.App.Caption"
                 android:textColor="@color/text_secondary"
                 android:visibility="gone" />
 
@@ -95,7 +96,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:textAppearance="?attr/textAppearanceBodySmall"
+                android:textAppearance="@style/TextAppearance.App.Caption"
                 android:textColor="?attr/colorError"
                 android:visibility="gone" />
 
@@ -104,11 +105,12 @@
     </com.google.android.material.card.MaterialCardView>
 
     <com.google.android.material.card.MaterialCardView
+    style="@style/Widget.App.Card"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
         app:cardCornerRadius="12dp"
-        app:cardElevation="1dp">
+        app:cardElevation="0dp">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -120,14 +122,14 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="@string/account_claim_title"
-                android:textAppearance="?attr/textAppearanceTitleMedium" />
+                android:textAppearance="@style/TextAppearance.App.Headline" />
 
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="2dp"
                 android:text="@string/account_claim_desc"
-                android:textAppearance="?attr/textAppearanceBodySmall"
+                android:textAppearance="@style/TextAppearance.App.Caption"
                 android:textColor="@color/text_secondary" />
 
             <com.google.android.material.textfield.TextInputLayout
@@ -161,11 +163,12 @@
     </com.google.android.material.card.MaterialCardView>
 
     <com.google.android.material.card.MaterialCardView
+    style="@style/Widget.App.Card"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
         app:cardCornerRadius="12dp"
-        app:cardElevation="1dp">
+        app:cardElevation="0dp">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -177,14 +180,14 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="@string/account_export_title"
-                android:textAppearance="?attr/textAppearanceTitleMedium" />
+                android:textAppearance="@style/TextAppearance.App.Headline" />
 
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="2dp"
                 android:text="@string/account_export_desc"
-                android:textAppearance="?attr/textAppearanceBodySmall"
+                android:textAppearance="@style/TextAppearance.App.Caption"
                 android:textColor="@color/text_secondary" />
 
             <com.google.android.material.button.MaterialButton
@@ -200,7 +203,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:textAppearance="?attr/textAppearanceBodySmall"
+                android:textAppearance="@style/TextAppearance.App.Caption"
                 android:visibility="gone" />
 
             <com.google.android.material.button.MaterialButton
@@ -216,14 +219,14 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="16dp"
                 android:text="@string/account_delete_title"
-                android:textAppearance="?attr/textAppearanceTitleMedium" />
+                android:textAppearance="@style/TextAppearance.App.Headline" />
 
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="2dp"
                 android:text="@string/account_delete_desc"
-                android:textAppearance="?attr/textAppearanceBodySmall"
+                android:textAppearance="@style/TextAppearance.App.Caption"
                 android:textColor="@color/text_secondary" />
 
             <com.google.android.material.button.MaterialButton

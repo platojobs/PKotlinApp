@@ -22,6 +22,8 @@ import com.platojobs.pkotlinapp.data.repository.ReadingRepositoryImpl
 import com.platojobs.pkotlinapp.data.repository.RuleEventRepositoryImpl
 import com.platojobs.pkotlinapp.data.repository.RuleRepositoryImpl
 import com.platojobs.pkotlinapp.data.repository.ScanLogRepositoryImpl
+import com.platojobs.pkotlinapp.data.repository.SceneRepositoryImpl
+import com.platojobs.pkotlinapp.data.scene.SceneRuntimeImpl
 import com.platojobs.pkotlinapp.data.rule.AndroidRuleTextProvider
 import com.platojobs.pkotlinapp.data.sync.ReadingSyncer
 import com.platojobs.pkotlinapp.data.sync.RemoteSyncDataSource
@@ -40,9 +42,12 @@ import com.platojobs.pkotlinapp.domain.repository.ReadingRepository
 import com.platojobs.pkotlinapp.domain.repository.RuleEventRepository
 import com.platojobs.pkotlinapp.domain.repository.RuleRepository
 import com.platojobs.pkotlinapp.domain.repository.ScanLogRepository
+import com.platojobs.pkotlinapp.domain.repository.SceneRepository
 import com.platojobs.pkotlinapp.domain.rule.AlertThrottle
 import com.platojobs.pkotlinapp.domain.rule.RuleEngine
+import com.platojobs.pkotlinapp.domain.scene.SceneExecutor
 import com.platojobs.pkotlinapp.domain.sync.SyncEngine
+import com.platojobs.pkotlinapp.ui.common.BlePermissions
 import com.platojobs.pkotlinapp.ui.common.NotificationPermission
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -87,6 +92,11 @@ class AppContainer(context: Context) {
 
     val readingRepository: ReadingRepository by lazy {
         ReadingRepositoryImpl(database.readingDao())
+    }
+
+    /** 本地场景仓库：仅本机，不参与云端同步。 */
+    val sceneRepository: SceneRepository by lazy {
+        SceneRepositoryImpl(database.sceneDao())
     }
 
     private val remoteSyncDataSource by lazy {
@@ -156,7 +166,7 @@ class AppContainer(context: Context) {
                 store = AlertStatePrefs(appContext),
                 windowMillis = { settings.alertThrottleMinutes * 60_000L },
             ),
-            isEnabled = { settings.alertsEnabled },
+            isEnabled = { settings.alertsEnabled && !settings.alertsMuted() },
             canNotify = { NotificationPermission.isGranted(appContext) },
             contentBuilder = AndroidAlertContentBuilder(appContext),
             poster = AndroidAlertPoster(appContext),
@@ -192,4 +202,19 @@ class AppContainer(context: Context) {
     }
 
     val syncScheduler: SyncScheduler by lazy { SyncScheduler(appContext) }
+
+    /** 场景动作执行器：真实调用 BLE / 前台服务 / 偏好 / 同步。 */
+    val sceneExecutor: SceneExecutor by lazy {
+        SceneExecutor(
+            runtime = SceneRuntimeImpl(
+                context = appContext,
+                ble = bleConnectionManager,
+                collectionSession = collectionSession,
+                settings = settings,
+                syncScheduler = syncScheduler,
+                devices = deviceRepository,
+            ),
+            canConnect = { BlePermissions.hasConnect(appContext) },
+        )
+    }
 }

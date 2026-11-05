@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/actionRow"
+    android:layout_width="match_parent"
+    android:layout_height="@dimen/row_h_1line"
+    android:gravity="center_vertical"
+    android:orientation="horizontal">
+
+    <TextView
+        android:id="@+id/actionIndex"
+        style="@style/Widget.App.TextView"
+        android:layout_width="28dp"
+        android:layout_height="wrap_content"
+        android:textAppearance="@style/TextAppearance.App.NumericM" />
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/actionLabel"
+            style="@style/Widget.App.TextView"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textAppearance="@style/TextAppearance.App.Callout" />
+
+        <TextView
+            android:id="@+id/actionDetail"
+            style="@style/Widget.App.TextView"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textAppearance="@style/TextAppearance.App.Footnote" />
+    </LinearLayout>
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/actionRemove"
+        style="@style/Widget.App.Button.Text"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:minWidth="0dp"
+        android:text="@string/scene_action_remove"
+        android:textColor="@color/danger" />
+</LinearLayout>

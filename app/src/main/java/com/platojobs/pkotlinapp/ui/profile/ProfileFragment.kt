@@ -335,7 +335,7 @@ class ProfileFragment : Fragment() {
                 binding.accountSection.exportAccountButton.setText(R.string.account_export_retry)
                 binding.accountSection.exportAccountStatus.visibility = View.VISIBLE
                 binding.accountSection.exportAccountStatus.setTextColor(
-                    ContextCompat.getColor(requireContext(), R.color.signal_inactive),
+                    ContextCompat.getColor(requireContext(), R.color.divider),
                 )
                 binding.accountSection.exportAccountStatus.text = state.message
                 binding.accountSection.exportShareButton.visibility = View.GONE
@@ -428,7 +428,7 @@ class ProfileFragment : Fragment() {
         binding.scanPermissionStatus.setTextColor(
             ContextCompat.getColor(
                 context,
-                if (status.scanGranted) R.color.signal_active else android.R.color.holo_red_dark,
+                if (status.scanGranted) R.color.success else R.color.danger,
             ),
         )
 
@@ -436,7 +436,7 @@ class ProfileFragment : Fragment() {
         binding.connectPermissionStatus.setTextColor(
             ContextCompat.getColor(
                 context,
-                if (status.connectGranted) R.color.signal_active else android.R.color.holo_red_dark,
+                if (status.connectGranted) R.color.success else R.color.danger,
             ),
         )
 
@@ -446,9 +446,9 @@ class ProfileFragment : Fragment() {
                 ContextCompat.getColor(
                     context,
                     if (status.locationGranted) {
-                        R.color.signal_active
+                        R.color.success
                     } else {
-                        android.R.color.holo_red_dark
+                        R.color.danger
                     },
                 ),
             )

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+<com.google.android.material.card.MaterialCardView
+    style="@style/Widget.App.Card" xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
@@ -7,7 +8,7 @@
     android:clickable="true"
     android:focusable="true"
     app:cardCornerRadius="12dp"
-    app:cardElevation="1dp">
+    app:cardElevation="0dp">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -28,14 +29,14 @@
                 android:layout_height="wrap_content"
                 android:ellipsize="end"
                 android:singleLine="true"
-                android:textAppearance="?attr/textAppearanceTitleSmall" />
+                android:textAppearance="@style/TextAppearance.App.Callout" />
 
             <TextView
                 android:id="@+id/mac"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="2dp"
-                android:textAppearance="?attr/textAppearanceBodySmall"
+                android:textAppearance="@style/TextAppearance.App.Caption"
                 android:textColor="@color/text_secondary" />
         </LinearLayout>
 
@@ -44,8 +45,8 @@
             android:layout_width="48dp"
             android:layout_height="24dp"
             android:layout_marginStart="8dp"
-            app:rsv_activeColor="@color/signal_active"
-            app:rsv_inactiveColor="@color/signal_inactive"
+            app:rsv_activeColor="@color/success"
+            app:rsv_inactiveColor="@color/divider"
             app:rsv_barCount="4" />
 
         <TextView
@@ -54,7 +55,7 @@
             android:layout_height="wrap_content"
             android:layout_marginStart="8dp"
             android:gravity="end"
-            android:textAppearance="?attr/textAppearanceBodyMedium" />
+            android:textAppearance="@style/TextAppearance.App.Body" />
 
     </LinearLayout>
 

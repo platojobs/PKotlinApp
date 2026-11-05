@@ -44,6 +44,9 @@ class ReadingRepositoryImpl(
     ): Flow<List<Reading>> = dao.observeRecent(deviceId, metric, limit)
         .map { rows -> rows.map(ReadingEntity::toDomain) }
 
+    override fun observeLatestPerDevice(): Flow<List<Reading>> =
+        dao.observeLatestPerDevice().map { rows -> rows.map(ReadingEntity::toDomain) }
+
     override suspend fun getRecent(deviceId: String, metric: String, limit: Int): List<Reading> =
         dao.getRecent(deviceId, metric, limit).map(ReadingEntity::toDomain)
 

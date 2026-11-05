@@ -55,6 +55,33 @@ internal object ReadingMigrationSql {
     )
 }
 
+/** v8 -> v9 的本地场景表；SQL 与 Room 导出的 9.json 保持一致。 */
+internal object SceneMigrationSql {
+    val V8_TO_V9 = listOf(
+        """
+        CREATE TABLE IF NOT EXISTS `scenes` (
+            `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+            `name` TEXT NOT NULL,
+            `createdAt` INTEGER NOT NULL
+        )
+        """.trimIndent(),
+        """
+        CREATE TABLE IF NOT EXISTS `scene_actions` (
+            `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+            `sceneId` INTEGER NOT NULL,
+            `position` INTEGER NOT NULL,
+            `type` TEXT NOT NULL,
+            `deviceMac` TEXT,
+            `muteMinutes` INTEGER,
+            FOREIGN KEY(`sceneId`) REFERENCES `scenes`(`id`)
+                ON UPDATE NO ACTION ON DELETE CASCADE
+        )
+        """.trimIndent(),
+        "CREATE INDEX IF NOT EXISTS `index_scene_actions_sceneId` " +
+            "ON `scene_actions` (`sceneId`)",
+    )
+}
+
 @Database(
     entities = [
         DeviceEntity::class,
@@ -62,8 +89,10 @@ internal object ReadingMigrationSql {
         RuleEventEntity::class,
         ScanLogEntity::class,
         ReadingEntity::class,
+        SceneEntity::class,
+        SceneActionEntity::class,
     ],
-    version = 8,
+    version = 9,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -77,6 +106,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun scanLogDao(): ScanLogDao
 
     abstract fun readingDao(): ReadingDao
+
+    abstract fun sceneDao(): SceneDao
 
     companion object {
         private const val DB_NAME = "device_dashboard.db"
@@ -169,6 +200,13 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v8 -> v9：新增仅本机的场景与场景动作表（不参与云端同步）。 */
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                SceneMigrationSql.V8_TO_V9.forEach(db::execSQL)
+            }
+        }
+
         @Volatile
         private var instance: AppDatabase? = null
 
@@ -186,6 +224,7 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_5_6,
                     MIGRATION_6_7,
                     MIGRATION_7_8,
+                    MIGRATION_8_9,
                 )
                     .build()
                     .also { instance = it }

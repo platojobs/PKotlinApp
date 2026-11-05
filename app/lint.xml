@@ -9,4 +9,6 @@
     <issue id="AndroidGradlePluginVersion" severity="ignore" />
     <!-- targetSdk 36 是本轮验收基线；升级 37 需专项验证行为变更。 -->
     <issue id="OldTargetApi" severity="ignore" />
+    <!-- 设计令牌是全量语义色/选择器集合，按规范保留，不因单个模块未用而删除。 -->
+    <issue id="UnusedResources" severity="ignore" />
 </lint>

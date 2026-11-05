@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    style="@style/Widget.App.Card"
+    android:layout_width="168dp"
+    android:layout_height="wrap_content"
+    android:layout_margin="@dimen/space_4"
+    android:clickable="true"
+    android:focusable="true"
+    android:foreground="@drawable/ripple_overlay">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="@dimen/card_padding">
+
+        <TextView
+            android:id="@+id/sceneName"
+            style="@style/Widget.App.TextView"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textAppearance="@style/TextAppearance.App.Callout"
+            tools:text="回家模式" />
+
+        <TextView
+            android:id="@+id/sceneMeta"
+            style="@style/Widget.App.TextView"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/space_4"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textAppearance="@style/TextAppearance.App.Footnote"
+            tools:text="仅本机 · 3 个动作" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/sceneRun"
+            style="@style/Widget.App.Button.Text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/space_8"
+            android:minWidth="0dp"
+            android:paddingStart="@dimen/space_8"
+            android:paddingEnd="@dimen/space_8"
+            android:text="@string/home_scene_run" />
+    </LinearLayout>
+</com.google.android.material.card.MaterialCardView>

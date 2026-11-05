@@ -1,11 +1,7 @@
 package com.platojobs.pkotlinapp.ui.products
 
 import android.os.Bundle
-import android.view.Gravity
-import android.view.LayoutInflater
 import android.view.View
-import android.view.ViewGroup
-import android.widget.FrameLayout
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
@@ -16,48 +12,39 @@ import com.platojobs.pkotlinapp.PKotlinApplication
 import com.platojobs.pkotlinapp.R
 import com.platojobs.pkotlinapp.databinding.FragmentProductsBinding
 import com.platojobs.pkotlinapp.domain.model.ProductModel
-import com.platojobs.pkotlinapp.ui.common.EmptyStateView
+import com.platojobs.pkotlinapp.ui.MainActivity
 import com.platojobs.pkotlinapp.ui.common.RemoteUiState
+import com.platojobs.pkotlinapp.ui.common.ThreeStateHost
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
-class ProductsFragment : Fragment() {
+class ProductsFragment : Fragment(R.layout.fragment_products) {
 
     private var _binding: FragmentProductsBinding? = null
-    private val binding get() = requireNotNull(_binding)
+    private val binding get() = _binding!!
 
     private val viewModel: ProductsViewModel by viewModels {
         ProductsViewModel.factory(requireActivity().application as PKotlinApplication)
     }
 
     private val adapter = ProductAdapter()
-    private lateinit var emptyState: EmptyStateView
-
-    override fun onCreateView(
-        inflater: LayoutInflater,
-        container: ViewGroup?,
-        savedInstanceState: Bundle?,
-    ): View {
-        _binding = FragmentProductsBinding.inflate(inflater, container, false)
-        return binding.root
-    }
+    private lateinit var threeState: ThreeStateHost
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        _binding = FragmentProductsBinding.bind(view)
 
         binding.productsList.layoutManager = LinearLayoutManager(requireContext())
         binding.productsList.adapter = adapter
 
-        emptyState = EmptyStateView(requireContext()).apply {
-            setIcon(R.drawable.ic_empty_ble)
-        }
-        binding.emptyContainer.addView(
-            emptyState,
-            FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-            ).apply { gravity = Gravity.CENTER },
+        binding.skeletonProducts.configure(rows = 4, rowHeightPx = dp(88))
+        threeState = ThreeStateHost(
+            content = binding.productsList,
+            skeleton = binding.skeletonProducts,
+            overlay = binding.emptyContainer,
         )
+
+        (activity as? MainActivity)?.attachHeaderScroll(binding.productsList)
 
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -74,35 +61,28 @@ class ProductsFragment : Fragment() {
 
     private fun render(state: RemoteUiState<ProductModel>) {
         when (state) {
-            RemoteUiState.Loading -> {
-                binding.progress.visibility = View.VISIBLE
-                binding.emptyContainer.visibility = View.GONE
-                binding.productsList.visibility = View.GONE
-            }
+            RemoteUiState.Loading -> threeState.showLoading()
 
             is RemoteUiState.Success -> {
-                binding.progress.visibility = View.GONE
                 adapter.submitList(state.items)
-                val empty = state.items.isEmpty()
-                binding.productsList.visibility = if (empty) View.GONE else View.VISIBLE
-                binding.emptyContainer.visibility = if (empty) View.VISIBLE else View.GONE
-                if (empty) {
-                    emptyState.setTitle(getString(R.string.products_empty_title))
-                    emptyState.setHint(getString(R.string.products_empty_hint))
-                    emptyState.setAction(getString(R.string.products_retry)) { viewModel.load() }
+                if (state.items.isEmpty()) {
+                    threeState.showEmpty(
+                        title = getString(R.string.products_empty_title),
+                        hint = getString(R.string.products_empty_hint),
+                        action = getString(R.string.products_retry),
+                        onAction = { viewModel.load() },
+                    )
+                } else {
+                    threeState.showContent()
                 }
             }
 
-            is RemoteUiState.Error -> {
-                binding.progress.visibility = View.GONE
-                binding.productsList.visibility = View.GONE
-                binding.emptyContainer.visibility = View.VISIBLE
-                emptyState.setTitle(
-                    getString(R.string.products_error, state.message.orEmpty()),
-                )
-                emptyState.setHint(getString(R.string.products_empty_hint))
-                emptyState.setAction(getString(R.string.products_retry)) { viewModel.load() }
-            }
+            is RemoteUiState.Error -> threeState.showError(
+                message = getString(R.string.products_error, state.message.orEmpty()),
+                onRetry = { viewModel.load() },
+            )
         }
     }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 }

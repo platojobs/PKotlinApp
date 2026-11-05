@@ -12,14 +12,14 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_weight="1"
-        android:textAppearance="?attr/textAppearanceBodyMedium" />
+        android:textAppearance="@style/TextAppearance.App.Body" />
 
     <TextView
         android:id="@+id/readingTime"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginStart="12dp"
-        android:textAppearance="?attr/textAppearanceBodySmall"
+        android:textAppearance="@style/TextAppearance.App.Caption"
         android:textColor="@color/text_secondary" />
 
 </LinearLayout>

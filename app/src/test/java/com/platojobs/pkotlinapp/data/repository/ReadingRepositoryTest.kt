@@ -152,6 +152,12 @@ class ReadingRepositoryTest {
 
         override fun observeMetrics(deviceId: String): Flow<List<String>> = metrics
 
+        override fun observeLatestPerDevice(): Flow<List<ReadingEntity>> = MutableStateFlow(
+            stored.groupBy { it.deviceId }.values.mapNotNull { rows ->
+                rows.maxByOrNull { it.recordedAt }
+            },
+        )
+
         override fun observeRecent(
             deviceId: String,
             metric: String,

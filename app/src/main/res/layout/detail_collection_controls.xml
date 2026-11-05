@@ -21,7 +21,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="@string/detail_collection_desc"
-        android:textAppearance="?attr/textAppearanceBodySmall"
+        android:textAppearance="@style/TextAppearance.App.Caption"
         android:textColor="@color/text_secondary"
         android:visibility="gone" />
 

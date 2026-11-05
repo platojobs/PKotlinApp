@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <integer name="duration_100">100</integer>
+    <integer name="duration_150">150</integer>
+    <integer name="duration_200">200</integer>
+    <integer name="duration_300">300</integer>
+    <integer name="skeleton_delay_ms">300</integer>
+    <integer name="skeleton_min_show_ms">300</integer>
+</resources>

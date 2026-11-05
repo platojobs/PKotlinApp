@@ -1,11 +1,7 @@
 package com.platojobs.pkotlinapp.ui.market
 
 import android.os.Bundle
-import android.view.Gravity
-import android.view.LayoutInflater
 import android.view.View
-import android.view.ViewGroup
-import android.widget.FrameLayout
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
@@ -19,34 +15,27 @@ import com.platojobs.pkotlinapp.PKotlinApplication
 import com.platojobs.pkotlinapp.R
 import com.platojobs.pkotlinapp.databinding.FragmentMarketBinding
 import com.platojobs.pkotlinapp.domain.model.MarketItem
-import com.platojobs.pkotlinapp.ui.common.EmptyStateView
+import com.platojobs.pkotlinapp.ui.MainActivity
 import com.platojobs.pkotlinapp.ui.common.RemoteUiState
+import com.platojobs.pkotlinapp.ui.common.ThreeStateHost
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
-class MarketFragment : Fragment() {
+class MarketFragment : Fragment(R.layout.fragment_market) {
 
     private var _binding: FragmentMarketBinding? = null
-    private val binding get() = requireNotNull(_binding)
+    private val binding get() = _binding!!
 
     private val viewModel: MarketViewModel by viewModels {
         MarketViewModel.factory(requireActivity().application as PKotlinApplication)
     }
 
     private val adapter = MarketAdapter()
-    private lateinit var emptyState: EmptyStateView
-
-    override fun onCreateView(
-        inflater: LayoutInflater,
-        container: ViewGroup?,
-        savedInstanceState: Bundle?,
-    ): View {
-        _binding = FragmentMarketBinding.inflate(inflater, container, false)
-        return binding.root
-    }
+    private lateinit var threeState: ThreeStateHost
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        _binding = FragmentMarketBinding.bind(view)
 
         binding.marketList.layoutManager = LinearLayoutManager(requireContext())
         binding.marketList.adapter = adapter
@@ -56,16 +45,14 @@ class MarketFragment : Fragment() {
         binding.compatibilityFilters.contentDescription =
             getString(R.string.market_filter_compatibility_group)
 
-        emptyState = EmptyStateView(requireContext()).apply {
-            setIcon(R.drawable.ic_empty_ble)
-        }
-        binding.emptyContainer.addView(
-            emptyState,
-            FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-            ).apply { gravity = Gravity.CENTER },
+        binding.skeletonMarket.configure(rows = 4, rowHeightPx = dp(88))
+        threeState = ThreeStateHost(
+            content = binding.marketList,
+            skeleton = binding.skeletonMarket,
+            overlay = binding.emptyContainer,
         )
+
+        (activity as? MainActivity)?.attachHeaderScroll(binding.marketList)
 
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -83,43 +70,39 @@ class MarketFragment : Fragment() {
 
     private fun render(state: RemoteUiState<MarketItem>) {
         when (state) {
-            RemoteUiState.Loading -> {
-                binding.progress.visibility = View.VISIBLE
-                binding.emptyContainer.visibility = View.GONE
-                binding.marketList.visibility = View.GONE
-            }
+            RemoteUiState.Loading -> threeState.showLoading()
 
             is RemoteUiState.Success -> {
-                binding.progress.visibility = View.GONE
                 adapter.submitList(state.items)
-                val empty = state.items.isEmpty()
-                binding.marketList.visibility = if (empty) View.GONE else View.VISIBLE
-                binding.emptyContainer.visibility = if (empty) View.VISIBLE else View.GONE
-                if (empty) {
+                if (state.items.isEmpty()) {
                     if (viewModel.filters.value.hasActiveFilter) {
-                        emptyState.setTitle(getString(R.string.market_filter_empty_title))
-                        emptyState.setHint(getString(R.string.market_filter_empty_hint))
-                        emptyState.setAction(getString(R.string.market_filter_reset)) {
-                            viewModel.clearFilters()
-                        }
+                        threeState.showEmpty(
+                            title = getString(R.string.market_filter_empty_title),
+                            hint = getString(R.string.market_filter_empty_hint),
+                            action = getString(R.string.market_filter_reset),
+                            onAction = { viewModel.clearFilters() },
+                        )
                     } else {
-                        emptyState.setTitle(getString(R.string.market_empty_title))
-                        emptyState.setHint(getString(R.string.market_empty_hint))
-                        emptyState.setAction(getString(R.string.market_retry)) { viewModel.load() }
+                        threeState.showEmpty(
+                            title = getString(R.string.market_empty_title),
+                            hint = getString(R.string.market_empty_hint),
+                            action = getString(R.string.market_retry),
+                            onAction = { viewModel.load() },
+                        )
                     }
+                } else {
+                    threeState.showContent()
                 }
             }
 
-            is RemoteUiState.Error -> {
-                binding.progress.visibility = View.GONE
-                binding.marketList.visibility = View.GONE
-                binding.emptyContainer.visibility = View.VISIBLE
-                emptyState.setTitle(getString(R.string.market_error, state.message.orEmpty()))
-                emptyState.setHint(getString(R.string.market_empty_hint))
-                emptyState.setAction(getString(R.string.market_retry)) { viewModel.load() }
-            }
+            is RemoteUiState.Error -> threeState.showError(
+                message = getString(R.string.market_error, state.message.orEmpty()),
+                onRetry = { viewModel.load() },
+            )
         }
     }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     private fun renderFilters(filter: MarketFilterState) {
         binding.vendorFilterScroll.visibility =

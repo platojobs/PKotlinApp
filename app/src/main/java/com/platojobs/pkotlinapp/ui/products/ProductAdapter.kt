@@ -1,7 +1,6 @@
 package com.platojobs.pkotlinapp.ui.products
 
 import android.graphics.Typeface
-import android.util.TypedValue
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -45,7 +44,7 @@ class ProductAdapter : ListAdapter<ProductModel, ProductAdapter.ViewHolder>(DIFF
                 binding.serviceContainer.addView(
                     TextView(context).apply {
                         text = context.getString(R.string.product_no_gatt)
-                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                        setTextAppearance(R.style.TextAppearance_App_Caption)
                         setTextColor(ContextCompat.getColor(context, R.color.text_secondary))
                     },
                 )
@@ -59,7 +58,7 @@ class ProductAdapter : ListAdapter<ProductModel, ProductAdapter.ViewHolder>(DIFF
                             service.name.ifBlank { service.uuid },
                             service.uuid,
                         )
-                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                        setTextAppearance(R.style.TextAppearance_App_Caption)
                         setTypeface(typeface, Typeface.BOLD)
                     },
                 )
@@ -71,12 +70,16 @@ class ProductAdapter : ListAdapter<ProductModel, ProductAdapter.ViewHolder>(DIFF
                                 R.string.product_characteristics_item,
                                 service.characteristics.joinToString(" · "),
                             )
-                            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                            setTextAppearance(R.style.TextAppearance_App_Footnote)
                             setTextColor(ContextCompat.getColor(context, R.color.text_secondary))
                             layoutParams = LinearLayout.LayoutParams(
                                 LinearLayout.LayoutParams.MATCH_PARENT,
                                 LinearLayout.LayoutParams.WRAP_CONTENT,
-                            ).apply { bottomMargin = 6.dp(context) }
+                            ).apply {
+                                bottomMargin = context.resources.getDimensionPixelSize(
+                                    R.dimen.space_4,
+                                )
+                            }
                         },
                     )
                 }

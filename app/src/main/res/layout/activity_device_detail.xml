@@ -29,10 +29,11 @@
             android:padding="16dp">
 
             <com.google.android.material.card.MaterialCardView
+    style="@style/Widget.App.Card"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 app:cardCornerRadius="12dp"
-                app:cardElevation="1dp">
+                app:cardElevation="0dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -44,7 +45,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="@string/detail_status_title"
-                        android:textAppearance="?attr/textAppearanceTitleMedium" />
+                        android:textAppearance="@style/TextAppearance.App.Headline" />
 
                     <TextView
                         android:id="@+id/connectionStatus"
@@ -52,13 +53,13 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="6dp"
                         android:text="@string/detail_disconnected"
-                        android:textAppearance="?attr/textAppearanceBodyMedium" />
+                        android:textAppearance="@style/TextAppearance.App.Body" />
 
                     <TextView
                         android:id="@+id/macText"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:textAppearance="?attr/textAppearanceBodySmall"
+                        android:textAppearance="@style/TextAppearance.App.Caption"
                         android:textColor="@color/text_secondary" />
 
                     <LinearLayout
@@ -72,8 +73,8 @@
                             android:id="@+id/signalView"
                             android:layout_width="64dp"
                             android:layout_height="32dp"
-                            app:rsv_activeColor="@color/signal_active"
-                            app:rsv_inactiveColor="@color/signal_inactive"
+                            app:rsv_activeColor="@color/success"
+                            app:rsv_inactiveColor="@color/divider"
                             app:rsv_barCount="4" />
 
                         <TextView
@@ -82,7 +83,7 @@
                             android:layout_height="wrap_content"
                             android:layout_marginStart="12dp"
                             android:text="@string/device_rssi_unknown"
-                            android:textAppearance="?attr/textAppearanceBodyMedium" />
+                            android:textAppearance="@style/TextAppearance.App.Body" />
                     </LinearLayout>
 
                     <LinearLayout
@@ -100,7 +101,7 @@
 
                         <com.google.android.material.button.MaterialButton
                             android:id="@+id/disconnectButton"
-                            style="?attr/materialButtonTonalStyle"
+                            style="@style/Widget.App.Button.Secondary"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginStart="8dp"
@@ -119,6 +120,7 @@
             </com.google.android.material.card.MaterialCardView>
 
             <com.google.android.material.card.MaterialCardView
+    style="@style/Widget.App.Card"
                 android:id="@+id/keyMissingCard"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -138,7 +140,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="@string/detail_key_missing_title"
-                        android:textAppearance="?attr/textAppearanceTitleMedium"
+                        android:textAppearance="@style/TextAppearance.App.Headline"
                         android:textColor="?attr/colorOnErrorContainer" />
 
                     <TextView
@@ -146,7 +148,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="4dp"
                         android:text="@string/detail_key_missing_hint"
-                        android:textAppearance="?attr/textAppearanceBodySmall"
+                        android:textAppearance="@style/TextAppearance.App.Caption"
                         android:textColor="?attr/colorOnErrorContainer" />
 
                     <com.google.android.material.button.MaterialButton
@@ -161,11 +163,12 @@
             </com.google.android.material.card.MaterialCardView>
 
             <com.google.android.material.card.MaterialCardView
+    style="@style/Widget.App.Card"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
                 app:cardCornerRadius="12dp"
-                app:cardElevation="1dp">
+                app:cardElevation="0dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -177,7 +180,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="@string/detail_info_title"
-                        android:textAppearance="?attr/textAppearanceTitleMedium" />
+                        android:textAppearance="@style/TextAppearance.App.Headline" />
 
                     <TextView
                         android:id="@+id/infoLoading"
@@ -185,7 +188,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="6dp"
                         android:text="@string/detail_info_loading"
-                        android:textAppearance="?attr/textAppearanceBodySmall"
+                        android:textAppearance="@style/TextAppearance.App.Caption"
                         android:textColor="@color/text_secondary" />
 
                     <TextView
@@ -194,7 +197,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="6dp"
                         android:text="@string/detail_disconnected_hint"
-                        android:textAppearance="?attr/textAppearanceBodySmall"
+                        android:textAppearance="@style/TextAppearance.App.Caption"
                         android:textColor="@color/text_secondary"
                         android:visibility="gone" />
 
@@ -204,7 +207,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="6dp"
                         android:text="@string/detail_offline_hint"
-                        android:textAppearance="?attr/textAppearanceBodySmall"
+                        android:textAppearance="@style/TextAppearance.App.Caption"
                         android:textColor="@color/text_secondary"
                         android:visibility="gone" />
 
@@ -225,7 +228,7 @@
                                 android:layout_width="100dp"
                                 android:layout_height="wrap_content"
                                 android:text="@string/detail_vendor"
-                                android:textAppearance="?attr/textAppearanceBodyMedium"
+                                android:textAppearance="@style/TextAppearance.App.Body"
                                 android:textColor="@color/text_secondary" />
 
                             <TextView
@@ -233,7 +236,7 @@
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
                                 android:layout_weight="1"
-                                android:textAppearance="?attr/textAppearanceBodyMedium" />
+                                android:textAppearance="@style/TextAppearance.App.Body" />
                         </LinearLayout>
 
                         <LinearLayout
@@ -246,7 +249,7 @@
                                 android:layout_width="100dp"
                                 android:layout_height="wrap_content"
                                 android:text="@string/detail_device_type"
-                                android:textAppearance="?attr/textAppearanceBodyMedium"
+                                android:textAppearance="@style/TextAppearance.App.Body"
                                 android:textColor="@color/text_secondary" />
 
                             <TextView
@@ -254,7 +257,7 @@
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
                                 android:layout_weight="1"
-                                android:textAppearance="?attr/textAppearanceBodyMedium" />
+                                android:textAppearance="@style/TextAppearance.App.Body" />
                         </LinearLayout>
 
                         <LinearLayout
@@ -267,7 +270,7 @@
                                 android:layout_width="100dp"
                                 android:layout_height="wrap_content"
                                 android:text="@string/detail_firmware"
-                                android:textAppearance="?attr/textAppearanceBodyMedium"
+                                android:textAppearance="@style/TextAppearance.App.Body"
                                 android:textColor="@color/text_secondary" />
 
                             <TextView
@@ -275,7 +278,7 @@
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
                                 android:layout_weight="1"
-                                android:textAppearance="?attr/textAppearanceBodyMedium" />
+                                android:textAppearance="@style/TextAppearance.App.Body" />
                         </LinearLayout>
 
                         <LinearLayout
@@ -288,7 +291,7 @@
                                 android:layout_width="100dp"
                                 android:layout_height="wrap_content"
                                 android:text="@string/detail_alias"
-                                android:textAppearance="?attr/textAppearanceBodyMedium"
+                                android:textAppearance="@style/TextAppearance.App.Body"
                                 android:textColor="@color/text_secondary" />
 
                             <TextView
@@ -296,7 +299,7 @@
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
                                 android:layout_weight="1"
-                                android:textAppearance="?attr/textAppearanceBodyMedium" />
+                                android:textAppearance="@style/TextAppearance.App.Body" />
                         </LinearLayout>
 
                         <LinearLayout
@@ -309,7 +312,7 @@
                                 android:layout_width="100dp"
                                 android:layout_height="wrap_content"
                                 android:text="@string/detail_group"
-                                android:textAppearance="?attr/textAppearanceBodyMedium"
+                                android:textAppearance="@style/TextAppearance.App.Body"
                                 android:textColor="@color/text_secondary" />
 
                             <TextView
@@ -317,7 +320,7 @@
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
                                 android:layout_weight="1"
-                                android:textAppearance="?attr/textAppearanceBodyMedium" />
+                                android:textAppearance="@style/TextAppearance.App.Body" />
                         </LinearLayout>
 
                         <LinearLayout
@@ -330,7 +333,7 @@
                                 android:layout_width="100dp"
                                 android:layout_height="wrap_content"
                                 android:text="@string/detail_last_seen"
-                                android:textAppearance="?attr/textAppearanceBodyMedium"
+                                android:textAppearance="@style/TextAppearance.App.Body"
                                 android:textColor="@color/text_secondary" />
 
                             <TextView
@@ -338,7 +341,7 @@
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
                                 android:layout_weight="1"
-                                android:textAppearance="?attr/textAppearanceBodyMedium" />
+                                android:textAppearance="@style/TextAppearance.App.Body" />
                         </LinearLayout>
 
                         <LinearLayout
@@ -351,7 +354,7 @@
                                 android:layout_width="100dp"
                                 android:layout_height="wrap_content"
                                 android:text="@string/detail_compatibility"
-                                android:textAppearance="?attr/textAppearanceBodyMedium"
+                                android:textAppearance="@style/TextAppearance.App.Body"
                                 android:textColor="@color/text_secondary" />
 
                             <TextView
@@ -359,7 +362,7 @@
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
                                 android:layout_weight="1"
-                                android:textAppearance="?attr/textAppearanceBodyMedium" />
+                                android:textAppearance="@style/TextAppearance.App.Body" />
                         </LinearLayout>
 
                         <com.google.android.material.button.MaterialButton
@@ -377,7 +380,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="6dp"
-                        android:textAppearance="?attr/textAppearanceBodySmall"
+                        android:textAppearance="@style/TextAppearance.App.Caption"
                         android:textColor="?attr/colorError"
                         android:visibility="gone" />
 
@@ -395,12 +398,13 @@
             </com.google.android.material.card.MaterialCardView>
 
             <com.google.android.material.card.MaterialCardView
+    style="@style/Widget.App.Card"
                 android:id="@+id/readingsCard"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
                 app:cardCornerRadius="12dp"
-                app:cardElevation="1dp">
+                app:cardElevation="0dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -412,7 +416,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="@string/readings_title"
-                        android:textAppearance="?attr/textAppearanceTitleMedium" />
+                        android:textAppearance="@style/TextAppearance.App.Headline" />
 
                     <TextView
                         android:id="@+id/readingsLoadingHint"
@@ -420,7 +424,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="6dp"
                         android:text="@string/readings_loading"
-                        android:textAppearance="?attr/textAppearanceBodySmall"
+                        android:textAppearance="@style/TextAppearance.App.Caption"
                         android:textColor="@color/text_secondary" />
 
                     <TextView
@@ -429,7 +433,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="6dp"
                         android:text="@string/readings_empty_hint"
-                        android:textAppearance="?attr/textAppearanceBodyMedium"
+                        android:textAppearance="@style/TextAppearance.App.Body"
                         android:textColor="@color/text_secondary"
                         android:visibility="gone" />
 
@@ -445,7 +449,7 @@
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:text="@string/readings_permission_hint"
-                            android:textAppearance="?attr/textAppearanceBodySmall"
+                            android:textAppearance="@style/TextAppearance.App.Caption"
                             android:textColor="?attr/colorError" />
 
                         <com.google.android.material.button.MaterialButton
@@ -464,7 +468,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="6dp"
                         android:text="@string/readings_offline_hint"
-                        android:textAppearance="?attr/textAppearanceBodySmall"
+                        android:textAppearance="@style/TextAppearance.App.Caption"
                         android:textColor="@color/text_secondary"
                         android:visibility="gone" />
 
@@ -474,7 +478,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
                         android:text="@string/readings_range_title"
-                        android:textAppearance="?attr/textAppearanceBodySmall"
+                        android:textAppearance="@style/TextAppearance.App.Caption"
                         android:textColor="@color/text_secondary"
                         android:visibility="gone" />
 
@@ -519,7 +523,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
                         android:text="@string/readings_series_empty"
-                        android:textAppearance="?attr/textAppearanceBodySmall"
+                        android:textAppearance="@style/TextAppearance.App.Caption"
                         android:textColor="@color/text_secondary"
                         android:visibility="gone" />
 
@@ -528,7 +532,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
-                        android:textAppearance="?attr/textAppearanceBodySmall"
+                        android:textAppearance="@style/TextAppearance.App.Caption"
                         android:textColor="@color/text_secondary"
                         android:visibility="gone" />
 
@@ -546,7 +550,7 @@
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
                             android:text="@string/detail_export_desc"
-                            android:textAppearance="?attr/textAppearanceBodySmall"
+                            android:textAppearance="@style/TextAppearance.App.Caption"
                             android:textColor="@color/text_secondary" />
 
                         <com.google.android.material.button.MaterialButton
@@ -564,7 +568,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="4dp"
-                        android:textAppearance="?attr/textAppearanceBodySmall"
+                        android:textAppearance="@style/TextAppearance.App.Caption"
                         android:textColor="@color/text_secondary"
                         android:visibility="gone" />
 
@@ -574,7 +578,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
                         android:text="@string/readings_recent_title"
-                        android:textAppearance="?attr/textAppearanceBodySmall"
+                        android:textAppearance="@style/TextAppearance.App.Caption"
                         android:textColor="@color/text_secondary"
                         android:visibility="gone" />
 
@@ -589,11 +593,12 @@
             </com.google.android.material.card.MaterialCardView>
 
             <com.google.android.material.card.MaterialCardView
+    style="@style/Widget.App.Card"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
                 app:cardCornerRadius="12dp"
-                app:cardElevation="1dp">
+                app:cardElevation="0dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -605,14 +610,14 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="@string/detail_security_title"
-                        android:textAppearance="?attr/textAppearanceTitleMedium" />
+                        android:textAppearance="@style/TextAppearance.App.Headline" />
 
                     <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="4dp"
                         android:text="@string/detail_security_hint"
-                        android:textAppearance="?attr/textAppearanceBodySmall"
+                        android:textAppearance="@style/TextAppearance.App.Caption"
                         android:textColor="@color/text_secondary" />
 
                     <TextView
@@ -621,7 +626,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
                         android:text="@string/detail_encryption_idle"
-                        android:textAppearance="?attr/textAppearanceBodyMedium" />
+                        android:textAppearance="@style/TextAppearance.App.Body" />
 
                 </LinearLayout>
 

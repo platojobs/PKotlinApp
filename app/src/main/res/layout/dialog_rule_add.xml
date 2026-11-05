@@ -12,7 +12,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="@string/rule_type_label"
-        android:textAppearance="?attr/textAppearanceTitleSmall" />
+        android:textAppearance="@style/TextAppearance.App.Callout" />
 
     <RadioGroup
         android:id="@+id/typeGroup"
@@ -47,7 +47,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="4dp"
         android:text="@string/rule_desc_low_rssi"
-        android:textAppearance="?attr/textAppearanceBodySmall"
+        android:textAppearance="@style/TextAppearance.App.Caption"
         android:textColor="@color/text_secondary" />
 
     <com.google.android.material.textfield.TextInputLayout

@@ -1,9 +1,12 @@
 package com.platojobs.pkotlinapp.data.local
 
 import androidx.room.Dao
+import androidx.room.Embedded
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Relation
+import androidx.room.Transaction
 import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
 
@@ -113,6 +116,21 @@ interface ReadingDao {
     )
     fun observeRecent(deviceId: String, metric: String, limit: Int): Flow<List<ReadingEntity>>
 
+    /**
+     * 每台设备最近一条读数（首页卡片展示；同一时刻多条时由调用方取第一条）。
+     * 只用真实落库数据，不造假。
+     */
+    @Query(
+        """
+        SELECT r.* FROM readings r
+        INNER JOIN (
+            SELECT deviceId, MAX(recordedAt) AS maxAt FROM readings GROUP BY deviceId
+        ) m ON r.deviceId = m.deviceId AND r.recordedAt = m.maxAt
+        ORDER BY r.recordedAt DESC
+        """,
+    )
+    fun observeLatestPerDevice(): Flow<List<ReadingEntity>>
+
     @Query(
         "SELECT * FROM readings WHERE deviceId = :deviceId AND metric = :metric " +
             "ORDER BY recordedAt DESC LIMIT :limit",
@@ -210,11 +228,49 @@ interface RuleEventDao {
     @Query("SELECT * FROM rule_events ORDER BY timestamp DESC LIMIT :limit")
     fun observeRecent(limit: Int): Flow<List<RuleEventEntity>>
 
+    /** 今日真实触发条数（首页告警摘要）。 */
+    @Query("SELECT COUNT(*) FROM rule_events WHERE timestamp >= :from AND timestamp < :to")
+    fun observeCountBetween(from: Long, to: Long): Flow<Int>
+
     @Query("SELECT * FROM rule_events ORDER BY timestamp DESC LIMIT :limit")
     suspend fun getRecent(limit: Int): List<RuleEventEntity>
 
     @Query("DELETE FROM rule_events")
     suspend fun clear()
+}
+
+/** 场景及其有序动作；@Relation 由 Room 在事务内一次性取回动作列表。 */
+data class SceneWithActions(
+    @Embedded val scene: SceneEntity,
+    @Relation(parentColumn = "id", entityColumn = "sceneId")
+    val actions: List<SceneActionEntity>,
+)
+
+@Dao
+interface SceneDao {
+
+    @Transaction
+    @Query("SELECT * FROM scenes ORDER BY createdAt ASC")
+    fun observeAll(): Flow<List<SceneWithActions>>
+
+    @Transaction
+    @Query("SELECT * FROM scenes ORDER BY createdAt ASC")
+    suspend fun getAll(): List<SceneWithActions>
+
+    @Insert
+    suspend fun insertScene(scene: SceneEntity): Long
+
+    @Insert
+    suspend fun insertActions(actions: List<SceneActionEntity>)
+
+    @Query("UPDATE scenes SET name = :name WHERE id = :id")
+    suspend fun rename(id: Long, name: String)
+
+    @Query("DELETE FROM scene_actions WHERE sceneId = :sceneId")
+    suspend fun deleteActions(sceneId: Long)
+
+    @Query("DELETE FROM scenes WHERE id = :id")
+    suspend fun delete(id: Long)
 }
 
 @Dao

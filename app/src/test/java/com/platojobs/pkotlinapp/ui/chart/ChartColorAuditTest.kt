@@ -55,6 +55,43 @@ class ChartColorAuditTest {
     }
 
     @Test
+    fun `布局不得出现硬编码字号`() {
+        val layouts = File(moduleDir, "src/main/res/layout").listFiles { file ->
+            file.extension == "xml"
+        }.orEmpty()
+        val forbidden = Regex("""android:textSize\s*=\s*"[0-9]""")
+        layouts.forEach { file ->
+            val hit = file.readLines().withIndex().firstOrNull { (_, line) ->
+                forbidden.containsMatchIn(line)
+            }
+            assertTrue(
+                "${file.name}:${hit?.index?.plus(1) ?: 0} 出现硬编码字号，请改用 TextAppearance 或 @dimen",
+                hit == null,
+            )
+        }
+    }
+
+    @Test
+    fun `源码不得出现硬编码字号`() {
+        val uiDir = File(moduleDir, "src/main/java/com/platojobs/pkotlinapp")
+        val sources = uiDir.walkTopDown().filter { it.extension == "kt" && it.isFile }.toList()
+        assertTrue("源码目录不存在或为空: $uiDir", sources.isNotEmpty())
+        val forbidden = listOf(
+            Regex(""".textSize\s*=\s*[0-9]"""),
+            Regex("""setTextSize\s*\([^)\n]*,\s*[0-9]"""),
+        )
+        sources.forEach { file ->
+            val hit = file.readLines().withIndex().firstOrNull { (_, line) ->
+                forbidden.any { it.containsMatchIn(line) }
+            }
+            assertTrue(
+                "${file.name}:${hit?.index?.plus(1) ?: 0} 出现硬编码字号，请改用 TextAppearance",
+                hit == null,
+            )
+        }
+    }
+
+    @Test
     fun `布局不得硬编码文字或背景颜色`() {
         val layouts = File(moduleDir, "src/main/res/layout").listFiles { file ->
             file.extension == "xml"

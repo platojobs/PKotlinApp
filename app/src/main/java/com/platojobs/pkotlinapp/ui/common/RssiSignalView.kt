@@ -33,11 +33,11 @@ class RssiSignalView @JvmOverloads constructor(
         context.withStyledAttributes(attrs, R.styleable.RssiSignalView, defStyleAttr, 0) {
             activePaint.color = getColor(
                 R.styleable.RssiSignalView_rsv_activeColor,
-                ContextCompat.getColor(context, R.color.signal_active),
+                ContextCompat.getColor(context, R.color.success),
             )
             inactivePaint.color = getColor(
                 R.styleable.RssiSignalView_rsv_inactiveColor,
-                ContextCompat.getColor(context, R.color.signal_inactive),
+                ContextCompat.getColor(context, R.color.divider),
             )
             configuredBarCount = getInt(
                 R.styleable.RssiSignalView_rsv_barCount,

@@ -43,7 +43,7 @@ class EmptyStateView(
         titleView.apply {
             text = title
             gravity = Gravity.CENTER
-            setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_TitleMedium)
+            setTextAppearance(com.platojobs.pkotlinapp.R.style.TextAppearance_App_Headline)
             layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
                 .apply { topMargin = 8.dp }
         }
@@ -51,7 +51,7 @@ class EmptyStateView(
         hintView.apply {
             text = hint
             gravity = Gravity.CENTER
-            setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodySmall)
+            setTextAppearance(com.platojobs.pkotlinapp.R.style.TextAppearance_App_Caption)
             setTextColor(ContextCompat.getColor(context, R.color.text_secondary))
             layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
                 .apply { topMargin = 4.dp }

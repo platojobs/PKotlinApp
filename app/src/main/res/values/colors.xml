@@ -1,11 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="brand_primary">#3F51B5</color>
-    <color name="signal_active">#2E7D32</color>
-    <color name="signal_inactive">#D6D9E3</color>
-    <color name="text_secondary">#6B7280</color>
-    <color name="chart_line">#3F51B5</color>
-    <color name="chart_point">#1F2937</color>
-    <color name="chart_grid">#E5E7EB</color>
-    <color name="chart_axis">#9CA3AF</color>
-    <color name="chart_band">#223F51B5</color>
+    <!-- 设计令牌：语义色。深色只覆盖同名值，禁止 xxxDark 命名。 -->
+
+    <!-- 基础 -->
+    <color name="canvas">#F4F6F9</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="surface_raised">#FFFFFF</color>
+    <color name="surface_sunken">#EEF1F5</color>
+    <color name="divider">#E4E7EC</color>
+    <color name="border">#D0D5DD</color>
+    <color name="border_strong">#8A93A2</color>
+
+    <!-- 文字 -->
+    <color name="text_primary">#101828</color>
+    <color name="text_secondary">#475467</color>
+    <color name="text_tertiary">#667085</color>
+    <color name="text_disabled">#98A2B3</color>
+    <color name="text_inverse">#FFFFFF</color>
+
+    <!-- 动作 -->
+    <color name="primary">#175CD3</color>
+    <color name="primary_pressed">#1249A8</color>
+    <color name="primary_text">#175CD3</color>
+    <color name="on_primary">#FFFFFF</color>
+    <color name="danger_fill">#B42318</color>
+    <color name="danger_pressed">#912018</color>
+    <color name="action_disabled_bg">#E4E7EC</color>
+
+    <!-- 状态 -->
+    <color name="success">#067647</color>
+    <color name="success_bg">#ECFDF3</color>
+    <color name="warning">#B54708</color>
+    <color name="warning_bg">#FFFAEB</color>
+    <color name="danger">#B42318</color>
+    <color name="danger_bg">#FEF3F2</color>
+
+    <!-- 图表 -->
+    <color name="chart_line">#175CD3</color>
+    <color name="chart_line_2">#7A5AF8</color>
+    <color name="chart_point">@color/chart_line_2</color>
+    <color name="chart_band">#E8EFFB</color>
+    <color name="chart_grid">#EAECF0</color>
+    <color name="chart_axis">#667085</color>
+
+    <!-- 反馈 -->
+    <color name="overlay_pressed">#0F101828</color>
+    <color name="skeleton_base">#E9ECF1</color>
+    <color name="skeleton_highlight">#F6F8FA</color>
+    <color name="toast_surface">#1D2939</color>
+    <color name="toast_text">#FFFFFF</color>
+    <color name="scrim">#73101828</color>
+
+    <!-- 阴影（仅浮层使用；列表卡片一律零阴影） -->
+    <color name="shadow">#0F172A</color>
 </resources>

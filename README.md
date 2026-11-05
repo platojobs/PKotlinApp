@@ -26,22 +26,22 @@
 
 ---
 
-## 2. 五模块能力
+## 2. 信息架构与五模块能力（v0.8.0）
 
-底部 `BottomNavigationView` 承载五个 Fragment，各自独立包，共用 `ui/common`。
+底部 `BottomNavigationView` 按米家式信息架构固定五项：**首页 / 智能 / 产品 / 市场 / 我的**。设备管理（搜索 / 排序 / 分组）属于首页，不再保留独立「设备」Tab；规则入口整体迁移到「智能」。
 
 ### 首页 Home（`ui/home`）
-- BLE 实时扫描主入口：`BluetoothLeScanner` → `ScanCallback` → `callbackFlow`。
-- 列表展示名称 / MAC / RSSI，并用自绘 `RssiSignalView` 展示真实信号格数。
-- 扫描结果按 MAC 合并排序，节流写入 Room；下方「最近设备」来自 Room，点击进入详情。
-- 无数据时插入代码构建的 `EmptyStateView`（带「开始扫描」动作）。
-- 运行时权限：Android 12+ 申请 `BLUETOOTH_SCAN`、`BLUETOOTH_CONNECT`；SDK < 31 追加 `ACCESS_FINE_LOCATION`。
+- 设备卡片网格：每张卡显示名称、连接状态、最近一条读数（等宽数字）与真实 RSSI 信号条；按分组分段展示，分组头可折叠。
+- 顶部保留搜索（别名 / 广播名 / 型号 / MAC）与排序（最近 / 名称 / 信号 / 添加时间），分组 Chip 来自 Room 真实分组。
+- 首卡上方一行「今日告警摘要」：条数来自 `RuleEvent` 当日真实触发计数，点击进入「智能」。
+- 下方「快捷场景」横向卡：展示本机前 3 个场景，点击即执行并 toast 汇总结果。
+- 点设备卡校验蓝牙连接权限后发起连接并进入详情；「扫描添加」弹层复用同一套 `BluetoothLeScanner`。
+- 三态：骨架延迟 300ms 且与真实列表同高；空态给出「还没有发现设备」+「开始扫描」；同步失败且无本地设备时给出可重试错误块。
 
-### 设备 Devices（`ui/devices`）
-- 已保存设备管理：连接状态、上次出现时间、RSSI 趋势（与上一记录比较）、删除。
-- 本地规则：低 RSSI、断开、绑定丢失三类；规则存 Room，可新增 / 启停 / 删除，触发写规则事件。
-- 最近触发事件列表；无数据使用真实空状态。
-- 点击设备可发起连接并进入详情页。
+### 智能 Intelligence（`ui/intelligence`，v0.8.0 新增）
+- **自动化**：低 RSSI / 断开 / 绑定丢失三类本地规则的增删启停，以及最近触发记录；规则命中写 `RuleEvent` 并投递告警通知。
+- **场景**：本机有序动作组合，支持 CRUD、一键执行、逐动作进度与结果汇总（详见 §6.8）。
+- 原「设备」页的规则与触发记录入口已全部迁移到此处，首页不再出现重复入口。
 
 ### 产品 Products（`ui/products`）
 - 型号库：厂商、型号、固件版本、GATT 服务表。
@@ -529,6 +529,17 @@ Debug / Release 都可通过 `apiBaseUrl` 切换；发布前请传入正式域�
 - **启动限制**：Android 12+ 禁止从后台静默启动前台服务，本功能只从用户点击开关（界面可见时）触发；开关状态写入 `AppSettings.backgroundCollectionEnabled`，重启后保持。
 - **停止**：手动关闭开关、断开连接、退出详情页、连接变为 `Idle/Disconnected/KeyMissing`、或切换到另一台设备时，服务与通知都会被正确停止/清理。
 
+### 6.8 场景（仅本机，v0.8.0）
+
+**场景仅保存在本机 Room，不会同步到云端**（界面以「仅本机」badge 明示）。账号切换/注销不会上传场景；迁移到新设备时场景只在原设备可用。
+
+- 数据模型：`scenes(id, name, createdAt)` + `scene_actions(id, sceneId, position, type, deviceMac, muteMinutes)`，`sceneId` 外键 `CASCADE`，Room v9（`MIGRATION_8_9`）。
+- 动作集合只包含真实可执行能力：连接指定设备、断开指定设备、开始后台采集、停止后台采集、静音告警 10/30/60 分钟、刷新同步。界面下拉的设备来自本机已保存设备；静音时长限定三档，杜绝「播放音乐」这类假动作。
+- 执行语义：按 `position` 顺序逐个执行；**任一动作失败不阻断后续动作**，全部执行完汇总为成功/失败计数。每个动作都反馈成功或失败原因，例如「缺少蓝牙连接权限」「设备未连接，无需断开」「请先连接设备」「已在后台采集中，未重复执行」「当前未在后台采集」。
+- 进度：执行中当前场景行显示「正在执行 动作名（i/n）」并禁用重复点击；首页快捷场景卡同样禁用重复执行。
+- 结果：全部成功 toast「「场景名」执行成功（N 个动作）」；存在失败时在智能页弹窗逐条列出成功/失败与原因；部分成功与全部失败的口径见 `SceneRunResult.summary()`。
+- 真实执行：`SceneRuntimeImpl` 直接调用 `BleConnectionManager.connect`、`CollectionLauncher.start/stop`（前台服务 + `CollectionSession`）、`AppSettings.muteAlertsFor`（告警投递实时读取静音截止时间）与 `SyncScheduler.scheduleNow`。
+
 ---
 
 ## 7. 构建与运行
@@ -669,6 +680,7 @@ release {
 
 ## 11. 版本记录
 
+- `v0.8.0`：设计令牌与信息架构升级。新增 `colors.xml` / `values-night/colors.xml` / `dimens.xml` / 10 级 `TextAppearance` / `res/color` 状态选择器与 `Widget.App.Card`（1dp 描边、零阴影、12dp 圆角），删除布局与代码中的硬编码色值与字号，`windowBackground`/系统栏跟随语义色；自绘大标题 96→56（12dp 阈值、200ms 插值）、行高 56/72/88、页边距 16；统一浅色 6% / 深色 8% 按压遮罩，按钮只变色、卡片按下 0.98；读数/阈值/计数改用 `tnum` 等宽数字；`ChartColorAuditTest` 扩展为同时禁止硬编码字号。底部导航按米家重组为**首页 / 智能 / 产品 / 市场 / 我的**：首页改为设备卡片网格 + 分组分段 + 今日告警摘要 + 快捷场景；新增智能页承载自动化规则与场景；原「设备」Tab 与其规则入口删除。场景为仅本机的有序动作组合（连接/断开设备、开始/停止后台采集、静音告警 10/30/60 分钟、刷新同步），Room v9（`MIGRATION_8_9`）、`SceneExecutor` 顺序执行且失败不阻断、逐动作反馈与汇总；首页展示前 3 个场景。五模块统一骨架（延迟 300ms）/真实空态/可重试错误块。新增场景执行器、持久化、v8→v9 迁移与汇总口径单测；`assembleDebug`、`testDebugUnitTest`、`lintDebug` 全绿。
 - `v0.7.0`：账号迁移与注销 + 后台采集。「我的」新增**迁移到新设备**（`POST /auth/pairing-code`，8 位码 + 服务端 `expiresAt` 真实倒计时、复制、重新生成使旧码立即失效）与**从旧设备接管**（`POST /auth/pairing-code/claim` 换同 `userId` 新 token，保留本地设备/读数并全量重置 `pending` 后重新上传）；输入框按 `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` 自动大写/过滤/截断 8 位；404 统一「码无效或已过期」，429 显示剩余冷却秒数。新增**导出我的数据**（`GET /me/export` 按 `hasMore`/`nextCursor` 循环，cursor 只透传不解析，`devices` 去重、`readings` 拼接，写 `cacheDir/exports/` 后经 FileProvider 分享，显示真实进度与可重试）与**注销账号**（二次确认写明「设备与读数将永久删除且不可恢复」，`DELETE /me` 成功后清 token/游标/同步状态/`clearAllTables()`，401 与网络错误分别提示）。新增**后台采集**前台服务：连接后开关控制，`foregroundServiceType=connectedDevice` + `FOREGROUND_SERVICE_CONNECTED_DEVICE`（Android 14+），通知渠道「数据采集」常驻（设备名 + 已采集条数 + 停止动作），Android 13+ 拒绝通知权限不阻断采集，断开/退出自动停止，开关持久化。单测 168（配对码/导出分页/注销顺序/服务会话/通知构建/Robolectric），e2e 新增账号契约 12 项；lint 0 issue。Room 无 schema 变更（仍为 v8）。
 - `v0.6.0`：四项真实可用功能。**告警通知**：独立渠道「设备告警」、Android 13+ `POST_NOTIFICATIONS` 动态申请与「我的」拒绝提示、真实开关、1/5/30 分钟节流（SharedPreferences 持久化）、信号恢复通知只发一次、点击通知进设备详情、正文不含敏感信息。**CSV 导出**：详情按当前设备+指标+区间导出，≤7 天读 Room、>7 天服务端 cursor 分页（上限 5 万条），UTF-8 BOM / `recordedAt,metric,value,unit` / ISO8601 UTC / RFC 4180 转义，写 `cacheDir/exports/` 并用 `FileProvider` + `ACTION_SEND` 分享，真实进度与可重试错误。**设备列表**：别名/广播名/型号/MAC 即时搜索、四种排序持久化、真实分组 Chip（含未分组）、无设备与筛选无结果两种空状态。**深色模式**：`values-night/colors.xml` + 图表颜色全部走主题资源，`ChartColorAuditTest` 防硬编码回归。Room v8 新增 `devices.createdAt`（`MIGRATION_7_8`）；单测 139，lint 0 issue。
 - `v0.5.0`：详情页数据区升级为产品级长周期图表。新增区间切换（1 小时 / 24 小时 / 7 天 / 30 天，默认 24 小时）与 `1m/1h/1d` 分桶映射、500 桶自动降级；接入 `GET .../readings/series`（UTC RFC3339 网格）与 `GET .../readings/metrics`（count/lastAt/unit，倒序）。图表按桶 `start` 的真实时间比例定位，空桶不返回时折线断开不连线，每个桶画 avg 折线 + min–max 区间带，Y 轴与单位自适应；网络失败回退本地分桶，30 天提示「离线：仅本地 7 天数据」。指标 Chip 改为服务端真值并展示「指标名 · N 条」，24h 汇总固定窗口、单位随指标。单测 96 个（新增区间映射/分桶/缺口几何/Y 轴/离线降级/指标排序），e2e 新增 series/metrics/空区间/非法 bucket 4 项。

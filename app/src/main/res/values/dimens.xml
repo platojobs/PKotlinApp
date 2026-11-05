@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 间距（4pt 栅格，禁止 6/10/14/18/22 等非 4 倍数） -->
+    <dimen name="space_4">4dp</dimen>
+    <dimen name="space_8">8dp</dimen>
+    <dimen name="space_12">12dp</dimen>
+    <dimen name="space_16">16dp</dimen>
+    <dimen name="space_20">20dp</dimen>
+    <dimen name="space_24">24dp</dimen>
+    <dimen name="space_32">32dp</dimen>
+    <dimen name="space_40">40dp</dimen>
+    <dimen name="space_48">48dp</dimen>
+
+    <dimen name="page_margin">16dp</dimen>
+    <dimen name="page_margin_wide">24dp</dimen>
+    <dimen name="card_padding">16dp</dimen>
+    <dimen name="card_gap">12dp</dimen>
+    <dimen name="section_gap">24dp</dimen>
+    <dimen name="section_header_h">40dp</dimen>
+
+    <!-- 行高与栏高 -->
+    <dimen name="row_h_1line">56dp</dimen>
+    <dimen name="row_h_2line">72dp</dimen>
+    <dimen name="row_h_3line">88dp</dimen>
+    <dimen name="nav_bar_h">56dp</dimen>
+    <dimen name="header_h_expanded">96dp</dimen>
+    <dimen name="tab_bar_h">56dp</dimen>
+
+    <!-- 控件 -->
+    <dimen name="button_h">48dp</dimen>
+    <dimen name="input_h">52dp</dimen>
+    <dimen name="chip_h">32dp</dimen>
+    <dimen name="switch_w">52dp</dimen>
+    <dimen name="switch_h">32dp</dimen>
+    <dimen name="chart_h">240dp</dimen>
+    <dimen name="chart_label_text_size">11sp</dimen>
+    <dimen name="touch_min">48dp</dimen>
+
+    <!-- 图标与头像 -->
+    <dimen name="icon_16">16dp</dimen>
+    <dimen name="icon_20">20dp</dimen>
+    <dimen name="icon_24">24dp</dimen>
+    <dimen name="icon_32">32dp</dimen>
+    <dimen name="icon_40">40dp</dimen>
+    <dimen name="icon_48">48dp</dimen>
+    <dimen name="icon_64">64dp</dimen>
+    <dimen name="avatar_40">40dp</dimen>
+    <dimen name="avatar_56">56dp</dimen>
+
+    <!-- 圆角 -->
+    <dimen name="radius_4">4dp</dimen>
+    <dimen name="radius_8">8dp</dimen>
+    <dimen name="radius_10">10dp</dimen>
+    <dimen name="radius_12">12dp</dimen>
+    <dimen name="radius_20">20dp</dimen>
+    <dimen name="radius_pill">999dp</dimen>
+
+    <!-- 描边 -->
+    <dimen name="stroke_1">1dp</dimen>
+    <dimen name="stroke_2">2dp</dimen>
+    <dimen name="stroke_3">3dp</dimen>
+
+    <!-- 阴影：仅浮层/弹层 -->
+    <dimen name="elevation_0">0dp</dimen>
+    <dimen name="elevation_1">2dp</dimen>
+    <dimen name="elevation_2">4dp</dimen>
+    <dimen name="elevation_3">8dp</dimen>
+
+    <!-- 框架几何 -->
+    <dimen name="header_scroll_threshold">12dp</dimen>
+    <dimen name="header_divider_full_at">36dp</dimen>
+    <dimen name="skeleton_row_h">72dp</dimen>
+    <dimen name="empty_state_max_width">280dp</dimen>
+</resources>

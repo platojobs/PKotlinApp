@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingStart="@dimen/space_24"
+    android:paddingTop="@dimen/space_8"
+    android:paddingEnd="@dimen/space_24"
+    android:paddingBottom="@dimen/space_8">
+
+    <RadioGroup
+        android:id="@+id/actionTypeGroup"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <RadioButton
+            android:id="@+id/typeConnect"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/touch_min"
+            android:text="@string/scene_action_connect_device" />
+
+        <RadioButton
+            android:id="@+id/typeDisconnect"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/touch_min"
+            android:text="@string/scene_action_disconnect_device" />
+
+        <RadioButton
+            android:id="@+id/typeStartCollection"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/touch_min"
+            android:text="@string/scene_action_start_collection" />
+
+        <RadioButton
+            android:id="@+id/typeStopCollection"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/touch_min"
+            android:text="@string/scene_action_stop_collection" />
+
+        <RadioButton
+            android:id="@+id/typeMute"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/touch_min"
+            android:text="@string/scene_action_mute_alerts" />
+
+        <RadioButton
+            android:id="@+id/typeSync"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/touch_min"
+            android:text="@string/scene_action_sync_now" />
+    </RadioGroup>
+
+    <Spinner
+        android:id="@+id/deviceSpinner"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/touch_min"
+        android:visibility="gone" />
+
+    <Spinner
+        android:id="@+id/muteSpinner"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/touch_min"
+        android:visibility="gone" />
+</LinearLayout>

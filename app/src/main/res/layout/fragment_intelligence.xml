@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <androidx.core.widget.NestedScrollView
+        android:id="@+id/intelligenceScroll"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clipToPadding="false"
+        android:paddingBottom="@dimen/space_24"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:id="@+id/intelligenceContent"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="@dimen/page_margin"
+                android:paddingTop="@dimen/space_8"
+                android:paddingEnd="@dimen/page_margin">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        style="@style/Widget.App.TextView"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/intelligence_automation_title"
+                        android:textAppearance="@style/TextAppearance.App.Headline" />
+
+                    <TextView
+                        style="@style/Widget.App.TextView"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/space_4"
+                        android:text="@string/intelligence_automation_hint"
+                        android:textAppearance="@style/TextAppearance.App.Caption" />
+                </LinearLayout>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/addRuleButton"
+                    style="@style/Widget.App.Button.Text"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:minWidth="0dp"
+                    android:text="@string/intelligence_rules_add" />
+            </LinearLayout>
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rulesList"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_8"
+                android:nestedScrollingEnabled="false" />
+
+            <FrameLayout
+                android:id="@+id/rulesEmptyContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+
+            <TextView
+                style="@style/Widget.App.TextView"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/page_margin"
+                android:layout_marginTop="@dimen/space_16"
+                android:layout_marginEnd="@dimen/page_margin"
+                android:text="@string/intelligence_events_title"
+                android:textAppearance="@style/TextAppearance.App.Callout" />
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/eventsList"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_8"
+                android:nestedScrollingEnabled="false" />
+
+            <TextView
+                android:id="@+id/eventsEmpty"
+                style="@style/Widget.App.TextView"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingHorizontal="@dimen/page_margin"
+                android:paddingVertical="@dimen/space_12"
+                android:text="@string/intelligence_events_empty_hint"
+                android:textAppearance="@style/TextAppearance.App.Caption" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/stroke_1"
+                android:layout_marginHorizontal="@dimen/page_margin"
+                android:layout_marginTop="@dimen/section_gap"
+                android:background="@color/divider" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="@dimen/page_margin"
+                android:paddingTop="@dimen/space_16"
+                android:paddingEnd="@dimen/page_margin">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        style="@style/Widget.App.TextView"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/intelligence_scenes_title"
+                        android:textAppearance="@style/TextAppearance.App.Headline" />
+
+                    <TextView
+                        style="@style/Widget.App.TextView"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/space_4"
+                        android:text="@string/intelligence_scenes_hint"
+                        android:textAppearance="@style/TextAppearance.App.Caption" />
+                </LinearLayout>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/addSceneButton"
+                    style="@style/Widget.App.Button.Text"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:minWidth="0dp"
+                    android:text="@string/intelligence_scenes_add" />
+            </LinearLayout>
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/scenesList"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_8"
+                android:nestedScrollingEnabled="false" />
+
+            <FrameLayout
+                android:id="@+id/scenesEmptyContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
+
+    <com.platojobs.pkotlinapp.ui.common.SkeletonView
+        android:id="@+id/skeletonIntelligence"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/space_8" />
+
+    <FrameLayout
+        android:id="@+id/intelligenceOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+</FrameLayout>

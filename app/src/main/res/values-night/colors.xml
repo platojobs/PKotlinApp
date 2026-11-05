@@ -1,14 +1,49 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- 深色主题下的同名颜色覆盖；图表/信号/次要文字都从这里取色，禁止在代码里硬编码。 -->
-    <color name="brand_primary">#A8B4FF</color>
-    <color name="signal_active">#7FD18B</color>
-    <color name="signal_inactive">#3A4152</color>
-    <color name="text_secondary">#B3BAC5</color>
-    <color name="chart_line">#A8B4FF</color>
-    <color name="chart_point">#E5E7EB</color>
-    <color name="chart_grid">#3A4152</color>
-    <color name="chart_axis">#8B93A7</color>
-    <!-- 12% 透明度的浅紫区间带，深色底上仍能看出 min-max 波动范围。 -->
-    <color name="chart_band">#40A8B4FF</color>
+    <!-- 深色只覆盖同名语义值；禁止新增 xxxDark 命名。 -->
+
+    <color name="canvas">#0B0D12</color>
+    <color name="surface">#14171E</color>
+    <color name="surface_raised">#1B1F27</color>
+    <color name="surface_sunken">#101319</color>
+    <color name="divider">#262B35</color>
+    <color name="border">#343A46</color>
+    <color name="border_strong">#646C7C</color>
+
+    <color name="text_primary">#E7E9EE</color>
+    <color name="text_secondary">#A8B0BE</color>
+    <color name="text_tertiary">#8A93A2</color>
+    <color name="text_disabled">#5F6775</color>
+    <color name="text_inverse">#0B0D12</color>
+
+    <color name="primary">#2563EB</color>
+    <color name="primary_pressed">#1D4ED8</color>
+    <color name="primary_text">#6AA0FF</color>
+    <color name="on_primary">#FFFFFF</color>
+    <color name="danger_fill">#C0392B</color>
+    <color name="danger_pressed">#A32E22</color>
+    <color name="action_disabled_bg">#232832</color>
+
+    <color name="success">#3DD68C</color>
+    <color name="success_bg">#10261B</color>
+    <color name="warning">#F5A524</color>
+    <color name="warning_bg">#2A2113</color>
+    <color name="danger">#FF6B6B</color>
+    <color name="danger_bg">#2A1416</color>
+
+    <color name="chart_line">#6AA0FF</color>
+    <color name="chart_line_2">#B79CFF</color>
+    <color name="chart_point">@color/chart_line_2</color>
+    <color name="chart_band">#1A2740</color>
+    <color name="chart_grid">#262B35</color>
+    <color name="chart_axis">#8A93A2</color>
+
+    <color name="overlay_pressed">#14FFFFFF</color>
+    <color name="skeleton_base">#1B1F27</color>
+    <color name="skeleton_highlight">#232832</color>
+    <color name="toast_surface">#2A2F3A</color>
+    <color name="toast_text">#E7E9EE</color>
+    <color name="scrim">#99000000</color>
+
+    <color name="shadow">#000000</color>
 </resources>

@@ -48,6 +48,19 @@ class AppSettings(context: Context) {
             prefs.edit { putInt(KEY_ALERT_THROTTLE_MINUTES, normalized) }
         }
 
+    /** 告警静音截止时间（毫秒）；场景「静音告警 N 分钟」写入，投递器读取。 */
+    var alertsMutedUntil: Long
+        get() = prefs.getLong(KEY_ALERTS_MUTED_UNTIL, 0L)
+        set(value) {
+            prefs.edit { putLong(KEY_ALERTS_MUTED_UNTIL, value) }
+        }
+
+    fun muteAlertsFor(minutes: Int, now: Long = System.currentTimeMillis()) {
+        alertsMutedUntil = now + minutes.coerceAtLeast(1) * 60_000L
+    }
+
+    fun alertsMuted(now: Long = System.currentTimeMillis()): Boolean = alertsMutedUntil > now
+
     var deviceSortMode: DeviceSortMode
         get() = runCatching {
             DeviceSortMode.valueOf(
@@ -85,5 +98,6 @@ class AppSettings(context: Context) {
         private const val KEY_ALERT_THROTTLE_MINUTES = "alert_throttle_minutes"
         private const val KEY_DEVICE_SORT = "device_sort_mode"
         private const val KEY_BACKGROUND_COLLECTION = "background_collection_enabled"
+        private const val KEY_ALERTS_MUTED_UNTIL = "alerts_muted_until"
     }
 }

@@ -85,6 +85,41 @@ data class RuleEventEntity(
     val timestamp: Long,
 )
 
+/**
+ * 本地场景：有序动作组合，仅保存在本机，不参与云端同步。
+ */
+@Entity(tableName = "scenes")
+data class SceneEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    val createdAt: Long,
+)
+
+@Entity(
+    tableName = "scene_actions",
+    foreignKeys = [
+        ForeignKey(
+            entity = SceneEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["sceneId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("sceneId")],
+)
+data class SceneActionEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val sceneId: Long,
+    /** 动作在场景内的顺序（0 起，升序执行）。 */
+    val position: Int,
+    /** SceneActionType.name。 */
+    val type: String,
+    /** 连接/断开等设备相关动作的目标 MAC。 */
+    val deviceMac: String? = null,
+    /** 静音告警的分钟数（10/30/60）。 */
+    val muteMinutes: Int? = null,
+)
+
 @Entity(tableName = "scan_logs")
 data class ScanLogEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,

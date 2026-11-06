@@ -31,6 +31,7 @@ import com.platojobs.pkotlinapp.ui.MainActivity
 import com.platojobs.pkotlinapp.ui.common.BlePermissions
 import com.platojobs.pkotlinapp.ui.common.PermissionRationale
 import com.platojobs.pkotlinapp.ui.common.ThreeStateHost
+import com.platojobs.pkotlinapp.ui.common.applyBottomInsetPadding
 import com.platojobs.pkotlinapp.ui.detail.DeviceDetailActivity
 import kotlinx.coroutines.launch
 
@@ -101,6 +102,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         }
         binding.homeList.adapter = adapter
         binding.homeList.itemAnimator = null
+        binding.homeList.applyBottomInsetPadding()
 
         binding.skeletonHome.configure(rows = 4, rowHeightPx = dp(112))
         threeState = ThreeStateHost(

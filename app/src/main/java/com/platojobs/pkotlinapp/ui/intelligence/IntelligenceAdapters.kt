@@ -28,7 +28,7 @@ import com.platojobs.pkotlinapp.ui.home.sceneActionLabel
 
 private fun metricLabel(context: android.content.Context, metric: String?): String =
     context.getString(
-        when (ReadingMetrics.normalize(metric.orEmpty())) {
+        when (ReadingMetrics.displayAlias(metric.orEmpty())) {
             ReadingMetrics.TEMPERATURE -> R.string.readings_metric_temperature
             ReadingMetrics.HUMIDITY -> R.string.readings_metric_humidity
             ReadingMetrics.BATTERY -> R.string.readings_metric_battery

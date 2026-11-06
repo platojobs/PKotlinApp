@@ -6,12 +6,14 @@
   python3 scripts/seed-screenshots.py http://127.0.0.1:8080/api/v1
 
 会新建一个匿名账号，并造出：
-- 3 个家庭（1 个自有 + 2 个新建）、自有家庭的 6 个房间；
-- 12 台设备（5 种 deviceType，分 6 组，其中 2 台只有 3 天前的读数）；
+- 3 个家庭（我的家 / 父母家 / 办公室），6 个房间跨家庭分布（3 / 2 / 1）；
+- 12 台设备按 7 / 3 / 2 分到三个家庭（5 种 deviceType，其中 2 台只有 3 天前的读数）；
 - 每台设备近 7 天的读数（覆盖心率/环境/体重等指标）；
 - 4 个场景（指标阈值、离线、低 RSSI、定时），其中 1 个稍后由截图流程标成 rejected；
 - 3 条反馈（其中 1 条已关闭）。
 最后打印配对码，供 App「用配对码恢复原账号」接管这个账号。
+
+脚本每次运行都会新建一个匿名账号，可重复执行；不修改任何已有账号的数据。
 """
 import json
 import random
@@ -53,39 +55,49 @@ _, auth = call("POST", "/auth/anonymous", body={})
 TOKEN = auth["token"]
 USER_ID = auth["userId"]
 
-# 家庭：自有家庭改名 + 再建 2 个；房间建在自有家庭下。
+# 家庭：自有家庭改名 + 再建 2 个。房间跨家庭分布（3 / 2 / 1），
+# 12 台设备按 7 / 3 / 2 分到三个家庭，首页家庭 Chip 才能体现真实结构。
 _, households = call("GET", "/households", TOKEN)
 own = households["items"][0]["id"]
+HOUSEHOLD_ROOMS = {
+    "我的家": ["客厅", "主卧", "次卧"],
+    "父母家": ["厨房", "阳台"],
+    "办公室": ["书房"],
+}
+HOUSEHOLD_IDS = {"我的家": own}
 call("PATCH", f"/households/{own}", TOKEN, {"name": "我的家"})
 for name in ("父母家", "办公室"):
-    call("POST", "/households", TOKEN, {"name": name})
-ROOMS = ["客厅", "主卧", "次卧", "厨房", "书房", "阳台"]
-ROOM_IDS = {}
-for name in ROOMS:
-    _, room = call("POST", f"/households/{own}/rooms", TOKEN, {"name": name})
-    ROOM_IDS[name] = room["id"]
+    _, created = call("POST", "/households", TOKEN, {"name": name})
+    HOUSEHOLD_IDS[name] = created["id"]
 
-# 12 台设备：类型来自 /catalog，分 6 组；最后 2 台只有 3 天前的读数（演示「离线」）。
+ROOM_IDS = {}
+for household, rooms in HOUSEHOLD_ROOMS.items():
+    ROOM_IDS[household] = {}
+    for name in rooms:
+        _, room = call("POST", f"/households/{HOUSEHOLD_IDS[household]}/rooms", TOKEN, {"name": name})
+        ROOM_IDS[household][name] = room["id"]
+
+# 12 台设备：类型来自 /catalog，分到 3 个家庭 / 6 个房间；后 2 台只有 3 天前的读数（演示「离线」）。
 DEVICES = [
-    # (externalId, deviceType, name, group, metrics)
-    ("AA:BB:CC:00:01:01", "environmental_sensor", "客厅温湿度计", "客厅", ["temperature_celsius", "relative_humidity", "pressure_hpa"]),
-    ("AA:BB:CC:00:01:02", "heart_rate_monitor", "客厅心率带", "客厅", ["heart_rate"]),
-    ("AA:BB:CC:00:01:03", "environmental_sensor", "主卧温湿度计", "主卧", ["temperature_celsius", "relative_humidity"]),
-    ("AA:BB:CC:00:01:04", "smart_scale", "主卧体脂秤", "主卧", ["weight_kg", "body_fat_percent", "bmi"]),
-    ("AA:BB:CC:00:01:05", "environmental_sensor", "次卧温湿度计", "次卧", ["temperature_celsius", "relative_humidity"]),
-    ("AA:BB:CC:00:01:06", "heart_rate_monitor", "次卧心率带", "次卧", ["heart_rate"]),
-    ("AA:BB:CC:00:01:07", "environmental_sensor", "厨房温湿度计", "厨房", ["temperature_celsius", "relative_humidity", "pressure_hpa"]),
-    ("AA:BB:CC:00:01:08", "smart_scale", "厨房食材秤", "厨房", ["weight_kg"]),
-    ("AA:BB:CC:00:01:09", "cycling_speed_cadence", "书房骑行台", "书房", ["cadence_rpm", "wheel_speed_kmh"]),
-    ("AA:BB:CC:00:01:0A", "heart_rate_monitor", "书房心率带", "书房", ["heart_rate"]),
+    # (externalId, deviceType, name, household, room, metrics)
+    ("AA:BB:CC:00:01:01", "environmental_sensor", "客厅温湿度计", "我的家", "客厅", ["temperature_celsius", "relative_humidity", "pressure_hpa"]),
+    ("AA:BB:CC:00:01:02", "heart_rate_monitor", "客厅心率带", "我的家", "客厅", ["heart_rate"]),
+    ("AA:BB:CC:00:01:03", "environmental_sensor", "主卧温湿度计", "我的家", "主卧", ["temperature_celsius", "relative_humidity"]),
+    ("AA:BB:CC:00:01:04", "smart_scale", "主卧体脂秤", "我的家", "主卧", ["weight_kg", "body_fat_percent", "bmi"]),
+    ("AA:BB:CC:00:01:05", "environmental_sensor", "次卧温湿度计", "我的家", "次卧", ["temperature_celsius", "relative_humidity"]),
+    ("AA:BB:CC:00:01:06", "heart_rate_monitor", "次卧心率带", "我的家", "次卧", ["heart_rate"]),
+    ("AA:BB:CC:00:01:07", "environmental_sensor", "厨房温湿度计", "父母家", "厨房", ["temperature_celsius", "relative_humidity", "pressure_hpa"]),
+    ("AA:BB:CC:00:01:08", "smart_scale", "厨房食材秤", "父母家", "厨房", ["weight_kg"]),
+    ("AA:BB:CC:00:01:09", "cycling_speed_cadence", "客厅骑行台", "我的家", "客厅", ["cadence_rpm", "wheel_speed_kmh"]),
+    ("AA:BB:CC:00:01:0A", "heart_rate_monitor", "书房心率带", "办公室", "书房", ["heart_rate"]),
     # 这两台只有 3 天前的数据，用来展示「长时间没有新读数」。
-    ("AA:BB:CC:00:01:0B", "environmental_sensor", "阳台温湿度计", "阳台", ["temperature_celsius", "relative_humidity"]),
-    ("AA:BB:CC:00:01:0C", "environmental_sensor", "阳台备用温湿度计", "阳台", ["temperature_celsius", "relative_humidity"]),
+    ("AA:BB:CC:00:01:0B", "environmental_sensor", "阳台温湿度计", "父母家", "阳台", ["temperature_celsius", "relative_humidity"]),
+    ("AA:BB:CC:00:01:0C", "environmental_sensor", "书房备用温湿度计", "办公室", "书房", ["temperature_celsius", "relative_humidity"]),
 ]
 STALE = {"AA:BB:CC:00:01:0B", "AA:BB:CC:00:01:0C"}
 # 额外推送一台「幽灵设备」并随后软删：它的场景引用会变成 deviceMissing，
-# 而不影响上面 12 台可见设备。
-GHOST = ("AA:BB:CC:00:01:0D", "environmental_sensor", "已移除的阳台备机", "阳台", ["temperature_celsius"])
+# 而不影响上面 12 台可见设备。它不归属任何家庭。
+GHOST = ("AA:BB:CC:00:01:0D", "environmental_sensor", "已移除的阳台备机", None, "阳台", ["temperature_celsius"])
 
 METRIC_RANGES = {
     "temperature_celsius": (18.0, 30.0, "celsius"),
@@ -99,7 +111,7 @@ METRIC_RANGES = {
     "wheel_speed_kmh": (12.0, 28.0, "km/h"),
 }
 
-for mac, dtype, name, group, metrics in DEVICES + [GHOST]:
+for mac, dtype, name, household, room, metrics in DEVICES + [GHOST]:
     call(
         "POST",
         "/sync/push",
@@ -115,7 +127,7 @@ for mac, dtype, name, group, metrics in DEVICES + [GHOST]:
                     "alias": name,
                     "advertisedName": name,
                     "deviceType": dtype,
-                    "group": group,
+                    "group": room,
                     "updatedAt": rfc3339(now - timedelta(days=3 if mac in STALE else 0)),
                     "scanRecords": [
                         {
@@ -128,17 +140,20 @@ for mac, dtype, name, group, metrics in DEVICES + [GHOST]:
         },
         idem="seed-screen-device-" + mac,
     )
-    if mac not in GHOST:
+    if household is not None:
         # 设备归属：家庭 + 房间。首页按 roomId 分组，未归属会落在「未分配」。
         call(
             "PATCH",
             f"/my/devices/android/{mac}",
             TOKEN,
-            {"householdId": own, "roomId": ROOM_IDS[group]},
+            {
+                "householdId": HOUSEHOLD_IDS[household],
+                "roomId": ROOM_IDS[household][room],
+            },
         )
 
 # 读数：近 7 天，每天每指标 2 个点。
-for mac, dtype, name, group, metrics in DEVICES:
+for mac, dtype, name, household, room, metrics in DEVICES:
     readings = []
     days = 7 if mac not in STALE else 3
     for day in range(days):

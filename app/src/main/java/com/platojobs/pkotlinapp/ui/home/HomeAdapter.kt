@@ -562,7 +562,7 @@ class HomeAdapter(
 }
 
 private fun metricName(context: Context, metric: String): String = context.getString(
-    when (ReadingMetrics.normalize(metric)) {
+    when (ReadingMetrics.displayAlias(metric)) {
         ReadingMetrics.TEMPERATURE -> R.string.readings_metric_temperature
         ReadingMetrics.HUMIDITY -> R.string.readings_metric_humidity
         ReadingMetrics.BATTERY -> R.string.readings_metric_battery

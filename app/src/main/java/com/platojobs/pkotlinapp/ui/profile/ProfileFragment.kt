@@ -57,6 +57,7 @@ import com.platojobs.pkotlinapp.ui.common.FileSharing
 import com.platojobs.pkotlinapp.ui.common.HelpCenterDialog
 import com.platojobs.pkotlinapp.ui.common.NotificationPermission
 import com.platojobs.pkotlinapp.ui.common.TimeFormat
+import com.platojobs.pkotlinapp.ui.common.applyBottomInsetPadding
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import java.text.DateFormat
@@ -103,6 +104,7 @@ class ProfileFragment : Fragment() {
 
         binding.logsList.layoutManager = LinearLayoutManager(requireContext())
         binding.logsList.adapter = scanLogAdapter
+        binding.profileScroll.applyBottomInsetPadding()
 
         binding.aboutCard.versionText.text = getString(
             R.string.profile_version,

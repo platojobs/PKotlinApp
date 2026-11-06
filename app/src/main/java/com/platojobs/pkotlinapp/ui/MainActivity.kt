@@ -22,7 +22,7 @@ import com.platojobs.pkotlinapp.R
 import com.platojobs.pkotlinapp.databinding.ActivityMainBinding
 import com.platojobs.pkotlinapp.diagnostics.StartupDiagnostics
 import com.platojobs.pkotlinapp.diagnostics.StartupStage
-import com.platojobs.pkotlinapp.ui.common.applyBottomInset
+import com.platojobs.pkotlinapp.ui.common.applyBottomInsetHeight
 import com.platojobs.pkotlinapp.ui.common.applyHorizontalInsets
 import com.platojobs.pkotlinapp.ui.common.applyTopInset
 import com.platojobs.pkotlinapp.ui.home.HomeFragment
@@ -78,7 +78,10 @@ class MainActivity : AppCompatActivity() {
 
         binding.root.applyHorizontalInsets()
         binding.appHeader.applyTopInset()
-        binding.bottomNav.applyBottomInset()
+        // 固定 56dp 的导航条不能只加 padding，否则 item 被压扁；高度补足 inset 后再把 inset 作为 padding。
+        binding.bottomNav.applyBottomInsetHeight(
+            resources.getDimensionPixelSize(R.dimen.nav_bar_h),
+        )
 
         // 系统栏图标跟随主题明暗：浅色主题用深色图标，深色主题用浅色图标。
         val night = (resources.configuration.uiMode and

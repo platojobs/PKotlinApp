@@ -167,7 +167,7 @@ class AndroidAlertContentBuilder(
         MetricThreshold.displayUnit(metric, fallback)
 
     private fun metricLabel(metric: String?): String = context.getString(
-        when (ReadingMetrics.normalize(metric.orEmpty())) {
+        when (ReadingMetrics.displayAlias(metric.orEmpty())) {
             ReadingMetrics.TEMPERATURE -> R.string.readings_metric_temperature
             ReadingMetrics.HUMIDITY -> R.string.readings_metric_humidity
             ReadingMetrics.BATTERY -> R.string.readings_metric_battery

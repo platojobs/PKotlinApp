@@ -45,6 +45,7 @@ import com.platojobs.pkotlinapp.ui.common.EmptyStateView
 import com.platojobs.pkotlinapp.ui.common.NotificationPermission
 import com.platojobs.pkotlinapp.ui.common.SkeletonView
 import com.platojobs.pkotlinapp.ui.common.ThreeStateHost
+import com.platojobs.pkotlinapp.ui.common.applyBottomInsetPadding
 import kotlinx.coroutines.launch
 
 /**
@@ -132,6 +133,7 @@ class IntelligenceFragment : Fragment(R.layout.fragment_intelligence) {
         binding.addSceneButton.setOnClickListener { showSceneDialog(null) }
         binding.clearRunsButton.setOnClickListener { confirmClearRuns() }
 
+        binding.intelligenceScroll.applyBottomInsetPadding()
         (activity as? MainActivity)?.attachHeaderScroll(binding.intelligenceScroll)
         observe()
     }
@@ -358,7 +360,7 @@ class IntelligenceFragment : Fragment(R.layout.fragment_intelligence) {
     )
 
     private fun metricLabel(metric: String): String = getString(
-        when (ReadingMetrics.normalize(metric)) {
+        when (ReadingMetrics.displayAlias(metric)) {
             ReadingMetrics.TEMPERATURE -> R.string.readings_metric_temperature
             ReadingMetrics.HUMIDITY -> R.string.readings_metric_humidity
             ReadingMetrics.BATTERY -> R.string.readings_metric_battery

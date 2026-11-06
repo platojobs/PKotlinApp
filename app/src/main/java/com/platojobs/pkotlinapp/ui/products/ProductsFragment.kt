@@ -18,6 +18,7 @@ import com.platojobs.pkotlinapp.ui.catalog.CatalogUiState
 import com.platojobs.pkotlinapp.ui.catalog.catalogStatusText
 import com.platojobs.pkotlinapp.ui.catalog.failureText
 import com.platojobs.pkotlinapp.ui.common.ThreeStateHost
+import com.platojobs.pkotlinapp.ui.common.applyBottomInsetPadding
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
@@ -53,6 +54,7 @@ class ProductsFragment : Fragment(R.layout.fragment_products) {
             overlay = binding.emptyContainer,
         )
 
+        binding.productsList.applyBottomInsetPadding()
         (activity as? MainActivity)?.attachHeaderScroll(binding.productsList)
 
         viewLifecycleOwner.lifecycleScope.launch {

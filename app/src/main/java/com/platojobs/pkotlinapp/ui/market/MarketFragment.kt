@@ -27,6 +27,7 @@ import com.platojobs.pkotlinapp.ui.catalog.catalogStatusText
 import com.platojobs.pkotlinapp.ui.catalog.failureText
 import com.platojobs.pkotlinapp.ui.common.HelpCenterDialog
 import com.platojobs.pkotlinapp.ui.common.ThreeStateHost
+import com.platojobs.pkotlinapp.ui.common.applyBottomInsetPadding
 import com.platojobs.pkotlinapp.ui.products.label
 import com.platojobs.pkotlinapp.ui.products.labelRes
 import kotlinx.coroutines.flow.collect
@@ -62,6 +63,7 @@ class MarketFragment : Fragment(R.layout.fragment_market) {
             overlay = binding.emptyContainer,
         )
 
+        binding.marketScroll.applyBottomInsetPadding()
         (activity as? MainActivity)?.attachHeaderScroll(binding.marketScroll)
 
         binding.deviceTypeChips.contentDescription =

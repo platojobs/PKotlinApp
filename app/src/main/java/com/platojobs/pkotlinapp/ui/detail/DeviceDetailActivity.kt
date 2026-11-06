@@ -49,7 +49,7 @@ import com.platojobs.pkotlinapp.ui.chart.ChartBucket
 import com.platojobs.pkotlinapp.ui.common.BlePermissions
 import com.platojobs.pkotlinapp.ui.common.FileSharing
 import com.platojobs.pkotlinapp.ui.common.NotificationPermission
-import com.platojobs.pkotlinapp.ui.common.applyBottomInset
+import com.platojobs.pkotlinapp.ui.common.applyBottomInsetPadding
 import com.platojobs.pkotlinapp.ui.common.applyHorizontalInsets
 import com.platojobs.pkotlinapp.ui.common.TimeFormat
 import com.platojobs.pkotlinapp.ui.common.applyTopInset
@@ -145,7 +145,7 @@ class DeviceDetailActivity : AppCompatActivity() {
 
         binding.root.applyHorizontalInsets()
         binding.toolbar.applyTopInset()
-        binding.scrollContent.applyBottomInset()
+        binding.scrollContent.applyBottomInsetPadding()
 
         binding.toolbar.setNavigationOnClickListener {
             onBackPressedDispatcher.onBackPressed()
@@ -729,14 +729,19 @@ class DeviceDetailActivity : AppCompatActivity() {
         return if (unit.isBlank()) number else number + unit
     }
 
-    private fun metricLabel(metric: String): String = when (metric) {
+    private fun metricLabel(metric: String): String = when (ReadingMetrics.displayAlias(metric)) {
         ReadingMetrics.TEMPERATURE -> getString(R.string.readings_metric_temperature)
         ReadingMetrics.HUMIDITY -> getString(R.string.readings_metric_humidity)
         ReadingMetrics.BATTERY -> getString(R.string.readings_metric_battery)
         ReadingMetrics.HEART_RATE -> getString(R.string.readings_metric_heart_rate)
         ReadingMetrics.CO2 -> getString(R.string.readings_metric_co2)
         ReadingMetrics.PRESSURE -> getString(R.string.readings_metric_pressure)
-        else -> getString(R.string.readings_metric_other)
+        else -> if (metric.isBlank()) {
+            getString(R.string.readings_metric_other)
+        } else {
+            // 未知 key 回落「其他」，但保留原始 key 供排查。
+            getString(R.string.readings_metric_other_with_key, metric)
+        }
     }
 
     private fun openAppSettings() {

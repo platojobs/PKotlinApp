@@ -26,7 +26,7 @@ import com.platojobs.pkotlinapp.ui.catalog.CatalogUiState
 import com.platojobs.pkotlinapp.ui.catalog.catalogStatusText
 import com.platojobs.pkotlinapp.ui.catalog.failureText
 import com.platojobs.pkotlinapp.ui.common.ThreeStateHost
-import com.platojobs.pkotlinapp.ui.common.applyBottomInset
+import com.platojobs.pkotlinapp.ui.common.applyBottomInsetPadding
 import com.platojobs.pkotlinapp.ui.common.applyHorizontalInsets
 import com.platojobs.pkotlinapp.ui.common.applyTopInset
 import com.platojobs.pkotlinapp.ui.detail.DeviceDetailActivity
@@ -63,7 +63,7 @@ class ProductDetailActivity : AppCompatActivity() {
 
         binding.root.applyHorizontalInsets()
         binding.toolbar.applyTopInset()
-        binding.detailScroll.applyBottomInset()
+        binding.detailScroll.applyBottomInsetPadding()
         binding.toolbar.setNavigationOnClickListener {
             onBackPressedDispatcher.onBackPressed()
         }

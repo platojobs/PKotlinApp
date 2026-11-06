@@ -1,6 +1,7 @@
 package com.platojobs.pkotlinapp.domain.rule
 
 import com.platojobs.pkotlinapp.domain.model.RuleComparator
+import com.platojobs.pkotlinapp.domain.reading.ReadingMetrics
 import java.math.BigDecimal
 import java.math.RoundingMode
 
@@ -14,13 +15,15 @@ object MetricThreshold {
 
     fun sanitizeConsecutive(value: Int): Int = value.coerceIn(1, MAX_CONSECUTIVE)
 
-    fun displayUnit(metric: String, rawUnit: String = ""): String = when (metric) {
-        "temperature" -> "℃"
-        "humidity", "battery", "battery_level" -> "%"
-        "heart_rate" -> "bpm"
-        "co2" -> "ppm"
-        else -> rawUnit
-    }
+    fun displayUnit(metric: String, rawUnit: String = ""): String =
+        when (ReadingMetrics.displayAlias(metric)) {
+            ReadingMetrics.TEMPERATURE -> "℃"
+            ReadingMetrics.HUMIDITY, ReadingMetrics.BATTERY -> "%"
+            ReadingMetrics.HEART_RATE -> "bpm"
+            ReadingMetrics.CO2 -> "ppm"
+            ReadingMetrics.PRESSURE -> "hPa"
+            else -> rawUnit
+        }
 
     /** 固定最多 1 位小数，去掉多余的 0；避免 31.0 这类噪声。 */
     fun formatValue(value: Double): String {

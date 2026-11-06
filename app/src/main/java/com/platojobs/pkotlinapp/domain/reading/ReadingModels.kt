@@ -29,6 +29,24 @@ object ReadingMetrics {
         }.takeIf { it in ALL } ?: OTHER
     }
 
+    /**
+     * 服务端指标 key 到展示用 canonical key 的别名映射（仅用于文案，不改存储语义）。
+     * 服务端使用 `temperature_celsius` / `relative_humidity` / `pressure_hpa` 等带单位 key；
+     * 返回 null 表示未知 key，展示层需保留原始 key 便于排查。
+     */
+    fun displayAlias(raw: String): String? {
+        val key = raw.trim().lowercase().replace('-', '_').replace(' ', '_')
+        return when (key) {
+            TEMPERATURE, "temperature_celsius", "temp" -> TEMPERATURE
+            HUMIDITY, "relative_humidity", "hum" -> HUMIDITY
+            BATTERY, "battery_percent", "battery_level", "batt" -> BATTERY
+            HEART_RATE, "heartrate", "hr" -> HEART_RATE
+            CO2, "co2_ppm", "co_2" -> CO2
+            PRESSURE, "pressure_hpa", "press" -> PRESSURE
+            else -> null
+        }
+    }
+
     fun unit(metric: String): String = when (metric) {
         TEMPERATURE -> "°C"
         HUMIDITY -> "%"

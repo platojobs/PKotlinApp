@@ -22,7 +22,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.snackbar.Snackbar
 import com.platojobs.pkotlinapp.ui.common.ThreeStateHost
 import com.platojobs.pkotlinapp.ui.common.TimeFormat
-import com.platojobs.pkotlinapp.ui.common.applyBottomInset
+import com.platojobs.pkotlinapp.ui.common.applyBottomInsetPadding
 import com.platojobs.pkotlinapp.ui.common.applyHorizontalInsets
 import com.platojobs.pkotlinapp.ui.common.applyTopInset
 import kotlinx.coroutines.launch
@@ -51,7 +51,7 @@ class FeedbackHistoryActivity : AppCompatActivity() {
 
         binding.root.applyHorizontalInsets()
         binding.toolbar.applyTopInset()
-        binding.feedbackRefresh.applyBottomInset()
+        binding.feedbackList.applyBottomInsetPadding()
         binding.toolbar.setNavigationOnClickListener {
             onBackPressedDispatcher.onBackPressed()
         }

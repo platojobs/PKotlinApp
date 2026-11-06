@@ -457,6 +457,7 @@
     <string name="readings_metric_co2">二氧化碳</string>
     <string name="readings_metric_pressure">气压</string>
     <string name="readings_metric_other">其他</string>
+    <string name="readings_metric_other_with_key">其他（%1$s）</string>
 
     <string name="alert_channel_name">设备告警</string>
     <string name="alert_channel_description">本地阈值规则命中时提醒</string>

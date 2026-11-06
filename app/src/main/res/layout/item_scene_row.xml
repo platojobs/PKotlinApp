@@ -33,16 +33,6 @@
                 android:textAppearance="@style/TextAppearance.App.Callout"
                 tools:text="回家模式" />
 
-            <TextView
-                android:id="@+id/sceneLocalBadge"
-                style="@style/Widget.App.TextView"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:background="@drawable/bg_badge"
-                android:text="@string/scene_local_badge"
-                android:textAppearance="@style/TextAppearance.App.Footnote"
-                android:textColor="@color/primary_text" />
-
             <androidx.appcompat.widget.SwitchCompat
                 android:id="@+id/sceneEnabled"
                 android:layout_width="wrap_content"
@@ -50,6 +40,19 @@
                 android:layout_marginStart="@dimen/space_8"
                 android:contentDescription="@string/scene_enable_switch" />
         </LinearLayout>
+
+        <!-- 徽标独立成行：服务端拒绝原因较长，与标题同一行会在大字号下把场景名挤成 0 宽。 -->
+        <TextView
+            android:id="@+id/sceneLocalBadge"
+            style="@style/Widget.App.TextView"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/space_4"
+            android:background="@drawable/bg_badge"
+            android:text="@string/scene_local_badge"
+            android:textAppearance="@style/TextAppearance.App.Footnote"
+            android:textColor="@color/primary_text" />
+
 
         <TextView
             android:id="@+id/sceneMeta"

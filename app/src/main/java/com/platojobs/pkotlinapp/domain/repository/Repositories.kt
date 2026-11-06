@@ -6,7 +6,6 @@ import com.platojobs.pkotlinapp.domain.model.DeviceRule
 import com.platojobs.pkotlinapp.domain.model.HourCount
 import com.platojobs.pkotlinapp.domain.model.MarketItem
 import com.platojobs.pkotlinapp.domain.model.MetricCount
-import com.platojobs.pkotlinapp.domain.model.ProductModel
 import com.platojobs.pkotlinapp.domain.model.RuleComparator
 import com.platojobs.pkotlinapp.domain.model.RuleEvent
 import com.platojobs.pkotlinapp.domain.model.RuleType
@@ -217,10 +216,7 @@ interface DeviceInfoRepository {
     suspend fun fetchDeviceInfo(mac: String): DeviceInfo
 }
 
-interface ProductRepository {
-    suspend fun fetchProducts(): List<ProductModel>
-}
-
 interface MarketRepository {
-    suspend fun fetchMarketItems(): List<MarketItem>
+    /** [deviceTypes] 来自服务端目录，避免市场自行维护第二份类型清单。 */
+    suspend fun fetchMarketItems(deviceTypes: List<String>): List<MarketItem>
 }

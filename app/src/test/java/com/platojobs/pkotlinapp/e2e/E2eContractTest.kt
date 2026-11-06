@@ -63,6 +63,16 @@ class E2eContractTest {
         ).lowercase()
     private val apiBase = "$baseUrl/api/v1"
 
+    /**
+     * 反馈限流专属 fixture（`FEEDBACK_USER_RATE_PER_MINUTE=3`、burst=3）：
+     * 脚本另起一个实例，避免把常规 e2e 的多次提交打挂。
+     */
+    private val feedbackLimitBaseUrl = (
+        System.getProperty("e2eFeedbackLimitBaseUrl")
+            ?: System.getenv("E2E_FEEDBACK_LIMIT_BASE_URL")
+            ?: ""
+        ).trimEnd('/')
+
     private val client = OkHttpClient.Builder()
         .connectTimeout(5, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
@@ -923,8 +933,9 @@ class E2eContractTest {
             assertEquals("NOT_FOUND", error["code"])
         }
 
-        step("account: export requires a token") {
-            assertUnauthorized(get("/me/export"))
+        step("account: export and deletion require a token") {
+            assertUnauthorized(post("/me/export"))
+            assertUnauthorized(post("/me/deletion-request"))
         }
 
         val exportExternalId = "AA:BB:CC:00:00:03"
@@ -966,61 +977,51 @@ class E2eContractTest {
             assertEquals(5, response.appliedReadings)
         }
 
-        step("account: export loops over opaque cursor until hasMore=false") {
-            var cursor: String? = null
-            var pages = 0
-            val collected = mutableListOf<Map<*, *>>()
-            var devices = emptyList<Any?>()
-            while (true) {
-                val result = getWithQuery(
-                    "/me/export",
-                    token = claimed.token,
-                    query = buildList {
-                        add("limit" to "2")
-                        cursor?.let { add("cursor" to it) }
-                    },
-                )
-                assertEquals(200, result.code)
-                val page = parseMap(result.body)
-                val userInfo = page["user"] as? Map<*, *> ?: error("missing user")
-                assertEquals(claimed.userId, userInfo["id"])
-                pages += 1
-                assertTrue("too many pages", pages <= 10)
-                // 客户端不解析 cursor：只保证它非空、逐页变化且可原样回传。
-                val next = page["nextCursor"] as? String
-                val hasMore = page["hasMore"] as? Boolean ?: false
-                @Suppress("UNCHECKED_CAST")
-                (page["readings"] as? List<Map<String, Any?>>)
-                    ?.let { collected += it.map { row -> row as Map<*, *> } }
-                @Suppress("UNCHECKED_CAST")
-                (page["devices"] as? List<Map<String, Any?>>)
-                    ?.let { devices = it }
-                if (!hasMore) {
-                    assertEquals("", next)
-                    break
-                }
-                assertTrue("nextCursor must not be blank", !next.isNullOrBlank())
-                assertTrue("cursor must advance", next != cursor)
-                cursor = next
-            }
-            assertEquals(5, collected.size)
-            assertEquals(5, collected.map { it["id"] }.toSet().size)
-            // 服务端按 recordedAt 升序分页，跨页合并后仍必须单调递增。
-            val times = collected.map { Rfc3339.parse(it["recordedAt"] as String) ?: 0L }
-            assertEquals(times.sorted(), times)
-            assertEquals(exportReadings.map { it.id }.toSet(), collected.map { it["id"] }.toSet())
-            assertTrue(pages >= 2)
-            assertTrue(devices.isNotEmpty())
+        val exportTaskId = captureStep("account: export task is created asynchronously") {
+            val result = post("/me/export", "{}", claimed.token)
+            assertEquals(202, result.code)
+            val task = parseMap(result.body)
+            val id = task["id"] as? String ?: error("missing export task id")
+            assertEquals("pending", task["status"])
+            id
         }
 
-        step("account: export via production Retrofit mapping") {
-            val page = runBlocking {
-                syncApi.exportMyData("Bearer ${claimed.token}", cursor = null, limit = 2)
+        val exportView = captureStep("account: export task becomes ready with a one-time link") {
+            var view = emptyMap<String, Any?>()
+            var attempts = 0
+            while (attempts < 40) {
+                val result = get("/me/export/$exportTaskId", claimed.token)
+                assertEquals(200, result.code)
+                view = parseMap(result.body)
+                if (view["status"] == "ready") break
+                assertEquals("pending", view["status"])
+                Thread.sleep(100)
+                attempts += 1
             }
-            assertEquals(claimed.userId, page.user?.get("id"))
-            assertEquals(2, page.readings.orEmpty().size)
-            assertEquals(true, page.hasMore)
-            assertNotNull(page.nextCursor)
+            assertEquals("ready", view["status"])
+            assertNotNull(view["downloadUrl"])
+            view
+        }
+        val downloadUrl = exportView["downloadUrl"] as? String ?: error("missing downloadUrl")
+
+        step("account: export artifact is public, aggregated and single-use") {
+            val first = executeAt(baseUrl, "GET", downloadUrl, null, null)
+            assertEquals(200, first.code)
+            val artifact = parseMap(first.body)
+            assertEquals(claimed.userId, (artifact["user"] as? Map<*, *>)?.get("id"))
+            val devices = artifact["devices"] as? List<*> ?: error("missing devices")
+            assertTrue("export must contain the seeded device", devices.isNotEmpty())
+            val aggregates = artifact["readings"] as? List<*> ?: error("missing readings")
+            assertTrue("readings must be aggregated", aggregates.isNotEmpty())
+            // openapi：下载链接一次性；同一链接第二次必须 410，客户端应重新查询任务。
+            assertEquals(410, executeAt(baseUrl, "GET", downloadUrl, null, null).code)
+        }
+
+        step("account: expired download link is reissued by querying the task again") {
+            val refreshed = parseMap(get("/me/export/$exportTaskId", claimed.token).body)
+            val freshUrl = refreshed["downloadUrl"] as? String ?: error("missing fresh link")
+            assertTrue(freshUrl != downloadUrl)
+            assertEquals(200, executeAt(baseUrl, "GET", freshUrl, null, null).code)
         }
 
         // ---- 家庭链路（fixture 与 postgres 都执行） ----
@@ -1754,19 +1755,192 @@ class E2eContractTest {
 
         println("[E2E] SUMMARY: feedback contract cases passed")
 
-        step("account: delete returns 204 and revokes every token of the account") {
-            val deleted = delete("/me", claimed.token)
+        val deletionToken = captureStep("account: deletion token is issued to the owner") {
+            val result = post("/me/deletion-request", "{}", claimed.token)
+            assertEquals(201, result.code)
+            val body = parseMap(result.body)
+            val token = body["token"] as? String ?: error("missing deletion token")
+            assertNotNull(body["expiresAt"])
+            token
+        }
+
+        step("account: token deletion returns 204 and revokes every token of the account") {
+            // 无令牌 / 无效令牌都不能删除。
+            assertEquals(400, executeAt(apiBase, "DELETE", "/me", null, null).code)
+            assertEquals(
+                403,
+                executeAt(
+                    apiBase,
+                    "DELETE",
+                    "/me",
+                    null,
+                    null,
+                    extraHeaders = mapOf("X-Deletion-Token" to "not-a-deletion-token"),
+                ).code,
+            )
+
+            val deleted = executeAt(
+                apiBase,
+                "DELETE",
+                "/me",
+                null,
+                null,
+                extraHeaders = mapOf("X-Deletion-Token" to deletionToken),
+            )
             assertEquals(204, deleted.code)
             assertTrue(deleted.body.isEmpty())
 
             assertUnauthorized(get("/sync/changes?cursor=0", claimed.token))
-            // claim 换出的 token 与原 token 属于同一账号：注销后一起失效。
+            // claim 换出的 token 与原 token 属于同一账号：删除后一起失效。
             assertUnauthorized(get("/sync/changes?cursor=0", user.token))
-            // 幂等语义：重复注销返回 401，而不是 404。
-            assertEquals(401, delete("/me", user.token).code)
+            // 令牌一次性：重放同一令牌得到 404，账号已不存在。
+            assertEquals(
+                404,
+                executeAt(
+                    apiBase,
+                    "DELETE",
+                    "/me",
+                    null,
+                    null,
+                    extraHeaders = mapOf("X-Deletion-Token" to deletionToken),
+                ).code,
+            )
         }
 
         println("[E2E] SUMMARY: account contract cases passed")
+    }
+
+    /**
+     * 反馈限流（后端 v0.18.0 起固定 `Retry-After: 60`）。
+     * 使用脚本另起的低限流实例（账号 3/min、burst 3），避免污染常规 e2e。
+     * 断言错误码、Retry-After，以及客户端没有自动重试产生第 4 条记录。
+     */
+    @Test
+    fun `feedback rate limit returns 429 with retry-after and no automatic retry`() {
+        assumeTrue(
+            "未配置 e2eFeedbackLimitBaseUrl，跳过低限流 fixture 用例",
+            feedbackLimitBaseUrl.isNotBlank(),
+        )
+        val limitBase = "$feedbackLimitBaseUrl/api/v1"
+
+        val login = executeAt(limitBase, "POST", "/auth/anonymous", null, null)
+        assertEquals(201, login.code)
+        val token = parseMap(login.body)["token"] as? String ?: error("missing token")
+
+        fun feedbackBody(index: Int) = """
+            {
+              "kind": "bug",
+              "body": "e2e 限流反馈 $index",
+              "context": {
+                "platform": "android",
+                "appVersion": "0.20.0",
+                "buildType": "debug",
+                "osVersion": "Android 16",
+                "deviceModel": "Pixel"
+              }
+            }
+        """.trimIndent()
+
+        step("feedback rate limit: first three submissions are accepted") {
+            repeat(3) { index ->
+                val result = executeAt(
+                    limitBase,
+                    "POST",
+                    "/feedback",
+                    feedbackBody(index),
+                    token,
+                    "e2e-limit-$index-${UUID.randomUUID()}",
+                )
+                assertEquals(201, result.code)
+            }
+        }
+
+        step("feedback rate limit: fourth submission -> 429 FEEDBACK_RATE_LIMITED") {
+            val result = executeAt(
+                limitBase,
+                "POST",
+                "/feedback",
+                feedbackBody(3),
+                token,
+                "e2e-limit-3-${UUID.randomUUID()}",
+            )
+            assertEquals(429, result.code)
+            val error = parseMap(result.body)["error"] as Map<*, *>
+            assertEquals("FEEDBACK_RATE_LIMITED", error["code"])
+            assertEquals("60", result.headers["Retry-After"])
+        }
+
+        step("feedback rate limit: client did not auto-retry, list still has three") {
+            fun listCount(): Int {
+                val result = executeAt(
+                    limitBase,
+                    "GET",
+                    "/feedback/mine",
+                    null,
+                    token,
+                    query = listOf("limit" to "20"),
+                )
+                assertEquals(200, result.code)
+                return (parseMap(result.body)["items"] as List<*>).size
+            }
+
+            assertEquals(3, listCount())
+            // 等过 1 秒：若客户端有自动重试，限流桶会补回 1 个令牌并多出记录。
+            Thread.sleep(1_100)
+            assertEquals(3, listCount())
+        }
+
+        println("[E2E] SUMMARY: feedback rate limit cases passed")
+    }
+
+    /**
+     * 设备类型目录（后端 v0.18.0 / openapi 0.14.0）：公开只读 + 条件请求。
+     * 首请求拿 ETag / Last-Modified / Cache-Control，带 If-None-Match 命中 304。
+     */
+    @Test
+    fun `device type catalog is public and supports conditional requests`() {
+        val first = execute("GET", "/catalog/device-types", null, null)
+        assertEquals(200, first.code)
+
+        val body = parseMap(first.body)
+        val version = (body["version"] as? Number)?.toLong() ?: error("missing version")
+        assertTrue(version > 0)
+        assertTrue((body["generatedAt"] as? String)?.isNotBlank() == true)
+        val items = (body["items"] as List<*>).filterIsInstance<Map<String, Any?>>()
+        assertTrue(items.isNotEmpty())
+        items.forEach { item ->
+            assertTrue((item["type"] as? String)?.isNotBlank() == true)
+            assertTrue((item["displayName"] as? String)?.isNotBlank() == true)
+            assertTrue((item["updatedAt"] as? String)?.isNotBlank() == true)
+            (item["metrics"] as? List<*>)?.filterIsInstance<Map<String, Any?>>()
+                ?.forEach { metric ->
+                    assertTrue((metric["key"] as? String)?.isNotBlank() == true)
+                    assertTrue((metric["unit"] as? String)?.isNotBlank() == true)
+                    assertTrue((metric["characteristicUuid"] as? String)?.isNotBlank() == true)
+                }
+        }
+
+        val etag = first.headers["ETag"] ?: error("missing ETag")
+        assertTrue(etag.contains("catalog"))
+        assertTrue(first.headers["Last-Modified"]?.isNotBlank() == true)
+        assertTrue(first.headers["Cache-Control"]?.isNotBlank() == true)
+
+        step("catalog: If-None-Match hits 304 and reuses cache") {
+            val notModified = executeAt(
+                apiBase,
+                "GET",
+                "/catalog/device-types",
+                body = null,
+                token = null,
+                extraHeaders = mapOf("If-None-Match" to etag),
+            )
+            assertEquals(304, notModified.code)
+            assertTrue(notModified.body.isEmpty())
+            // 304 必须带同一个 ETag，缓存校验器不会漂移。
+            assertEquals(etag, notModified.headers["ETag"])
+        }
+
+        println("[E2E] SUMMARY: device type catalog cases passed")
     }
 
     /**
@@ -1884,21 +2058,42 @@ class E2eContractTest {
             assertEquals(2, readingMetricsAdapter.fromJson(metrics.body)!!.items.orEmpty().size)
         }
 
-        step("pg: export limit boundary 5000 ok / 5001 rejected") {
-            assertEquals(
-                200,
-                get("/me/export?limit=5000", user.token).code,
-            )
-            assertEquals(
-                400,
-                get("/me/export?limit=5001", user.token).code,
-            )
-            val page = parseMap(get("/me/export?limit=5000", user.token).body)
-            assertEquals(user.userId, (page["user"] as Map<*, *>)["id"])
+        step("pg: export task builds an artifact on real storage") {
+            val created = post("/me/export", "{}", user.token)
+            assertEquals(202, created.code)
+            val taskId = parseMap(created.body)["id"] as? String ?: error("missing export id")
+            var view = emptyMap<String, Any?>()
+            var attempts = 0
+            while (attempts < 60) {
+                val result = get("/me/export/$taskId", user.token)
+                assertEquals(200, result.code)
+                view = parseMap(result.body)
+                if (view["status"] == "ready") break
+                assertEquals("pending", view["status"])
+                Thread.sleep(200)
+                attempts += 1
+            }
+            assertEquals("ready", view["status"])
+            val url = view["downloadUrl"] as? String ?: error("missing downloadUrl")
+            val download = executeAt(baseUrl, "GET", url, null, null)
+            assertEquals(200, download.code)
+            assertEquals(user.userId, (parseMap(download.body)["user"] as? Map<*, *>)?.get("id"))
         }
 
-        step("pg: delete 204 then token 401") {
-            assertEquals(204, delete("/me", user.token).code)
+        step("pg: deletion token then 204 and token 401") {
+            val issued = post("/me/deletion-request", "{}", user.token)
+            assertEquals(201, issued.code)
+            val deletionToken = parseMap(issued.body)["token"] as? String
+                ?: error("missing deletion token")
+            val deleted = executeAt(
+                apiBase,
+                "DELETE",
+                "/me",
+                null,
+                null,
+                extraHeaders = mapOf("X-Deletion-Token" to deletionToken),
+            )
+            assertEquals(204, deleted.code)
             assertUnauthorized(get("/sync/changes?cursor=0", user.token))
         }
 
@@ -2001,11 +2196,23 @@ class E2eContractTest {
         token: String?,
         idempotencyKey: String? = null,
         query: List<Pair<String, String>> = emptyList(),
+    ): HttpResult = executeAt(apiBase, method, path, body, token, idempotencyKey, query)
+
+    private fun executeAt(
+        base: String,
+        method: String,
+        path: String,
+        body: String?,
+        token: String?,
+        idempotencyKey: String? = null,
+        query: List<Pair<String, String>> = emptyList(),
+        extraHeaders: Map<String, String> = emptyMap(),
     ): HttpResult {
-        val url = (apiBase + path).toHttpUrl().newBuilder().apply {
+        val url = (base + path).toHttpUrl().newBuilder().apply {
             query.forEach { (name, value) -> addQueryParameter(name, value) }
         }.build()
         val builder = Request.Builder().url(url)
+        extraHeaders.forEach { (name, value) -> builder.header(name, value) }
         when (method) {
             "GET" -> builder.get()
             "DELETE" -> builder.delete()

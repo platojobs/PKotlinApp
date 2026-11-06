@@ -139,11 +139,12 @@ class FeedbackStore(
      * 失败后最多安排一次后台重试：
      * - 4xx（校验/冲突/登录失效）不自动重试；
      * - 429 交给用户按 `Retry-After` 提示手动重试，不自动狂重试；
-     * - 网络/5xx 按有界指数退避，达到上限后保留 failed 草稿等待手动重试。
+     * - 网络/5xx 按有界指数退避，5 次自动重试后停止，失败草稿永久保留等待手动重试。
      */
     private fun scheduleAutoRetry(id: Long, retryCount: Int, failure: FeedbackFailure) {
         val scheduler = scope ?: return
-        if (!failure.retryable || retryCount >= maxAutoRetries) return
+        // retryCount 是已失败次数；达到上限后停止自动重试，只保留手动重试入口。
+        if (!failure.retryable || retryCount > maxAutoRetries) return
         // 429 与带 Retry-After 的错误不自动重试，只提示用户稍后手动重试。
         if (failure.code == FeedbackErrorCodes.RATE_LIMITED) return
         if (failure.retryAfterSeconds != null) return

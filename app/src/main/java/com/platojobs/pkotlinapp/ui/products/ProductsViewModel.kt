@@ -5,13 +5,15 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.platojobs.pkotlinapp.PKotlinApplication
+import com.platojobs.pkotlinapp.data.catalog.CatalogRefreshResult
+import com.platojobs.pkotlinapp.data.catalog.DeviceCatalogStore
+import com.platojobs.pkotlinapp.domain.catalog.DeviceTypeCatalogItem
 import com.platojobs.pkotlinapp.domain.model.Device
-import com.platojobs.pkotlinapp.domain.model.ProductModel
 import com.platojobs.pkotlinapp.domain.product.ProductCategory
 import com.platojobs.pkotlinapp.domain.product.productCategoryOf
 import com.platojobs.pkotlinapp.domain.repository.DeviceRepository
-import com.platojobs.pkotlinapp.domain.repository.ProductRepository
-import com.platojobs.pkotlinapp.ui.common.RemoteUiState
+import com.platojobs.pkotlinapp.ui.catalog.CatalogUiState
+import com.platojobs.pkotlinapp.ui.catalog.catalogUiState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -21,46 +23,46 @@ import kotlinx.coroutines.launch
 
 /** 产品目录页状态：目录数据 + 分类筛选 + 我的设备（按 deviceType 归属）。 */
 data class ProductsUiState(
-    val catalog: RemoteUiState<ProductModel> = RemoteUiState.Loading,
+    val catalog: CatalogUiState = CatalogUiState.Loading,
     val selectedCategory: ProductCategory? = null,
     val devicesByType: Map<String, List<Device>> = emptyMap(),
 ) {
-    /** 当前分类下的条目；null 表示「全部」。 */
-    val visibleProducts: List<ProductModel>
-        get() = when (val value = catalog) {
-            is RemoteUiState.Success -> value.items.filter {
-                selectedCategory == null || it.category == selectedCategory
-            }
+    private val items: List<DeviceTypeCatalogItem>
+        get() = (catalog as? CatalogUiState.Content)?.snapshot?.items.orEmpty()
 
-            else -> emptyList()
+    /** 当前分类下的条目；null 表示「全部」。 */
+    val visibleProducts: List<DeviceTypeCatalogItem>
+        get() = items.filter {
+            selectedCategory == null || productCategoryOf(it.type) == selectedCategory
         }
 
     /** 每个分类的商品数量，用于 Chip 徽标。 */
     val categoryCounts: Map<ProductCategory, Int>
-        get() = when (val value = catalog) {
-            is RemoteUiState.Success -> value.items.groupingBy { it.category }.eachCount()
-            else -> emptyMap()
-        }
+        get() = items.groupingBy { productCategoryOf(it.type) }.eachCount()
+
+    val totalCount: Int get() = items.size
 }
 
 class ProductsViewModel(
-    private val repository: ProductRepository,
+    private val catalogStore: DeviceCatalogStore,
     deviceRepository: DeviceRepository,
 ) : ViewModel() {
 
-    private val catalog = MutableStateFlow<RemoteUiState<ProductModel>>(RemoteUiState.Loading)
     private val selectedCategory = MutableStateFlow<ProductCategory?>(null)
+    private val refreshFailure = MutableStateFlow<CatalogRefreshResult.Failed?>(null)
 
     private val devices = deviceRepository.observeDevices()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    val state: StateFlow<ProductsUiState> = kotlinx.coroutines.flow.combine(
-        catalog,
+    val state: StateFlow<ProductsUiState> = combine(
+        catalogStore.observe(),
         selectedCategory,
         devices,
-    ) { catalogState, category, deviceList ->
+        refreshFailure,
+    ) { snapshot, category, deviceList, failure ->
         ProductsUiState(
-            catalog = catalogState,
+            // 缓存先渲染；只有确实没有缓存且请求失败时才显示错误态。
+            catalog = catalogUiState(snapshot, failure),
             selectedCategory = category,
             devicesByType = deviceList
                 .groupBy { it.deviceType.orEmpty() }
@@ -69,20 +71,20 @@ class ProductsViewModel(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ProductsUiState())
 
     init {
-        load()
+        refresh(force = false)
     }
 
     fun load() {
+        refresh(force = true)
+    }
+
+    private fun refresh(force: Boolean) {
         viewModelScope.launch {
-            catalog.value = RemoteUiState.Loading
-            catalog.value = runCatching { repository.fetchProducts() }
-                .fold(
-                    onSuccess = {
-                        // 分类由 deviceType 键推导，未知类型统一落到「其他」。
-                        RemoteUiState.Success(it.map { product -> product.toCategorized() })
-                    },
-                    onFailure = { RemoteUiState.Error(it.message) },
-                )
+            refreshFailure.value = null
+            val result = catalogStore.refresh(force)
+            if (result is CatalogRefreshResult.Failed) {
+                refreshFailure.value = result
+            }
         }
     }
 
@@ -90,18 +92,11 @@ class ProductsViewModel(
         selectedCategory.value = category
     }
 
-    private fun ProductModel.toCategorized(): ProductModel =
-        if (category == productCategoryOf(deviceTypeKey)) {
-            this
-        } else {
-            copy(category = productCategoryOf(deviceTypeKey))
-        }
-
     companion object {
         fun factory(app: PKotlinApplication) = viewModelFactory {
             initializer {
                 ProductsViewModel(
-                    repository = app.container.productRepository,
+                    catalogStore = app.container.deviceCatalogStore,
                     deviceRepository = app.container.deviceRepository,
                 )
             }

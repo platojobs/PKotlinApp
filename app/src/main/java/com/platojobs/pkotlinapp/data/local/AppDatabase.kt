@@ -223,6 +223,35 @@ internal object SceneEngineMigrationSql {
     )
 }
 
+/** v17 -> v18：服务端设备类型目录的本地缓存与条件请求元数据。 */
+internal object CatalogMigrationSql {
+    val V17_TO_V18 = listOf(
+        """
+        CREATE TABLE IF NOT EXISTS `device_type_catalog` (
+            `type` TEXT NOT NULL,
+            `displayName` TEXT NOT NULL,
+            `description` TEXT NOT NULL,
+            `updatedAt` TEXT NOT NULL,
+            `sortOrder` INTEGER NOT NULL,
+            `payloadJson` TEXT NOT NULL DEFAULT '{}',
+            PRIMARY KEY(`type`)
+        )
+        """.trimIndent(),
+        """
+        CREATE TABLE IF NOT EXISTS `catalog_sync_state` (
+            `id` INTEGER NOT NULL,
+            `version` INTEGER NOT NULL,
+            `generatedAt` TEXT NOT NULL,
+            `etag` TEXT,
+            `lastModified` TEXT,
+            `fetchedAt` INTEGER NOT NULL,
+            `lastUsedAt` INTEGER NOT NULL,
+            PRIMARY KEY(`id`)
+        )
+        """.trimIndent(),
+    )
+}
+
 @Database(
     entities = [
         DeviceEntity::class,
@@ -236,8 +265,10 @@ internal object SceneEngineMigrationSql {
         RoomEntity::class,
         HouseholdEntity::class,
         FeedbackDraftEntity::class,
+        CatalogItemEntity::class,
+        CatalogSyncEntity::class,
     ],
-    version = 17,
+    version = 18,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -261,6 +292,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun householdDao(): HouseholdDao
 
     abstract fun feedbackDao(): FeedbackDao
+
+    abstract fun catalogDao(): CatalogDao
 
     companion object {
         private const val DB_NAME = "device_dashboard.db"
@@ -424,6 +457,13 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v17 -> v18：目录缓存表；升级后首次打开时为空，等首次成功刷新后填充。 */
+        val MIGRATION_17_18 = object : Migration(17, 18) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                CatalogMigrationSql.V17_TO_V18.forEach(db::execSQL)
+            }
+        }
+
         @Volatile
         private var instance: AppDatabase? = null
 
@@ -450,6 +490,7 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_14_15,
                     MIGRATION_15_16,
                     MIGRATION_16_17,
+                    MIGRATION_17_18,
                 )
                     .build()
                     .also { instance = it }

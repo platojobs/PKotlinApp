@@ -3,16 +3,11 @@ package com.platojobs.pkotlinapp.data.remote
 import com.platojobs.pkotlinapp.data.local.DeviceDao
 import com.platojobs.pkotlinapp.data.sync.TokenStore
 import com.platojobs.pkotlinapp.domain.model.DeviceInfo
-import com.platojobs.pkotlinapp.domain.model.GattServiceSpec
 import com.platojobs.pkotlinapp.domain.model.MarketItem
 import com.platojobs.pkotlinapp.domain.model.PLATFORM_ANDROID
-import com.platojobs.pkotlinapp.domain.model.ProductModel
 import com.platojobs.pkotlinapp.domain.model.normalizeExternalId
-import com.platojobs.pkotlinapp.domain.product.productCategoryOf
-import com.platojobs.pkotlinapp.domain.product.supportedMetricsOf
 import com.platojobs.pkotlinapp.domain.repository.DeviceInfoRepository
 import com.platojobs.pkotlinapp.domain.repository.MarketRepository
-import com.platojobs.pkotlinapp.domain.repository.ProductRepository
 import com.platojobs.pkotlinapp.domain.sync.AuthExpiredException
 import com.platojobs.pkotlinapp.domain.sync.Rfc3339
 import kotlinx.coroutines.async
@@ -131,50 +126,10 @@ class DeviceInfoRepositoryImpl(
         values.firstOrNull { !it.isNullOrBlank() }
 }
 
-/** 产品：设备类型列表 + 每个类型的聚合 catalog（固件与配件一次取回）。 */
-class ProductRepositoryImpl(
-    private val api: ApiService,
-) : ProductRepository {
-
-    override suspend fun fetchProducts(): List<ProductModel> = coroutineScope {
-        api.getDeviceTypes().items.orEmpty()
-            .filter { !it.type.isNullOrBlank() }
-            .map { type ->
-                async {
-                    val catalog = api.getDeviceCatalog(type.type!!)
-                    val latestFirmware = catalog.firmwares.orEmpty()
-                        .maxByOrNull { it.releasedAt.orEmpty() }
-                    val deviceType = catalog.deviceType ?: type
-                    val services = (catalog.deviceType?.gattServices ?: type.gattServices)
-                        .orEmpty()
-                        .map { service ->
-                            GattServiceSpec(
-                                uuid = service.uuid.orEmpty(),
-                                name = service.name.orEmpty(),
-                                characteristics = emptyList(),
-                            )
-                        }
-                    ProductModel(
-                        id = type.type.orEmpty(),
-                        vendor = deviceType.vendor ?: type.vendor.orEmpty(),
-                        model = deviceType.name ?: type.name.orEmpty(),
-                        firmwareVersion = latestFirmware?.version.orEmpty(),
-                        note = deviceType.description ?: type.description.orEmpty(),
-                        services = services,
-                        deviceTypeKey = type.type.orEmpty(),
-                        compatibility = deviceType.compatibility?.toDomain(),
-                        supportedMetrics = supportedMetricsOf(services.map { it.uuid }),
-                        category = productCategoryOf(type.type),
-                    )
-                }
-            }
-            .awaitAll()
-    }
-}
-
 /** 市场模块的数据源抽象：后续接入真实商品后端时，只需新增实现并替换注入。 */
 interface MarketDataSource {
-    suspend fun loadItems(): List<MarketItem>
+    /** [deviceTypes] 来自服务端目录，市场不再自行枚举类型清单。 */
+    suspend fun loadItems(deviceTypes: List<String>): List<MarketItem>
 }
 
 /** 市场：聚合各设备类型的 accessories，使用真实的厂商与兼容性维度筛选。 */
@@ -182,20 +137,20 @@ class RemoteMarketDataSource(
     private val api: ApiService,
 ) : MarketDataSource {
 
-    override suspend fun loadItems(): List<MarketItem> = coroutineScope {
-        api.getDeviceTypes().items.orEmpty()
-            .filter { !it.type.isNullOrBlank() }
+    override suspend fun loadItems(deviceTypes: List<String>): List<MarketItem> = coroutineScope {
+        deviceTypes
+            .filter { it.isNotBlank() }
             .map { type ->
                 async {
-                    val catalog = api.getDeviceCatalog(type.type!!)
-                    val deviceName = catalog.deviceType?.name ?: type.name.orEmpty()
+                    val catalog = api.getDeviceCatalog(type)
+                    val deviceName = catalog.deviceType?.name ?: type
                     catalog.accessories.orEmpty().mapIndexed { index, accessory ->
                         val compatibility = accessory.compatibility?.toDomain()
                         // 兼容性标签只取接口真实返回的维度；没有时退回设备类型，不造假分类。
                         val tags = compatibility?.filterTags().orEmpty()
-                            .ifEmpty { listOfNotNull(type.type?.takeIf { it.isNotBlank() }) }
+                            .ifEmpty { listOf(type) }
                         MarketItem(
-                            id = accessory.id ?: "${type.type}-$index",
+                            id = accessory.id ?: "$type-$index",
                             title = accessory.name.orEmpty(),
                             category = deviceName,
                             version = accessory.sku.orEmpty(),
@@ -218,5 +173,6 @@ class MarketRepositoryImpl(
     private val dataSource: MarketDataSource,
 ) : MarketRepository {
 
-    override suspend fun fetchMarketItems(): List<MarketItem> = dataSource.loadItems()
+    override suspend fun fetchMarketItems(deviceTypes: List<String>): List<MarketItem> =
+        dataSource.loadItems(deviceTypes)
 }

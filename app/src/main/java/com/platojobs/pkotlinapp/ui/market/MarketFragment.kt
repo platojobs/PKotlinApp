@@ -16,14 +16,17 @@ import com.google.android.material.chip.ChipGroup
 import com.platojobs.pkotlinapp.PKotlinApplication
 import com.platojobs.pkotlinapp.R
 import com.platojobs.pkotlinapp.databinding.FragmentMarketBinding
-import com.platojobs.pkotlinapp.domain.market.CompatibilityLimitation
 import com.platojobs.pkotlinapp.domain.market.CompatibilityProfile
 import com.platojobs.pkotlinapp.domain.market.MarketScenario
 import com.platojobs.pkotlinapp.domain.market.ScenarioRecommendation
 import com.platojobs.pkotlinapp.domain.model.MarketItem
 import com.platojobs.pkotlinapp.ui.MainActivity
+import com.platojobs.pkotlinapp.ui.catalog.CatalogUiState
+import com.platojobs.pkotlinapp.ui.catalog.catalogStatusText
+import com.platojobs.pkotlinapp.ui.catalog.failureText
 import com.platojobs.pkotlinapp.ui.common.HelpCenterDialog
 import com.platojobs.pkotlinapp.ui.common.ThreeStateHost
+import com.platojobs.pkotlinapp.ui.products.label
 import com.platojobs.pkotlinapp.ui.products.labelRes
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
@@ -83,8 +86,15 @@ class MarketFragment : Fragment(R.layout.fragment_market) {
         when (state) {
             MarketUiState.Loading -> threeState.showLoading()
 
-            is MarketUiState.Success -> {
+            is MarketUiState.Content -> {
                 val data = state.data
+                val status = catalogStatusText(requireContext(), CatalogUiState.Content(
+                    snapshot = state.catalog,
+                    refreshFailure = state.refreshFailure,
+                ))
+                binding.catalogStatus.text = status.orEmpty()
+                binding.catalogStatus.visibility =
+                    if (status.isNullOrBlank()) View.GONE else View.VISIBLE
                 binding.marketScroll.visibility = View.VISIBLE
                 renderChips(data)
                 renderCompatibility(data)
@@ -104,7 +114,8 @@ class MarketFragment : Fragment(R.layout.fragment_market) {
             }
 
             is MarketUiState.Error -> threeState.showError(
-                message = getString(R.string.market_error, state.message.orEmpty()),
+                message = state.failure?.let { failureText(requireContext(), it) }
+                    ?: getString(R.string.catalog_error_unknown),
                 onRetry = { viewModel.load() },
             )
         }
@@ -150,23 +161,36 @@ class MarketFragment : Fragment(R.layout.fragment_market) {
                 getString(
                     R.string.market_compat_category,
                     getString(profile.category.labelRes()),
-                    profile.vendor.ifBlank { getString(R.string.market_unknown_value) },
                 ),
             ),
         )
+        val declared = profile.metrics
         body.addView(
             bodyText(
-                if (profile.metrics.isEmpty()) {
+                if (declared.isEmpty()) {
                     getString(R.string.market_compat_no_metrics)
                 } else {
                     getString(
                         R.string.market_compat_metrics,
-                        profile.metrics.joinToString("、") { getString(it.labelRes()) },
+                        declared.joinToString("、") { it.label(requireContext()) },
                     )
                 },
             ),
             topMargin(R.dimen.space_8),
         )
+        if (profile.unsupportedMetrics.isNotEmpty()) {
+            body.addView(
+                caption(
+                    getString(
+                        R.string.market_compat_unsupported_metrics,
+                        profile.unsupportedMetrics.joinToString("、") {
+                            it.label(requireContext())
+                        },
+                    ),
+                ),
+                topMargin(R.dimen.space_4),
+            )
+        }
         body.addView(
             bodyText(
                 if (profile.services.isEmpty()) {
@@ -186,9 +210,10 @@ class MarketFragment : Fragment(R.layout.fragment_market) {
                 caption(getString(R.string.market_compat_limitations)),
                 topMargin(R.dimen.space_8),
             )
+            // 限制文案直接来自服务端目录，不在本地生成或改写。
             profile.limitations.forEach { limitation ->
                 body.addView(
-                    bodyText("• " + limitationText(limitation)),
+                    bodyText("• $limitation"),
                     topMargin(R.dimen.space_4),
                 )
             }
@@ -223,7 +248,7 @@ class MarketFragment : Fragment(R.layout.fragment_market) {
                         getString(
                             R.string.market_guide_evidence,
                             recommendation.evidence.metrics.joinToString("、") {
-                                getString(it.labelRes())
+                                it.label(requireContext())
                             },
                             recommendation.recommended.size,
                             recommendation.evidence.serviceCount,
@@ -327,14 +352,6 @@ class MarketFragment : Fragment(R.layout.fragment_market) {
         card.contentDescription = item.title
         return card
     }
-
-    private fun limitationText(limitation: CompatibilityLimitation): String =
-        when (limitation) {
-            CompatibilityLimitation.NUS_LINE_BASED -> getString(R.string.market_limitation_nus)
-            CompatibilityLimitation.NO_PARSABLE_METRIC -> getString(R.string.market_limitation_no_metric)
-            CompatibilityLimitation.NO_GATT_SERVICES -> getString(R.string.market_limitation_no_services)
-            CompatibilityLimitation.FIRMWARE_UNKNOWN -> getString(R.string.market_limitation_firmware)
-        }
 
     private fun scenarioTitle(scenario: MarketScenario): String =
         when (scenario) {

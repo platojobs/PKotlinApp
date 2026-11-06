@@ -1,7 +1,8 @@
 package com.platojobs.pkotlinapp.data.sync
 
 import com.platojobs.pkotlinapp.data.remote.AnonymousLoginResponse
-import com.platojobs.pkotlinapp.data.remote.ExportPageResponse
+import com.platojobs.pkotlinapp.data.remote.DeletionRequestResponse
+import com.platojobs.pkotlinapp.data.remote.ExportTaskResponse
 import com.platojobs.pkotlinapp.data.remote.PairingClaimRequest
 import com.platojobs.pkotlinapp.data.remote.PairingClaimResponse
 import com.platojobs.pkotlinapp.data.remote.PairingCodeResponse
@@ -128,13 +129,16 @@ class RemoteSyncTokenTest {
         override suspend fun claimPairingCode(body: PairingClaimRequest): PairingClaimResponse =
             PairingClaimResponse()
 
-        override suspend fun exportMyData(
-            authorization: String,
-            cursor: String?,
-            limit: Int,
-        ): ExportPageResponse = ExportPageResponse()
+        override suspend fun createMyDataExport(authorization: String): ExportTaskResponse =
+            ExportTaskResponse()
 
-        override suspend fun deleteMyAccount(authorization: String) = Unit
+        override suspend fun myDataExport(authorization: String, id: String): ExportTaskResponse =
+            ExportTaskResponse()
+
+        override suspend fun createDeletionRequest(authorization: String): DeletionRequestResponse =
+            DeletionRequestResponse()
+
+        override suspend fun deleteMyAccount(deletionToken: String) = Unit
 
         override suspend fun households(
             authorization: String,

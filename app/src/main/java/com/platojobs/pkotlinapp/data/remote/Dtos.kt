@@ -82,6 +82,42 @@ data class GattServiceDto(
 )
 
 /**
+ * `GET /api/v1/catalog/device-types`（openapi 0.14.0）：
+ * 服务端设备类型目录，公开只读，ETag/Last-Modified 支持 304。
+ */
+data class DeviceTypeCatalogDto(
+    val version: Long? = null,
+    val generatedAt: String? = null,
+    val items: List<CatalogDeviceTypeDto>? = null,
+)
+
+data class CatalogDeviceTypeDto(
+    val type: String? = null,
+    val displayName: String? = null,
+    val description: String? = null,
+    val gattServices: List<GattServiceDto>? = null,
+    val metrics: List<CatalogMetricDto>? = null,
+    val limitations: List<String>? = null,
+    val compatibility: CompatibilityDto? = null,
+    val updatedAt: String? = null,
+)
+
+/** 目录声明的指标：key / unit / 来源 GATT 特征（不是服务）UUID。 */
+data class CatalogMetricDto(
+    val key: String? = null,
+    val unit: String? = null,
+    val characteristicUuid: String? = null,
+)
+
+/** 目录条目缓存载荷；与条目分开存放，便于整表替换时一次序列化。 */
+data class CatalogItemPayloadDto(
+    val gattServices: List<GattServiceDto> = emptyList(),
+    val metrics: List<CatalogMetricDto> = emptyList(),
+    val limitations: List<String> = emptyList(),
+    val compatibility: CompatibilityDto? = null,
+)
+
+/**
  * `GET /api/v1/my/devices/{platform}/{externalId}`：用户私有设备。
  * 0.3.2 起带 enrich 字段（deviceType/vendor/firmwareVersion/compatibility），均可为 null。
  */

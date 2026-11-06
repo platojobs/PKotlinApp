@@ -31,8 +31,8 @@ android {
         applicationId = "com.platojobs.pkotlinapp"
         minSdk = 24
         targetSdk = 36
-        versionCode = 27
-        versionName = "0.19.0"
+        versionCode = 28
+        versionName = "0.20.0"
         buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
     }
 
@@ -117,6 +117,11 @@ tasks.register<Test>("e2eContract") {
         "e2eBaseUrl",
         providers.gradleProperty("e2eBaseUrl").orNull ?: "http://127.0.0.1:8080",
     )
+    // 低限流 fixture（账号 3/min）；未提供时对应用例自动跳过。
+    systemProperty(
+        "e2eFeedbackLimitBaseUrl",
+        providers.gradleProperty("e2eFeedbackLimitBaseUrl").orNull ?: "",
+    )
     systemProperty("e2eStore", "fixture")
     testLogging {
         showStandardStreams = true
@@ -192,4 +197,5 @@ dependencies {
     // 用真实 SQLite 在 JVM 上验证 Room 迁移 SQL，不依赖模拟器。
     testImplementation(libs.sqlite.jdbc)
     testImplementation(libs.robolectric)
+    testImplementation(libs.kotlinx.coroutines.test)
 }

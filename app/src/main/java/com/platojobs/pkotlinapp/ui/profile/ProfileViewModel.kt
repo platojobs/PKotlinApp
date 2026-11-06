@@ -8,6 +8,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.platojobs.pkotlinapp.PKotlinApplication
 import com.platojobs.pkotlinapp.R
 import com.platojobs.pkotlinapp.data.account.AccountService
+import com.platojobs.pkotlinapp.data.account.ExportStage
 import com.platojobs.pkotlinapp.data.collection.CollectionLauncher
 import com.platojobs.pkotlinapp.data.collection.CollectionSession
 import com.platojobs.pkotlinapp.data.collection.CollectionStatus
@@ -19,6 +20,9 @@ import com.platojobs.pkotlinapp.data.sync.SyncErrorKind
 import com.platojobs.pkotlinapp.data.sync.SyncManager
 import com.platojobs.pkotlinapp.data.sync.TokenStore
 import com.platojobs.pkotlinapp.data.sync.classifySyncError
+import com.platojobs.pkotlinapp.domain.account.AccountDeletionBlockedException
+import com.platojobs.pkotlinapp.domain.account.DeletionTokenExpiredException
+import com.platojobs.pkotlinapp.domain.account.DeletionTokenInvalidException
 import com.platojobs.pkotlinapp.domain.account.PairingCode
 import com.platojobs.pkotlinapp.domain.account.PairingCodeFormat
 import com.platojobs.pkotlinapp.domain.account.PairingCodeInvalidException
@@ -88,11 +92,13 @@ data class InviteState(
     val expired: Boolean get() = code != null && remainingSeconds <= 0
 }
 
-/** 账号数据导出：Running 显示真实累计条数与页码。 */
+/** 账号数据导出：服务端异步任务，状态依次为请求中 → 生成中 → 下载中 → 可分享。 */
 sealed interface AccountExportState {
     data object Idle : AccountExportState
-    data class Running(val readings: Int, val page: Int) : AccountExportState
-    data class Ready(val file: File, val readings: Int, val pages: Int) : AccountExportState
+    data object Requesting : AccountExportState
+    data object Pending : AccountExportState
+    data object Downloading : AccountExportState
+    data class Ready(val file: File) : AccountExportState
     data class Error(val message: String) : AccountExportState
 }
 
@@ -146,6 +152,10 @@ class ProfileViewModel(
 
     private val _deleting = MutableStateFlow(false)
     val deleting: StateFlow<Boolean> = _deleting.asStateFlow()
+
+    /** 409：owner 的家庭还有成员；Fragment 收到后滚动到家庭区块并给出可读提示。 */
+    private val _deletionBlocked = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val deletionBlocked: SharedFlow<Unit> = _deletionBlocked.asSharedFlow()
 
     private val _accountMessage = MutableSharedFlow<String>(extraBufferCapacity = 4)
     val accountMessage: SharedFlow<String> = _accountMessage.asSharedFlow()
@@ -639,25 +649,27 @@ class ProfileViewModel(
 
     // ---- 导出 / 注销 ----
 
-    /** 拉全账号数据并写盘；进度是真实页数与条数。 */
+    /** 创建服务端异步导出任务并轮询到可下载；下载链接过期时由服务侧重签。 */
     fun exportAccountData() {
-        if (_accountExport.value is AccountExportState.Running) return
+        val state = _accountExport.value
+        if (state is AccountExportState.Requesting ||
+            state is AccountExportState.Pending ||
+            state is AccountExportState.Downloading
+        ) {
+            return
+        }
         viewModelScope.launch {
-            _accountExport.value = AccountExportState.Running(readings = 0, page = 0)
+            _accountExport.value = AccountExportState.Requesting
             try {
                 val file = withContext(Dispatchers.IO) {
-                    accountService.exportData { progress ->
-                        _accountExport.value = AccountExportState.Running(
-                            readings = progress.readings,
-                            page = progress.page,
-                        )
+                    accountService.exportData { stage ->
+                        _accountExport.value = when (stage) {
+                            ExportStage.PENDING -> AccountExportState.Pending
+                            ExportStage.READY -> AccountExportState.Downloading
+                        }
                     }
                 }
-                _accountExport.value = AccountExportState.Ready(
-                    file = file.file,
-                    readings = file.readings,
-                    pages = file.pages,
-                )
+                _accountExport.value = AccountExportState.Ready(file.file)
             } catch (e: Exception) {
                 _accountExport.value = AccountExportState.Error(
                     appContext.getString(R.string.account_export_failed, failureText(e)),
@@ -667,12 +679,17 @@ class ProfileViewModel(
     }
 
     fun consumeAccountExport() {
-        if (_accountExport.value !is AccountExportState.Running) {
+        if (_accountExport.value is AccountExportState.Idle ||
+            _accountExport.value is AccountExportState.Error
+        ) {
             _accountExport.value = AccountExportState.Idle
         }
     }
 
-    /** 注销：远端成功后清 token、游标、同步状态与 Room 全部业务表。 */
+    /**
+     * 注销：服务端先签发一次性令牌再删除；成功后清 token、游标、同步状态与 Room
+     * 全部业务表。409（家庭还有成员）单独提示并引导到家庭设置。
+     */
     fun deleteAccount() {
         if (_deleting.value) return
         viewModelScope.launch {
@@ -683,14 +700,22 @@ class ProfileViewModel(
                 _accountExport.value = AccountExportState.Idle
                 _accountMessage.emit(appContext.getString(R.string.account_delete_success))
                 refreshPermissions()
+            } catch (e: AccountDeletionBlockedException) {
+                _deletionBlocked.emit(Unit)
             } catch (e: Exception) {
                 _accountMessage.emit(
-                    appContext.getString(R.string.account_delete_failure, failureText(e)),
+                    appContext.getString(R.string.account_delete_failure, deletionErrorText(e)),
                 )
             } finally {
                 _deleting.value = false
             }
         }
+    }
+
+    private fun deletionErrorText(error: Throwable): String = when (error) {
+        is DeletionTokenExpiredException -> appContext.getString(R.string.account_delete_token_expired)
+        is DeletionTokenInvalidException -> appContext.getString(R.string.account_delete_token_invalid)
+        else -> failureText(error)
     }
 
     fun stopCollection() {

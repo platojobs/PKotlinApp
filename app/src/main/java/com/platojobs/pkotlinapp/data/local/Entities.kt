@@ -240,6 +240,39 @@ data class FeedbackDraftEntity(
     val lastAttemptAt: Long? = null,
 )
 
+/**
+ * 设备类型目录的本地缓存（服务端 `/catalog/device-types` 的唯一下游副本）。
+ *
+ * [payloadJson] 保存 gattServices / metrics / limitations / compatibility，
+ * 与 [CatalogSyncEntity] 在同一事务内整体替换，避免条目与 ETag 版本错配。
+ */
+@Entity(tableName = "device_type_catalog")
+data class CatalogItemEntity(
+    @PrimaryKey val type: String,
+    val displayName: String,
+    val description: String,
+    val updatedAt: String,
+    val sortOrder: Int,
+    @ColumnInfo(defaultValue = "'{}'") val payloadJson: String,
+)
+
+/**
+ * 目录缓存的条件请求元数据（单行，id 恒为 1）。
+ *
+ * 选择 Room 而不是 DataStore：目录条目与 ETag/Last-Modified 必须原子替换，
+ * 且目录条目要和本地设备类型同库关联；DataStore 无法保证两者的同一事务。
+ */
+@Entity(tableName = "catalog_sync_state")
+data class CatalogSyncEntity(
+    @PrimaryKey val id: Int = 1,
+    val version: Long,
+    val generatedAt: String,
+    val etag: String? = null,
+    val lastModified: String? = null,
+    val fetchedAt: Long,
+    val lastUsedAt: Long,
+)
+
 @Entity(tableName = "scan_logs")
 data class ScanLogEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,

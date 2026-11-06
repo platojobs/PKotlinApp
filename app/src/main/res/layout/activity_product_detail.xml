@@ -46,6 +46,15 @@
                     android:textColor="@color/text_secondary" />
 
                 <TextView
+                    android:id="@+id/detailCatalogStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/space_4"
+                    android:textAppearance="@style/TextAppearance.App.Footnote"
+                    android:textColor="@color/text_secondary"
+                    android:visibility="gone" />
+
+                <TextView
                     android:id="@+id/detailCategory"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -114,6 +123,23 @@
                     android:layout_marginTop="@dimen/space_4"
                     android:textAppearance="@style/TextAppearance.App.Caption"
                     android:textColor="@color/text_secondary" />
+
+                <TextView
+                    android:id="@+id/detailLimitationsTitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/section_gap"
+                    android:text="@string/product_detail_limitations"
+                    android:textAppearance="@style/TextAppearance.App.Headline"
+                    android:visibility="gone" />
+
+                <LinearLayout
+                    android:id="@+id/detailLimitations"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/space_8"
+                    android:orientation="vertical"
+                    android:visibility="gone" />
 
                 <TextView
                     android:id="@+id/detailServicesTitle"

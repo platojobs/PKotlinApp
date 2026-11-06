@@ -747,6 +747,52 @@ interface FeedbackDao {
     suspend fun delete(id: Long)
 }
 
+/**
+ * 设备类型目录缓存：条目与条件请求元数据在同一事务内整体替换。
+ * 读取永远走本地缓存，网络刷新只负责更新缓存，避免首屏等待目录请求。
+ */
+@Dao
+interface CatalogDao {
+
+    @Query("SELECT * FROM device_type_catalog ORDER BY sortOrder ASC, type ASC")
+    fun observeItems(): Flow<List<CatalogItemEntity>>
+
+    @Query("SELECT * FROM device_type_catalog ORDER BY sortOrder ASC, type ASC")
+    suspend fun items(): List<CatalogItemEntity>
+
+    @Query("SELECT * FROM catalog_sync_state WHERE id = 1 LIMIT 1")
+    fun observeSync(): Flow<CatalogSyncEntity?>
+
+    @Query("SELECT * FROM catalog_sync_state WHERE id = 1 LIMIT 1")
+    suspend fun sync(): CatalogSyncEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertItems(items: List<CatalogItemEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertSync(sync: CatalogSyncEntity)
+
+    @Query("DELETE FROM device_type_catalog")
+    suspend fun deleteItems()
+
+    @Query("UPDATE catalog_sync_state SET lastUsedAt = :timestamp WHERE id = 1")
+    suspend fun touchLastUsed(timestamp: Long)
+
+    /** 304 只刷新使用时间，不动条目与 ETag。 */
+    @Transaction
+    suspend fun markUsed(timestamp: Long) {
+        touchLastUsed(timestamp)
+    }
+
+    /** 200 响应：条目与版本/ETag/Last-Modified 一次性替换，不会出现新旧混用。 */
+    @Transaction
+    suspend fun replaceAll(items: List<CatalogItemEntity>, sync: CatalogSyncEntity) {
+        deleteItems()
+        upsertItems(items)
+        upsertSync(sync)
+    }
+}
+
 @Dao
 interface ScanLogDao {
 

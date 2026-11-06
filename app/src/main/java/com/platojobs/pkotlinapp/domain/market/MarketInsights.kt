@@ -1,42 +1,34 @@
 package com.platojobs.pkotlinapp.domain.market
 
+import com.platojobs.pkotlinapp.domain.catalog.CatalogMetric
+import com.platojobs.pkotlinapp.domain.catalog.DeviceTypeCatalogItem
 import com.platojobs.pkotlinapp.domain.model.GattServiceSpec
-import com.platojobs.pkotlinapp.domain.model.ProductModel
 import com.platojobs.pkotlinapp.domain.product.ProductCategory
-import com.platojobs.pkotlinapp.domain.product.SupportedMetric
 import com.platojobs.pkotlinapp.domain.product.productCategoryOf
-import com.platojobs.pkotlinapp.domain.product.supportedMetricsOf
-import com.platojobs.pkotlinapp.domain.reading.ReadingUuids
 
 /**
- * 市场页的「兼容性查询 / 选购指南」纯领域计算：
- * 所有结论都从现有 catalog（GATT 服务）与 [ReadingUuids] 推导，
+ * 市场页的「兼容性查询 / 选购指南」纯领域计算。
+ *
+ * 类型、GATT 服务、指标、限制、兼容性全部来自服务端目录；
+ * 本机是否真的能解析某个指标由 [CatalogMetric.supportedByApp] 决定，
  * 不维护第二份「支持机型/指标」真值，也不编造营销结论。
  */
-enum class CompatibilityLimitation {
-    /** NUS 是文本协议，设备必须按 `metric=value` 逐行输出才能解析。 */
-    NUS_LINE_BASED,
-
-    /** 目录声明了服务，但 App 没有实现对应测量特征。 */
-    NO_PARSABLE_METRIC,
-
-    /** 目录没有 GATT 服务清单，无法预判。 */
-    NO_GATT_SERVICES,
-
-    /** 目录没有固件版本，兼容性以实际固件为准。 */
-    FIRMWARE_UNKNOWN,
-}
-
 data class CompatibilityProfile(
     val deviceTypeKey: String,
     val displayName: String,
-    val vendor: String,
     val category: ProductCategory,
-    val firmwareVersion: String,
-    val metrics: List<SupportedMetric>,
+    /** 目录声明的全部指标；其中 [CatalogMetric.supportedByApp] 区分本机可解析与否。 */
+    val metrics: List<CatalogMetric>,
     val services: List<GattServiceSpec>,
-    val limitations: List<CompatibilityLimitation>,
-)
+    /** 服务端目录声明的限制（原始文案），不再本地生成。 */
+    val limitations: List<String>,
+) {
+    val supportedMetrics: List<CatalogMetric>
+        get() = metrics.filter { it.supportedByApp }
+
+    val unsupportedMetrics: List<CatalogMetric>
+        get() = metrics.filterNot { it.supportedByApp }
+}
 
 enum class MarketScenario {
     HEALTH,
@@ -46,7 +38,7 @@ enum class MarketScenario {
 
 /** 选购建议的依据：由目录中真实可解析指标与服务数量汇总。 */
 data class ScenarioEvidence(
-    val metrics: List<SupportedMetric>,
+    val metrics: List<CatalogMetric>,
     val serviceCount: Int,
 )
 
@@ -56,44 +48,33 @@ data class ScenarioRecommendation(
     val evidence: ScenarioEvidence,
 )
 
-/**
- * 兼容性档案：指标来自 [supportedMetricsOf]（内部使用 [ReadingUuids.supported]），
- * 服务清单直接展示 catalog 返回的 UUID，不做映射美化。
- */
-fun compatibilityProfiles(models: List<ProductModel>): List<CompatibilityProfile> =
-    models
-        .filter { it.deviceTypeKey.isNotBlank() }
-        .map { model ->
-            val metrics = supportedMetricsOf(model.services.map { it.uuid })
+/** 兼容性档案：直接消费服务端目录条目，不经过本地型号映射。 */
+fun compatibilityProfiles(items: List<DeviceTypeCatalogItem>): List<CompatibilityProfile> =
+    items
+        .filter { it.type.isNotBlank() }
+        .map { item ->
             CompatibilityProfile(
-                deviceTypeKey = model.deviceTypeKey,
-                displayName = model.model.takeIf { it.isNotBlank() } ?: model.id,
-                vendor = model.vendor,
-                category = productCategoryOf(model.deviceTypeKey),
-                firmwareVersion = model.firmwareVersion,
-                metrics = metrics,
-                services = model.services,
-                limitations = limitationsOf(metrics, model.services, model.firmwareVersion),
+                deviceTypeKey = item.type,
+                displayName = item.displayName.ifBlank { item.type },
+                category = productCategoryOf(item.type),
+                metrics = item.metrics,
+                services = item.services.map { service ->
+                    GattServiceSpec(
+                        uuid = service.uuid,
+                        name = service.name,
+                        characteristics = emptyList(),
+                    )
+                },
+                limitations = item.limitations,
             )
         }
         .sortedWith(compareBy({ it.category.ordinal }, { it.displayName }))
 
-private fun limitationsOf(
-    metrics: List<SupportedMetric>,
-    services: List<GattServiceSpec>,
-    firmwareVersion: String,
-): List<CompatibilityLimitation> = buildList {
-    if (services.isEmpty()) add(CompatibilityLimitation.NO_GATT_SERVICES)
-    if (services.isNotEmpty() && metrics.isEmpty()) add(CompatibilityLimitation.NO_PARSABLE_METRIC)
-    if (SupportedMetric.NUS in metrics) add(CompatibilityLimitation.NUS_LINE_BASED)
-    if (firmwareVersion.isBlank()) add(CompatibilityLimitation.FIRMWARE_UNKNOWN)
-}
-
 /**
  * 按场景从真实能力筛选类型：
- * - 健康监测：App 能解析心率特征的类型；
- * - 环境采集：App 能解析温度特征的类型；
- * - 多设备组网：使用 NUS 文本通道的类型（可承载自定义指标）。
+ * - 健康监测：目录声明心率且本机解析器支持；
+ * - 环境采集：目录声明温度且本机解析器支持；
+ * - 多设备组网：使用 NUS 文本通道的类型。
  * 没有匹配类型时返回空推荐，由界面如实说明，而不是硬凑一个型号。
  */
 fun scenarioRecommendation(
@@ -101,17 +82,31 @@ fun scenarioRecommendation(
     profiles: List<CompatibilityProfile>,
 ): ScenarioRecommendation {
     val recommended = when (scenario) {
-        MarketScenario.HEALTH -> profiles.filter { SupportedMetric.HEART_RATE in it.metrics }
-        MarketScenario.ENVIRONMENT -> profiles.filter { SupportedMetric.TEMPERATURE in it.metrics }
-        MarketScenario.MULTI_DEVICE -> profiles.filter { SupportedMetric.NUS in it.metrics }
-    }.sortedWith(compareByDescending<CompatibilityProfile> { it.metrics.size }
-        .thenBy { it.displayName })
+        MarketScenario.HEALTH -> profiles.filter { profile ->
+            profile.supportedMetrics.any { it.key == METRIC_HEART_RATE }
+        }
 
-    val metrics = recommended.flatMap { it.metrics }.distinct()
-    val serviceCount = recommended.map { it.services.size }.maxOrNull() ?: 0
+        MarketScenario.ENVIRONMENT -> profiles.filter { profile ->
+            profile.supportedMetrics.any { it.key == METRIC_TEMPERATURE }
+        }
+
+        MarketScenario.MULTI_DEVICE -> profiles.filter { profile ->
+            profile.services.any { it.uuid.trim().lowercase() == NUS_SERVICE_UUID }
+        }
+    }.sortedWith(
+        compareByDescending<CompatibilityProfile> { it.supportedMetrics.size }
+            .thenBy { it.displayName },
+    )
+
+    val metrics = recommended.flatMap { it.supportedMetrics }.distinct()
+    val serviceCount = recommended.maxOfOrNull { it.services.size } ?: 0
     return ScenarioRecommendation(
         scenario = scenario,
         recommended = recommended,
         evidence = ScenarioEvidence(metrics = metrics, serviceCount = serviceCount),
     )
 }
+
+private const val METRIC_HEART_RATE = "heart_rate"
+private const val METRIC_TEMPERATURE = "temperature_celsius"
+private const val NUS_SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e"

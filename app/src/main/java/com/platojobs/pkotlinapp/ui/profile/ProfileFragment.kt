@@ -212,6 +212,20 @@ class ProfileFragment : Fragment() {
                     }
                 }
                 launch {
+                    viewModel.deletionBlocked.collect {
+                        Snackbar.make(
+                            binding.root,
+                            R.string.account_delete_blocked,
+                            Snackbar.LENGTH_LONG,
+                        ).setAction(R.string.account_delete_blocked_action) {
+                            binding.profileScroll.smoothScrollTo(
+                                0,
+                                binding.householdSection.root.top,
+                            )
+                        }.show()
+                    }
+                }
+                launch {
                     viewModel.currentHousehold.collect { renderHousehold(it) }
                 }
                 launch {
@@ -683,52 +697,65 @@ class ProfileFragment : Fragment() {
     }
 
     private fun renderAccountExport(state: AccountExportState) {
+        val section = binding.accountSection
         when (state) {
             AccountExportState.Idle -> {
-                binding.accountSection.exportAccountButton.isEnabled = true
-                binding.accountSection.exportAccountButton.setText(R.string.account_export_button)
-                binding.accountSection.exportAccountStatus.visibility = View.GONE
-                binding.accountSection.exportShareButton.visibility = View.GONE
+                section.exportAccountButton.isEnabled = true
+                section.exportAccountButton.setText(R.string.account_export_button)
+                section.exportAccountStatus.visibility = View.GONE
+                section.exportShareButton.visibility = View.GONE
             }
 
-            is AccountExportState.Running -> {
-                binding.accountSection.exportAccountButton.isEnabled = false
-                binding.accountSection.exportAccountStatus.visibility = View.VISIBLE
-                binding.accountSection.exportAccountStatus.setTextColor(
+            AccountExportState.Requesting -> {
+                section.exportAccountButton.isEnabled = false
+                section.exportAccountStatus.visibility = View.VISIBLE
+                section.exportAccountStatus.setTextColor(
                     ContextCompat.getColor(requireContext(), R.color.text_secondary),
                 )
-                binding.accountSection.exportAccountStatus.text = getString(
-                    R.string.account_export_progress,
-                    state.page,
-                    state.readings,
+                section.exportAccountStatus.setText(R.string.account_export_requesting)
+                section.exportShareButton.visibility = View.GONE
+            }
+
+            AccountExportState.Pending -> {
+                section.exportAccountButton.isEnabled = false
+                section.exportAccountStatus.visibility = View.VISIBLE
+                section.exportAccountStatus.setTextColor(
+                    ContextCompat.getColor(requireContext(), R.color.text_secondary),
                 )
-                binding.accountSection.exportShareButton.visibility = View.GONE
+                section.exportAccountStatus.setText(R.string.account_export_pending)
+                section.exportShareButton.visibility = View.GONE
+            }
+
+            AccountExportState.Downloading -> {
+                section.exportAccountButton.isEnabled = false
+                section.exportAccountStatus.visibility = View.VISIBLE
+                section.exportAccountStatus.setTextColor(
+                    ContextCompat.getColor(requireContext(), R.color.text_secondary),
+                )
+                section.exportAccountStatus.setText(R.string.account_export_downloading)
+                section.exportShareButton.visibility = View.GONE
             }
 
             is AccountExportState.Ready -> {
-                binding.accountSection.exportAccountButton.isEnabled = true
-                binding.accountSection.exportAccountButton.setText(R.string.account_export_button)
-                binding.accountSection.exportAccountStatus.visibility = View.VISIBLE
-                binding.accountSection.exportAccountStatus.setTextColor(
+                section.exportAccountButton.isEnabled = true
+                section.exportAccountButton.setText(R.string.account_export_button)
+                section.exportAccountStatus.visibility = View.VISIBLE
+                section.exportAccountStatus.setTextColor(
                     ContextCompat.getColor(requireContext(), R.color.text_secondary),
                 )
-                binding.accountSection.exportAccountStatus.text = getString(
-                    R.string.account_export_ready,
-                    state.readings,
-                    state.pages,
-                )
-                binding.accountSection.exportShareButton.visibility = View.VISIBLE
+                section.exportAccountStatus.setText(R.string.account_export_ready)
+                section.exportShareButton.visibility = View.VISIBLE
             }
 
             is AccountExportState.Error -> {
-                binding.accountSection.exportAccountButton.isEnabled = true
-                binding.accountSection.exportAccountButton.setText(R.string.account_export_retry)
-                binding.accountSection.exportAccountStatus.visibility = View.VISIBLE
-                binding.accountSection.exportAccountStatus.setTextColor(
+                section.exportAccountButton.isEnabled = true
+                section.exportAccountButton.setText(R.string.account_export_retry)
+                section.exportAccountStatus.visibility = View.VISIBLE
+                section.exportAccountStatus.setTextColor(
                     ContextCompat.getColor(requireContext(), R.color.divider),
                 )
-                binding.accountSection.exportAccountStatus.text = state.message
-                binding.accountSection.exportShareButton.visibility = View.GONE
+                section.exportAccountStatus.text = state.message
+                section.exportShareButton.visibility = View.GONE
             }
         }
     }
@@ -746,12 +773,24 @@ class ProfileFragment : Fragment() {
         }
     }
 
+    /** 删除必须两次确认；第二步确认后才申请一次性令牌并删除。 */
     private fun confirmDeleteAccount() {
         MaterialAlertDialogBuilder(requireContext())
-            .setTitle(R.string.account_delete_confirm_title)
-            .setMessage(R.string.account_delete_confirm_message)
+            .setTitle(R.string.account_delete_step1_title)
+            .setMessage(R.string.account_delete_step1_message)
             .setNegativeButton(R.string.action_cancel, null)
-            .setPositiveButton(R.string.account_delete_confirm_ok) { _, _ ->
+            .setPositiveButton(R.string.account_delete_step1_ok) { _, _ ->
+                confirmDeleteAccountFinal()
+            }
+            .show()
+    }
+
+    private fun confirmDeleteAccountFinal() {
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.account_delete_step2_title)
+            .setMessage(R.string.account_delete_step2_message)
+            .setNegativeButton(R.string.action_cancel, null)
+            .setPositiveButton(R.string.account_delete_step2_ok) { _, _ ->
                 viewModel.deleteAccount()
             }
             .show()

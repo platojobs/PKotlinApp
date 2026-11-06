@@ -88,13 +88,16 @@ class CatalogMappingTest {
         override suspend fun claimPairingCode(body: PairingClaimRequest): PairingClaimResponse =
             PairingClaimResponse()
 
-        override suspend fun exportMyData(
-            authorization: String,
-            cursor: String?,
-            limit: Int,
-        ): ExportPageResponse = ExportPageResponse()
+        override suspend fun createMyDataExport(authorization: String): ExportTaskResponse =
+            ExportTaskResponse()
 
-        override suspend fun deleteMyAccount(authorization: String) = Unit
+        override suspend fun myDataExport(authorization: String, id: String): ExportTaskResponse =
+            ExportTaskResponse()
+
+        override suspend fun createDeletionRequest(authorization: String): DeletionRequestResponse =
+            DeletionRequestResponse()
+
+        override suspend fun deleteMyAccount(deletionToken: String) = Unit
 
         override suspend fun households(
             authorization: String,
@@ -237,6 +240,8 @@ class CatalogMappingTest {
         var catalogs: Map<String, DeviceCatalogDto> = emptyMap(),
         var publicDevice: PublicDeviceDto = PublicDeviceDto(),
         var myDeviceError: HttpException? = null,
+        var deviceTypeCatalogResponse: Response<DeviceTypeCatalogDto> =
+            Response.success(DeviceTypeCatalogDto()),
     ) : ApiService {
         var lastPlatform: String? = null
         var lastExternalId: String? = null
@@ -250,6 +255,11 @@ class CatalogMappingTest {
 
         override suspend fun getDeviceCatalog(type: String): DeviceCatalogDto =
             catalogs[type] ?: DeviceCatalogDto(deviceType = types.firstOrNull { it.type == type })
+
+        override suspend fun getDeviceTypeCatalog(
+            ifNoneMatch: String?,
+            ifModifiedSince: String?,
+        ): Response<DeviceTypeCatalogDto> = deviceTypeCatalogResponse
 
         override suspend fun getMyDevice(
             authorization: String,
@@ -297,33 +307,13 @@ class CatalogMappingTest {
     )
 
     @Test
-    fun `products map catalog and pick latest firmware`() = runBlocking {
-        val api = FakeApi(
-            types = listOf(
-                DeviceTypeDto(type = "environmental_sensor", name = "旧名称", vendor = "旧厂商"),
-            ),
-            catalogs = mapOf("environmental_sensor" to sensorCatalog()),
-        )
-
-        val products = ProductRepositoryImpl(api).fetchProducts()
-
-        assertEquals(1, products.size)
-        assertEquals("environmental_sensor", products[0].id)
-        assertEquals("环境传感器", products[0].model)
-        assertEquals("PJ Labs", products[0].vendor)
-        assertEquals("1.2.0", products[0].firmwareVersion)
-        assertEquals("温湿度采集", products[0].note)
-        assertEquals("0x181A", products[0].services.single().uuid)
-    }
-
-    @Test
-    fun `market flattens accessories from catalogs`() = runBlocking {
+    fun `market flattens accessories from catalogs using server catalog types`() = runBlocking {
         val api = FakeApi(
             types = listOf(DeviceTypeDto(type = "environmental_sensor", name = "环境传感器")),
             catalogs = mapOf("environmental_sensor" to sensorCatalog()),
         )
 
-        val items = RemoteMarketDataSource(api).loadItems()
+        val items = RemoteMarketDataSource(api).loadItems(listOf("environmental_sensor"))
 
         assertEquals(1, items.size)
         assertEquals("acc-1", items[0].id)

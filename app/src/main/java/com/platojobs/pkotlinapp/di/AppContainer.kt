@@ -1,6 +1,7 @@
 package com.platojobs.pkotlinapp.di
 
 import android.content.Context
+import com.platojobs.pkotlinapp.BuildConfig
 import com.platojobs.pkotlinapp.data.account.AccountService
 import com.platojobs.pkotlinapp.data.account.RemoteAccountDataSource
 import com.platojobs.pkotlinapp.data.ble.BleConnectionManager
@@ -15,7 +16,6 @@ import com.platojobs.pkotlinapp.data.prefs.AppSettings
 import com.platojobs.pkotlinapp.data.remote.ApiClient
 import com.platojobs.pkotlinapp.data.remote.DeviceInfoRepositoryImpl
 import com.platojobs.pkotlinapp.data.remote.MarketRepositoryImpl
-import com.platojobs.pkotlinapp.data.remote.ProductRepositoryImpl
 import com.platojobs.pkotlinapp.data.remote.RemoteMarketDataSource
 import com.platojobs.pkotlinapp.data.repository.DeviceRepositoryImpl
 import com.platojobs.pkotlinapp.data.repository.ReadingRepositoryImpl
@@ -39,7 +39,6 @@ import com.platojobs.pkotlinapp.domain.repository.DeviceInfoRepository
 import com.platojobs.pkotlinapp.domain.repository.DeviceRepository
 import com.platojobs.pkotlinapp.domain.repository.MarketRepository
 import com.platojobs.pkotlinapp.domain.reading.ReadingRemote
-import com.platojobs.pkotlinapp.domain.repository.ProductRepository
 import com.platojobs.pkotlinapp.domain.repository.ReadingRepository
 import com.platojobs.pkotlinapp.domain.repository.RoomRepository
 import com.platojobs.pkotlinapp.domain.repository.RuleEventRepository
@@ -167,8 +166,12 @@ class AppContainer(context: Context) {
         )
     }
 
-    val productRepository: ProductRepository by lazy {
-        ProductRepositoryImpl(apiService)
+    /** 设备类型目录：服务端唯一真值 + Room 缓存；首屏读缓存，后台条件刷新。 */
+    val deviceCatalogStore: com.platojobs.pkotlinapp.data.catalog.DeviceCatalogStore by lazy {
+        com.platojobs.pkotlinapp.data.catalog.DeviceCatalogStore(
+            dao = database.catalogDao(),
+            remote = com.platojobs.pkotlinapp.data.catalog.RetrofitCatalogRemote(apiService),
+        )
     }
 
     val marketRepository: MarketRepository by lazy {
@@ -195,7 +198,11 @@ class AppContainer(context: Context) {
     /** 账号迁移 / 导出 / 注销；远端失败时本地数据不会被清理。 */
     val accountService: AccountService by lazy {
         AccountService(
-            remote = RemoteAccountDataSource(api = syncApi, tokenStore = secureTokenStore),
+            remote = RemoteAccountDataSource(
+                api = syncApi,
+                tokenStore = secureTokenStore,
+                baseUrl = BuildConfig.API_BASE_URL,
+            ),
             tokenStore = secureTokenStore,
             cursorStore = syncPrefs,
             resetSyncStatus = { syncStatusStore.resetForRelogin() },
@@ -205,7 +212,6 @@ class AppContainer(context: Context) {
             },
             wipeLocalData = { database.clearAllTables() },
             exportDir = File(appContext.cacheDir, "exports"),
-            moshi = ApiClient.moshi(),
         )
     }
 

@@ -1,62 +1,59 @@
 package com.platojobs.pkotlinapp.domain.market
 
-import com.platojobs.pkotlinapp.domain.model.GattServiceSpec
-import com.platojobs.pkotlinapp.domain.model.ProductModel
-import com.platojobs.pkotlinapp.domain.product.SupportedMetric
-import com.platojobs.pkotlinapp.domain.reading.ReadingUuids
+import com.platojobs.pkotlinapp.domain.catalog.CatalogMetric
+import com.platojobs.pkotlinapp.domain.catalog.CatalogService
+import com.platojobs.pkotlinapp.domain.catalog.DeviceTypeCatalogItem
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 兼容性与选购建议必须由 catalog 服务 UUID + ReadingUuids 推导：
- * 指标不为空才推荐；NUS 的已知限制必须显式出现；目录没登记的服务不能编造。
+ * 兼容性与选购建议必须由服务端目录 + 本机解析器能力推导：
+ * 指标、服务、限制全部来自目录；本机不支持的指标不得进入推荐依据。
  */
 class MarketInsightsTest {
 
     @Test
-    fun `compatibility derives parsable metrics from reading uuids`() {
+    fun `compatibility marks declared metrics the parser cannot read`() {
         val profiles = compatibilityProfiles(
             listOf(
                 heartRateModel(),
                 environmentModel(),
                 nusModel(),
-                unparsableModel(),
+                weightModel(),
             ),
         )
 
         val heart = profiles.first { it.deviceTypeKey == "heart-rate-band" }
-        assertEquals(listOf(SupportedMetric.HEART_RATE), heart.metrics)
-        assertTrue(heart.limitations.contains(CompatibilityLimitation.FIRMWARE_UNKNOWN))
+        assertEquals(listOf("heart_rate"), heart.metrics.map { it.key })
+        assertEquals(listOf("heart_rate"), heart.supportedMetrics.map { it.key })
+        assertTrue(heart.unsupportedMetrics.isEmpty())
+        // 限制文案直接来自服务端目录。
+        assertEquals(listOf("需贴合皮肤测量"), heart.limitations)
 
         val environment = profiles.first { it.deviceTypeKey == "thermo-hygrometer" }
-        assertTrue(SupportedMetric.TEMPERATURE in environment.metrics)
-        assertFalse(environment.limitations.contains(CompatibilityLimitation.NO_PARSABLE_METRIC))
+        assertEquals(listOf("temperature_celsius"), environment.supportedMetrics.map { it.key })
+        assertEquals(listOf("relative_humidity"), environment.unsupportedMetrics.map { it.key })
 
-        val nus = profiles.first { it.deviceTypeKey == "nus-relay" }
-        assertTrue(nus.limitations.contains(CompatibilityLimitation.NUS_LINE_BASED))
-
-        val unparsable = profiles.first { it.deviceTypeKey == "vendor-private" }
-        assertTrue(unparsable.metrics.isEmpty())
-        assertTrue(unparsable.limitations.contains(CompatibilityLimitation.NO_PARSABLE_METRIC))
+        val weight = profiles.first { it.deviceTypeKey == "smart-scale" }
+        assertTrue(weight.supportedMetrics.isEmpty())
+        assertEquals(listOf("weight_kg"), weight.unsupportedMetrics.map { it.key })
+        assertEquals(listOf("本应用当前版本不支持体重解析"), weight.limitations)
     }
 
     @Test
-    fun `scenario recommendations only include types that can actually parse`() {
+    fun `scenario recommendations only include types whose metrics can be parsed`() {
         val profiles = compatibilityProfiles(
-            listOf(heartRateModel(), environmentModel(), nusModel(), unparsableModel()),
+            listOf(heartRateModel(), environmentModel(), nusModel(), weightModel()),
         )
 
         val health = scenarioRecommendation(MarketScenario.HEALTH, profiles)
-        assertEquals(
-            listOf("heart-rate-band"),
-            health.recommended.map { it.deviceTypeKey },
-        )
-        assertEquals(listOf(SupportedMetric.HEART_RATE), health.evidence.metrics)
+        assertEquals(listOf("heart-rate-band"), health.recommended.map { it.deviceTypeKey })
+        assertEquals(listOf("heart_rate"), health.evidence.metrics.map { it.key })
 
         val environment = scenarioRecommendation(MarketScenario.ENVIRONMENT, profiles)
         assertEquals(listOf("thermo-hygrometer"), environment.recommended.map { it.deviceTypeKey })
+        assertEquals(listOf("temperature_celsius"), environment.evidence.metrics.map { it.key })
 
         val network = scenarioRecommendation(MarketScenario.MULTI_DEVICE, profiles)
         assertEquals(listOf("nus-relay"), network.recommended.map { it.deviceTypeKey })
@@ -64,81 +61,67 @@ class MarketInsightsTest {
 
     @Test
     fun `scenario without matching capability returns no recommendation`() {
-        val profiles = compatibilityProfiles(listOf(unparsableModel()))
+        val profiles = compatibilityProfiles(listOf(weightModel()))
 
         val health = scenarioRecommendation(MarketScenario.HEALTH, profiles)
         assertTrue(health.recommended.isEmpty())
         assertTrue(health.evidence.metrics.isEmpty())
+        assertEquals(0, health.evidence.serviceCount)
     }
 
     private fun model(
-        id: String,
         key: String,
-        services: List<GattServiceSpec>,
-        firmware: String = "1.2.0",
-    ) = ProductModel(
-        id = id,
-        vendor = "Vendor",
-        model = id,
-        firmwareVersion = firmware,
-        note = "",
+        services: List<CatalogService>,
+        metrics: List<CatalogMetric>,
+        limitations: List<String> = emptyList(),
+    ) = DeviceTypeCatalogItem(
+        type = key,
+        displayName = key,
+        description = "",
         services = services,
-        deviceTypeKey = key,
+        metrics = metrics,
+        limitations = limitations,
+        compatibility = null,
+        updatedAt = "",
     )
 
     private fun heartRateModel() = model(
-        id = "心率手环",
         key = "heart-rate-band",
-        services = listOf(
-            GattServiceSpec(
-                uuid = HEART_RATE_SERVICE,
-                name = "Heart Rate",
-                characteristics = listOf(ReadingUuids.HEART_RATE),
-            ),
-        ),
-        firmware = "",
+        services = listOf(CatalogService(HEART_RATE_SERVICE, "Heart Rate")),
+        metrics = listOf(CatalogMetric("heart_rate", "bpm", HEART_RATE_CHARACTERISTIC)),
+        limitations = listOf("需贴合皮肤测量"),
     )
 
     private fun environmentModel() = model(
-        id = "温湿度计",
         key = "thermo-hygrometer",
-        services = listOf(
-            GattServiceSpec(
-                uuid = TEMPERATURE_SERVICE,
-                name = "Health Thermometer",
-                characteristics = listOf(ReadingUuids.TEMPERATURE),
-            ),
+        services = listOf(CatalogService(TEMPERATURE_SERVICE, "Health Thermometer")),
+        metrics = listOf(
+            CatalogMetric("temperature_celsius", "°C", TEMPERATURE_CHARACTERISTIC),
+            CatalogMetric("relative_humidity", "%", HUMIDITY_CHARACTERISTIC),
         ),
     )
 
     private fun nusModel() = model(
-        id = "NUS 中继",
         key = "nus-relay",
-        services = listOf(
-            GattServiceSpec(
-                uuid = NUS_SERVICE,
-                name = "Nordic UART",
-                characteristics = listOf(ReadingUuids.NUS_TX),
-            ),
-        ),
+        services = listOf(CatalogService(NUS_SERVICE, "Nordic UART")),
+        metrics = emptyList(),
     )
 
-    private fun unparsableModel() = model(
-        id = "私有协议设备",
-        key = "vendor-private",
-        services = listOf(
-            GattServiceSpec(
-                uuid = "0000fff0-0000-1000-8000-00805f9b34fb",
-                name = "Vendor Private",
-                characteristics = listOf("0000fff1-0000-1000-8000-00805f9b34fb"),
-            ),
-        ),
-        firmware = "",
+    private fun weightModel() = model(
+        key = "smart-scale",
+        services = listOf(CatalogService(WEIGHT_SERVICE, "Weight Scale")),
+        metrics = listOf(CatalogMetric("weight_kg", "kg", WEIGHT_CHARACTERISTIC)),
+        limitations = listOf("本应用当前版本不支持体重解析"),
     )
 
     private companion object {
         const val HEART_RATE_SERVICE = "0000180d-0000-1000-8000-00805f9b34fb"
+        const val HEART_RATE_CHARACTERISTIC = "00002a37-0000-1000-8000-00805f9b34fb"
         const val TEMPERATURE_SERVICE = "0000181a-0000-1000-8000-00805f9b34fb"
+        const val TEMPERATURE_CHARACTERISTIC = "00002a6e-0000-1000-8000-00805f9b34fb"
+        const val HUMIDITY_CHARACTERISTIC = "00002a6f-0000-1000-8000-00805f9b34fb"
+        const val WEIGHT_SERVICE = "0000181d-0000-1000-8000-00805f9b34fb"
+        const val WEIGHT_CHARACTERISTIC = "00002a9d-0000-1000-8000-00805f9b34fb"
         const val NUS_SERVICE = "6e400001-b5a3-f393-e0a9-e50e24dcca9e"
     }
 }

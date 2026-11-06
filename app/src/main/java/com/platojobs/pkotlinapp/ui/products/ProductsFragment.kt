@@ -14,7 +14,9 @@ import com.platojobs.pkotlinapp.R
 import com.platojobs.pkotlinapp.databinding.FragmentProductsBinding
 import com.platojobs.pkotlinapp.domain.product.ProductCategory
 import com.platojobs.pkotlinapp.ui.MainActivity
-import com.platojobs.pkotlinapp.ui.common.RemoteUiState
+import com.platojobs.pkotlinapp.ui.catalog.CatalogUiState
+import com.platojobs.pkotlinapp.ui.catalog.catalogStatusText
+import com.platojobs.pkotlinapp.ui.catalog.failureText
 import com.platojobs.pkotlinapp.ui.common.ThreeStateHost
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
@@ -38,7 +40,7 @@ class ProductsFragment : Fragment(R.layout.fragment_products) {
         adapter = ProductAdapter(
             deviceCounts = { viewModel.state.value.devicesByType.mapValues { it.value.size } },
             onClick = { product ->
-                ProductDetailActivity.start(requireContext(), product.deviceTypeKey)
+                ProductDetailActivity.start(requireContext(), product.type)
             },
         )
         binding.productsList.layoutManager = LinearLayoutManager(requireContext())
@@ -69,10 +71,17 @@ class ProductsFragment : Fragment(R.layout.fragment_products) {
 
     private fun render(state: ProductsUiState) {
         renderCategories(state)
-        when (val catalog = state.catalog) {
-            RemoteUiState.Loading -> threeState.showLoading()
+        val catalog = state.catalog
+        val status = (catalog as? CatalogUiState.Content)?.let { content ->
+            catalogStatusText(requireContext(), content)
+        }
+        binding.catalogStatus.text = status.orEmpty()
+        binding.catalogStatus.visibility = if (status.isNullOrBlank()) View.GONE else View.VISIBLE
 
-            is RemoteUiState.Success -> {
+        when (catalog) {
+            CatalogUiState.Loading -> threeState.showLoading()
+
+            is CatalogUiState.Content -> {
                 adapter.submitList(state.visibleProducts)
                 if (state.visibleProducts.isEmpty()) {
                     threeState.showEmpty(
@@ -86,8 +95,9 @@ class ProductsFragment : Fragment(R.layout.fragment_products) {
                 }
             }
 
-            is RemoteUiState.Error -> threeState.showError(
-                message = getString(R.string.products_error, catalog.message.orEmpty()),
+            is CatalogUiState.Error -> threeState.showError(
+                message = catalog.failure?.let { failureText(requireContext(), it) }
+                    ?: getString(R.string.catalog_error_unknown),
                 onRetry = { viewModel.load() },
             )
         }
@@ -98,11 +108,11 @@ class ProductsFragment : Fragment(R.layout.fragment_products) {
         val counts = state.categoryCounts
         val selected = state.selectedCategory
         binding.productCategories.removeAllViews()
-        if (state.catalog !is RemoteUiState.Success) {
+        if (state.catalog !is CatalogUiState.Content) {
             binding.productCategories.visibility = View.GONE
             return
         }
-        val total = state.catalog.items.size
+        val total = state.totalCount
         binding.productCategories.visibility = View.VISIBLE
         addCategoryChip(null, getString(R.string.product_category_all), total, selected == null)
         ProductCategory.navigable.forEach { category ->

@@ -6,6 +6,22 @@
 
 ---
 
+## v0.20.0
+
+**主题：设备类型目录改为服务端唯一真值；账号导出与删除接入异步任务与一次性令牌**
+
+- 目录真值：`GET /api/v1/catalog/device-types`（后端 v0.18.0 / 契约 0.14.0，匿名可读）成为产品页与市场兼容性的唯一事实来源。删除本地写死的类型清单、GATT 服务映射、指标表与限制文案（`ProductRepository` / `ProductModel` / `SupportedMetric`）；配件请求的类型列表也改为目录下发。
+- Room v18（`MIGRATION_17_18`）：新增 `device_type_catalog`（类型、显示名、说明、排序、`payloadJson` 原样保存 `gattServices`/`metrics`/`limitations`/`compatibility`）与 `catalog_sync_state`（`version`、`generatedAt`、`etag`、`lastModified`、`fetchedAt`、`lastUsedAt`）；条目与校验器在同一事务内原子替换。选择 Room 而非 DataStore：ETag 与目录条目必须同库同事务，且条目需要与设备类型做关联查询。
+- 条件请求：首次请求无校验器；之后带 `If-None-Match` / `If-Modified-Since`。`304` 只刷新 `lastUsedAt`，不重写条目；`200` 原子替换（允许服务端返回空目录以清空旧缓存）；失败绝不清缓存。
+- 首屏不阻塞：产品/市场先读 Room 缓存立即渲染，后台刷新失败只标记「离线缓存 + 目录更新时间」，不覆盖已有内容；无缓存且失败才进入可读错误与重试。60 秒节流避免页面切换反复请求，手动刷新可强制。
+- 一致性校验：目录声明但本机解析器未实现的指标（湿度 `2a6f`、体重 `2a9d` 等）统一标注「当前版本不支持」；详情与市场只展示目录声明的限制原文，不再本地二次加工。
+- 账号与数据（接后端 v0.19.0 / 契约 0.15.0）：
+  - 导出改为异步任务：`POST /me/export` 返回 202 → `GET /me/export/{id}` 轮询 `pending/ready/failed` → 用 `downloadUrl` 下载。链接 10 分钟有效且一次性，`410` 时客户端重新查询任务换新链接再下载；状态依次展示「请求中 / 服务端生成中 / 下载中 / 可分享」。删除旧的分页导出实现与 `AccountExportPager` / `AccountExportJson`。
+  - 删除改为两次确认 + 一次性令牌：第 1 步说明、第 2 步最终确认后才 `POST /me/deletion-request` 取令牌，再仅凭 `X-Deletion-Token` 调 `DELETE /me`（不再用 Bearer）。`409` 如实提示「家庭还有其他成员，请先转让所有权或移除成员」并提供跳转到家庭设置；任何失败都不清本地。删除成功后清 token、游标、同步状态并 `Room.clearAllTables()`，回到未登录态。
+- 「我的」新增「账号与数据」分区，导出与删除各有独立状态与错误提示，按钮保持 ≥48dp、文案中英双语。
+- 测试补强：引入 `kotlinx-coroutines-test` 用虚拟时间验证反馈退避：首次重试在 10s，随后 20/40/80/160/300s 指数增长并在 5 分钟封顶，累计 5 次自动重试后停止且草稿仍保留；429 只发一次请求、读取 `Retry-After` 且不自动重试。fixture e2e 新增低限流实例（反馈 3/min、burst 3）断言第 4 次 `429 FEEDBACK_RATE_LIMITED` + `Retry-After: 60` 且列表仍 3 条；新增目录 200/304 条件请求、异步导出与一次性链接（二次下载 410、重查任务换新链接）、令牌注销（400/403/204/404 与旧 token 401）。
+- 验证：`testDebugUnitTest`、`lintDebug`（0 error，仅既有 11 warning）、`assembleDebug` 全绿；fixture e2e 全绿；tag `v0.20.0`（`versionCode = 28`）。
+
 ## v0.19.0
 
 **主题：意见反馈从「本地待发」接成真实发送与可查询的真链路**

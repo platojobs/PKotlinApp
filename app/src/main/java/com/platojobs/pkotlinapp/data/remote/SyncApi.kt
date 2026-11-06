@@ -369,18 +369,25 @@ data class PairingClaimResponse(
     val expiresAt: String? = null,
 )
 
+/** POST /me/deletion-request 201：一次性删除令牌，明文只出现一次。 */
+data class DeletionRequestResponse(
+    val token: String? = null,
+    val expiresAt: String? = null,
+)
+
 /**
- * GET /me/export 的一页。
- * user/devices/readings 保留服务端原始结构（Map），导出时原样合并写盘，
- * cursor 是不透明串，客户端只透传、不解析。
+ * POST /me/export 与 GET /me/export/{id} 的响应。
+ * status 为 pending / ready / failed；ready 时 downloadUrl 为相对路径，
+ * 含一次性下载令牌，10 分钟有效且只能用一次。
  */
-data class ExportPageResponse(
-    val user: Map<String, Any?>? = null,
-    val devices: List<Map<String, Any?>>? = null,
-    val readings: List<Map<String, Any?>>? = null,
-    val exportedAt: String? = null,
-    val nextCursor: String? = null,
-    val hasMore: Boolean? = null,
+data class ExportTaskResponse(
+    val id: String? = null,
+    val status: String? = null,
+    val createdAt: String? = null,
+    val completedAt: String? = null,
+    val downloadUrl: String? = null,
+    val downloadExpiresAt: String? = null,
+    val expiresAt: String? = null,
 )
 
 /** 反馈提交上下文（openapi 0.12.0 `FeedbackClientContext`），由客户端自动填充。 */
@@ -504,18 +511,32 @@ interface SyncApi {
     @POST("api/v1/auth/pairing-code/claim")
     suspend fun claimPairingCode(@Body body: PairingClaimRequest): PairingClaimResponse
 
-    /** 账号全量导出；cursor 为不透明串，仅透传。 */
-    @GET("api/v1/me/export")
-    suspend fun exportMyData(
+    /** 账号数据导出：创建异步任务（202）。 */
+    @POST("api/v1/me/export")
+    suspend fun createMyDataExport(
         @Header("Authorization") authorization: String,
-        @Query("cursor") cursor: String?,
-        @Query("limit") limit: Int,
-    ): ExportPageResponse
+    ): ExportTaskResponse
 
-    /** 硬删除当前账号及全部数据；成功返回 204。 */
+    /** 查询导出任务；ready 时返回新的 10 分钟一次性下载链接。 */
+    @GET("api/v1/me/export/{id}")
+    suspend fun myDataExport(
+        @Header("Authorization") authorization: String,
+        @Path("id") id: String,
+    ): ExportTaskResponse
+
+    /** 申请一次性删除令牌（Bearer）；同一账号再次申请会让旧令牌失效。 */
+    @POST("api/v1/me/deletion-request")
+    suspend fun createDeletionRequest(
+        @Header("Authorization") authorization: String,
+    ): DeletionRequestResponse
+
+    /**
+     * 用一次性令牌硬删除账号；**不使用 Bearer**，避免删除后重放永远得到 401。
+     * 成功返回 204。
+     */
     @DELETE("api/v1/me")
     suspend fun deleteMyAccount(
-        @Header("Authorization") authorization: String,
+        @Header("X-Deletion-Token") deletionToken: String,
     )
 
     // ---- 家庭（openapi 0.8.0 / 后端 v0.12.0） ----

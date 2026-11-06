@@ -1,9 +1,9 @@
-# 真机验收清单（v0.26.0）
+# 真机验收清单（v0.27.0）
 
 本清单用于「执行人不在开发现场」时也能照着做完验收。每项都写明**操作步骤、预期现象、失败判定**。
 所有结果请记录到文末的「验收记录表」；未实际执行的项不要填 PASS。
 
-- 适用版本：`versionName = 0.26.0`（`versionCode = 34`）
+- 适用版本：`versionName = 0.27.0`（`versionCode = 35`）
 - 应用包名：`com.platojobs.pkotlinapp`
 - 主界面：`com.platojobs.pkotlinapp.ui.MainActivity`
 - 设备详情：`com.platojobs.pkotlinapp.ui.detail.DeviceDetailActivity`
@@ -55,7 +55,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versionCode"
 ```
 
-预期：`versionName=0.26.0`、`versionCode=34`。
+预期：`versionName=0.27.0`、`versionCode=35`。
 
 ---
 
@@ -1311,7 +1311,7 @@ apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk
 - 跨 DST 的真实时区切换（自动化已覆盖 02:30 → 03:30 与秋季重复小时，真机仅作补充）。
 - 场景 6 个 `SCENE_*` 码在真实后端联调环境的逐条触发（fixture 中只做了映射与文案验证）。
 
-## 14. 真 Postgres e2e 与界面截图（v0.26.0）
+## 14. 真 Postgres e2e 与界面截图（v0.27.0）
 
 ### 14.1 场景链路（真 Postgres）
 
@@ -1329,12 +1329,19 @@ apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk
 
 - 环境：Pixel_10a 模拟器（Android 37，1080×2400）+ 本机 `PJGoIoT v0.22.0` 干净 worktree（API `10.0.2.2:8080`，真 Postgres），App 使用 `-PapiBaseUrl=http://10.0.2.2:8080/` 构建。
 - 造数：`python3 scripts/seed-screenshots.py http://127.0.0.1:8080/api/v1`，再用配对码在「我的 → 8 位配对码」接管账号，最后 `python3 scripts/seed-local-db.py` 注入本地读数与扫描日志；数据含 3 家庭 / 6 房间 / 12 设备（7/3/2 分布，5 种型号、2 台离线）/ 4 场景（1 个 `rejected`、1 个定时、1 个 `deviceMissing`）/ 3 条服务端反馈（1 条已关闭）/ 12 条本地扫描日志；服务端读数每 10 分钟一条、共 7 天。
-- 预期：16 张截图位于 `docs/screenshots/`，覆盖首页、设备详情（24 小时 48 桶、折线 + min–max 带、横轴 `MM-dd`）、智能（列表 + 详情）、产品（列表 + 详情）、市场、我的、我的 · 家庭区（`profile_household.png`，成员显示「成员 N · 角色」而非原始 ID）、我的 · 扫描日志（`profile_scan_logs.png`，12 条）、房间、会话、反馈详情，以及 200% 字号的首页与场景页；`README.md` 以相对路径引用并写明来源。
+- 预期：16 张截图位于 `docs/screenshots/`，覆盖首页、设备详情（连接状态与设备信息同为「未连接」、24 小时 48 桶、折线 + min–max 带、横轴 `MM-dd`、导出说明与按钮完整）、智能（列表 + 详情）、产品（列表 + 详情）、市场、我的、我的 · 家庭区（`profile_household.png`，成员显示「成员 N · 角色」而非原始 ID）、我的 · 扫描日志（`profile_scan_logs.png`，12 条、MAC 为 `C8:47:8C:` 假地址）、房间、会话、反馈详情，以及 200% 字号的首页与场景页；每张图的关键文字/按钮都不被底部 Tab、手势条或悬浮按钮切断；`README.md` 以相对路径引用并写明来源。
 - 失败判定：出现占位图/拼图/旧图、页面空白或崩溃、可滚动页面最后一项被系统手势条遮挡、设备详情指标名显示「其他」而原始 key 不是未知值、200% 字号下文字重叠或按钮不可点。
 
 ### 14.4 截图过程中修复的界面问题（需单独提交）
 
-本版（v0.26.0）：
+本版（v0.27.0）：
+
+- 设备详情底部「导出 CSV」按钮压住说明文字：导出行改为纵向布局，滚动容器底部 padding = 48dp + `systemBars.bottom`，滚到底时正文/按钮完整位于手势条上方；全仓无 `FloatingActionButton`。
+- 「连接状态」显示正在连接 + -55 dBm + 断开连接，而「设备信息」显示当前未连接：新增 `ConnectionUi` 单一状态源，三态文案与按钮同源派生，连接中隐藏 RSSI、按钮变「取消」，补 `ConnectionUiTest`。
+- 截图底部被 Tab 压断：重截首页、设备详情、场景、家庭区、扫描日志、产品列表/产品详情（GATT 末行）、市场明细、房间管理、会话与两张 200% 字号截图，逐页滚动到关键卡片完整可见再截。
+- MAC 占位值 `AA:BB:CC:00:01:01` 改为 `C8:47:8C:` 开头的假地址，seed 脚本同步，`seed-local-db.py` 按设备名匹配。
+
+v0.26.0（历史）：
 
 - 设备详情 24 小时图只有两个数据点、几乎空白：seed 读数只集中在几分钟内；改为 7 天、每 10 分钟一条原始读数，并由客户端把原始读数聚合成 30 分钟桶（48 桶），7 天视图走服务端 `1h`（168 桶）。
 - 折线 `Paint` 默认 `FILL`，`drawPath` 把开放折线隐式闭合填成实心面，盖住 min–max 区间带；改为 `Paint.Style.STROKE`。

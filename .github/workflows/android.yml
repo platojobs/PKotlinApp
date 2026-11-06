@@ -173,7 +173,7 @@ jobs:
           if-no-files-found: ignore
 
   release:
-    name: Unsigned release build (tags / manual only)
+    name: Signed release build (self-signed, tags / manual only)
     needs: verify
     # 只有打 tag 或手动触发时才跑 release，避免每次 push 都执行 R8 + 签名流程
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
@@ -192,18 +192,43 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
-      - name: Grant execute permission for gradlew
-        run: chmod +x ./gradlew
+      - name: Grant execute permission for gradlew and keystore script
+        run: chmod +x ./gradlew ./scripts/make-upload-keystore.sh
 
-      # 仓库内不提供 keystore.properties 时，signingConfig 为空，
-      # 产物为未签名的 app-release-unsigned.apk，不会把密码写进 CI。
-      # 如需正式签名，请在仓库 Secrets 中配置并自行补充 signingConfig 注入步骤。
-      - name: Assemble release (unsigned)
-        run: ./gradlew assembleRelease --stacktrace
+      # 每次 CI 现场生成一次性自签名密钥：密码来自 openssl，不写进仓库、不落 artifacts。
+      # 该证书只用于验证签名构建链路，不能用于 Google Play 上传。
+      - name: Generate ephemeral self-signed keystore
+        run: |
+          set -euo pipefail
+          export KEY_ALIAS=ci-selfsigned
+          export KEYSTORE_PASSWORD="$(openssl rand -hex 16)"
+          export KEY_PASSWORD="$KEYSTORE_PASSWORD"
+          ./scripts/make-upload-keystore.sh --non-interactive
 
-      - name: Upload unsigned release APK
+      - name: Assemble signed release APK and AAB
+        run: ./gradlew assembleRelease bundleRelease --stacktrace
+
+      - name: Verify signed release artifacts
+        run: |
+          set -euo pipefail
+          BUILD_TOOLS="$(ls -d "${ANDROID_HOME}"/build-tools/* | sort -V | tail -n 1)"
+          APK=app/build/outputs/apk/release/app-release.apk
+          test -f "$APK"
+          test -f app/build/outputs/mapping/release/mapping.txt
+          "$BUILD_TOOLS/apksigner" verify --print-certs "$APK"
+          # debuggable 为 false 时 badging 不输出 application-debuggable。
+          BADGING="$("$BUILD_TOOLS/aapt2" dump badging "$APK")"
+          if grep -q "application-debuggable" <<<"$BADGING"; then
+            echo "release APK 仍带 application-debuggable" >&2
+            exit 1
+          fi
+
+      - name: Upload signed release artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: release-unsigned-apk
-          path: app/build/outputs/apk/release/*.apk
+          name: release-signed
+          path: |
+            app/build/outputs/apk/release/app-release.apk
+            app/build/outputs/bundle/release/app-release.aab
+            app/build/outputs/mapping/release/mapping.txt
           if-no-files-found: error

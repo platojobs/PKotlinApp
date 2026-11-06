@@ -13,6 +13,31 @@ val keystoreProperties = Properties().apply {
     }
 }
 
+val releaseKeystoreFields = listOf("storeFile", "storePassword", "keyAlias", "keyPassword")
+
+/**
+ * release 签名前置条件。缺失时不允许静默产出 unsigned 包：
+ * preReleaseBuild 会带着这段原因直接失败，并提示生成脚本。
+ */
+val releaseSigningProblem: String? = run {
+    if (!keystorePropertiesFile.exists()) {
+        return@run "未找到 ${keystorePropertiesFile.name}，release 构建必须签名。" +
+            " 请先在仓库根目录运行 ./scripts/make-upload-keystore.sh 生成本地自签名测试密钥" +
+            "（自签名证书仅用于本机/CI 验证，不能用于 Google Play 上传）。"
+    }
+    val missing = releaseKeystoreFields.filter { keystoreProperties.getProperty(it).isNullOrBlank() }
+    if (missing.isNotEmpty()) {
+        return@run "keystore.properties 缺少字段：${missing.joinToString()}；" +
+            "请重新运行 ./scripts/make-upload-keystore.sh（覆盖旧文件用 FORCE=1）。"
+    }
+    val storeFile = rootProject.file(keystoreProperties.getProperty("storeFile"))
+    if (!storeFile.isFile) {
+        return@run "keystore.properties 指向的密钥文件不存在：${storeFile.absolutePath}；" +
+            "请重新运行 ./scripts/make-upload-keystore.sh。"
+    }
+    null
+}
+
 // 后端域名尚未确定：不硬编码公网地址。
 // 优先级：Gradle 属性 > local.properties > 本地 Go 服务默认地址。
 val localProperties = Properties().apply {
@@ -31,14 +56,14 @@ android {
         applicationId = "com.platojobs.pkotlinapp"
         minSdk = 24
         targetSdk = 36
-        versionCode = 38
-        versionName = "0.29.0"
+        versionCode = 39
+        versionName = "0.30.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
     }
 
     signingConfigs {
-        if (keystorePropertiesFile.exists()) {
+        if (keystorePropertiesFile.exists() && releaseSigningProblem == null) {
             create("release") {
                 storeFile = rootProject.file(keystoreProperties.getProperty("storeFile"))
                 storePassword = keystoreProperties.getProperty("storePassword")
@@ -86,6 +111,14 @@ android {
 kotlin {
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
+}
+
+// 仓库里没有 keystore.properties 时，assembleRelease / bundleRelease 在打包前直接失败，
+// 不再产出 app-release-unsigned.apk 让「构建成功」掩盖未签名的事实。
+releaseSigningProblem?.let { problem ->
+    tasks.matching { it.name == "preReleaseBuild" }.configureEach {
+        doFirst { throw org.gradle.api.GradleException(problem) }
     }
 }
 

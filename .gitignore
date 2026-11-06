@@ -10,8 +10,9 @@
 local.properties
 app/build
 
-# 签名密钥与密码文件不入库
+# 签名密钥与密码文件不入库（由 scripts/make-upload-keystore.sh 本地生成）
 keystore.properties
+upload-keystore.jks
 *.jks
 *.keystore
 *.p12

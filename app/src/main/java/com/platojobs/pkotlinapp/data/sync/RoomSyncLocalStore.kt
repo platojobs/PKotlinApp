@@ -45,6 +45,8 @@ class RoomSyncLocalStore(
                 aliasDirty = existing?.aliasDirty ?: record.aliasDirty,
                 advertisedName = record.advertisedName ?: existing?.advertisedName,
                 group = record.group ?: existing?.group,
+                // 字段缺失=保持本地标记；显式 null/空串=取消；RFC3339=覆盖。
+                markedAt = if (record.markedAtDirty) record.markedAt else existing?.markedAt,
             ).toEntity(
                 macOverride = localMac,
                 createdAt = existing?.createdAt?.takeIf { it > 0 }
@@ -77,6 +79,8 @@ private fun DeviceEntity.toSyncRecord() = SyncRecord(
     deviceTypeName = deviceTypeName,
     group = group,
     advertisedName = advertisedName,
+    markedAt = markedAt,
+    markedAtDirty = markedAtDirty,
 )
 
 private fun SyncRecord.toEntity(macOverride: String? = null, createdAt: Long = 0L, roomId: Long? = null): DeviceEntity {
@@ -104,6 +108,9 @@ private fun SyncRecord.toEntity(macOverride: String? = null, createdAt: Long = 0
         group = group,
         advertisedName = advertisedName,
         aliasDirty = aliasDirty,
+        // 服务端落地后标记视为已确认，不再重复上报。
+        markedAt = markedAt,
+        markedAtDirty = false,
         createdAt = createdAt,
         roomId = roomId,
     )

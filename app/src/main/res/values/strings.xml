@@ -856,11 +856,11 @@
     <string name="room_detail_no_reading">暂无读数</string>
     <string name="room_detail_marked_suffix">· 已标记</string>
     <string name="room_detail_mark">标记设备</string>
-    <string name="room_detail_mark_local_hint">标记仅保存在本机，不会同步到其他设备</string>
+    <string name="room_detail_mark_pending_hint">%1$d 个标记正在等待上传，联网后自动同步</string>
     <string name="room_detail_disconnect">断开连接</string>
     <string name="room_detail_add_device">扫描添加设备</string>
     <string name="room_detail_select_none">请先选择设备</string>
-    <string name="room_batch_marked">已在本机标记 %1$d 台设备</string>
+    <string name="room_batch_marked">已标记 %1$d 台设备</string>
     <string name="room_batch_mark_failed">标记设备失败，请稍后重试</string>
     <string name="room_batch_disconnected">已断开当前连接的设备</string>
     <string name="room_batch_disconnect_none">所选设备均未连接</string>

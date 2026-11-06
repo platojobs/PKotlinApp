@@ -45,6 +45,41 @@ internal object ReportedStringAdapter : JsonAdapter<Reported<String>>() {
 }
 
 /**
+ * 显式可空字段：属性为 null 表示字段缺失（保持原值）；
+ * [value] 为 null 表示 JSON null（取消）；非空字符串表示设置。
+ */
+data class NullableReported(val value: String?)
+
+internal object NullableReportedAdapter : JsonAdapter<NullableReported>() {
+    override fun fromJson(reader: JsonReader): NullableReported? {
+        if (reader.peek() == JsonReader.Token.NULL) {
+            reader.nextNull<Any>()
+            return NullableReported(null)
+        }
+        return NullableReported(reader.nextString())
+    }
+
+    override fun toJson(writer: JsonWriter, value: NullableReported?) {
+        if (value == null) {
+            // 属性为 null = 未上报：交给 Moshi 默认行为跳过整个键。
+            writer.nullValue()
+            return
+        }
+        val raw = value.value
+        if (raw == null) {
+            // 显式取消：Moshi 默认 serializeNulls=false，name 后写 null 会连键一起跳过，
+            // 这里临时打开 serializeNulls 才能写出 `"markedAt":null`。
+            val previous = writer.serializeNulls
+            writer.serializeNulls = true
+            writer.nullValue()
+            writer.serializeNulls = previous
+        } else {
+            writer.value(raw)
+        }
+    }
+}
+
+/**
  * 同步 DTO，字段与 `PJGoIoT/api/openapi.yaml` 对齐：
  * - 时间统一为 RFC 3339 字符串；
  * - 设备唯一键为 `(platform, externalId)`；
@@ -81,6 +116,8 @@ data class SyncDeviceDto(
     val advertisedName: String? = null,
     // absent(null) / 空串 / 值三态；冲突响应中缺省字段按 absent 处理。
     val group: Reported<String>? = null,
+    // 设备标记：absent=保持；JSON null 或 ""=取消；RFC3339=标记。
+    val markedAt: NullableReported? = null,
     val rules: Map<String, Any?>? = null,
     val scanRecords: List<SyncScanRecordDto>? = null,
     val updatedAt: String? = null,
@@ -254,6 +291,11 @@ data class PushDeviceDto(
      * 分组三态：null = 未上报；Reported("") = 显式清除；Reported("值") = 覆盖。
      */
     val group: Reported<String>? = null,
+    /**
+     * 设备标记三态：null = 未上报；NullableReported(null) = JSON null 取消；
+     * NullableReported(RFC3339) = 标记时间。只走 /sync/push。
+     */
+    val markedAt: NullableReported? = null,
     val rules: Map<String, Any?> = emptyMap(),
     val scanRecords: List<SyncScanRecordDto> = emptyList(),
     val updatedAt: String,

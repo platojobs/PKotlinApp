@@ -161,7 +161,11 @@ interface DeviceDao {
     @Query("SELECT COUNT(*) FROM devices WHERE deletedAt IS NULL")
     fun observeActiveCount(): Flow<Int>
 
-    @Query("UPDATE devices SET syncState = 'synced' WHERE externalId IN (:externalIds)")
+    /** 服务端确认后同时清掉标记待上报位，避免后续无关更新重复上报 markedAt。 */
+    @Query(
+        "UPDATE devices SET syncState = 'synced', markedAtDirty = 0 " +
+            "WHERE externalId IN (:externalIds)",
+    )
     suspend fun markSyncedByExternalIds(externalIds: List<String>)
 
     /**
@@ -189,9 +193,24 @@ interface DeviceDao {
     @Query("UPDATE devices SET deviceGroup = :group WHERE externalId = :externalId")
     suspend fun updateGroup(externalId: String, group: String?)
 
-    /** 场景「标记设备」动作：真实写入标记时间，设备卡片据此展示标记。 */
-    @Query("UPDATE devices SET markedAt = :timestamp WHERE mac = :mac")
+    /**
+     * 标记设备：写入标记时间并把设备排入同步队列。
+     * markedAt 与设备级 updatedAt 都推进到同一时间，服务端按字段级 LWW 合并。
+     */
+    @Query(
+        "UPDATE devices SET markedAt = :timestamp, markedAtDirty = 1, " +
+            "updatedAt = :timestamp, syncState = 'pending' " +
+            "WHERE mac = :mac AND shared = 0",
+    )
     suspend fun markDevice(mac: String, timestamp: Long)
+
+    /** 取消标记：三态中的 null；同样推进 updatedAt 并排队上报。 */
+    @Query(
+        "UPDATE devices SET markedAt = NULL, markedAtDirty = 1, " +
+            "updatedAt = :timestamp, syncState = 'pending' " +
+            "WHERE mac = :mac AND shared = 0",
+    )
+    suspend fun clearDeviceMark(mac: String, timestamp: Long)
 
     /** 重新登录到新匿名账号后，把本机全部记录重新排队，推送到新账号。 */
     @Query("UPDATE devices SET syncState = 'pending'")

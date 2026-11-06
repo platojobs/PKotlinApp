@@ -6,10 +6,12 @@ import com.platojobs.pkotlinapp.data.remote.Reported
 import com.platojobs.pkotlinapp.data.remote.SyncDeviceDto
 import com.platojobs.pkotlinapp.data.remote.SyncPushRequest
 import com.platojobs.pkotlinapp.domain.model.PLATFORM_ANDROID
+import com.platojobs.pkotlinapp.domain.sync.IdempotencyKeys
 import com.platojobs.pkotlinapp.domain.sync.Rfc3339
 import com.platojobs.pkotlinapp.domain.sync.SyncRecord
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -261,5 +263,67 @@ class SyncDtoMappingTest {
             group = Reported(""),
         ).toDomain()
         assertEquals("", explicitlyCleared?.group)
+    }
+
+    @Test
+    fun `markedAt parses absent null empty and rfc3339`() {
+        val adapter = ApiClient.moshi().adapter(SyncDeviceDto::class.java)
+        fun deviceJson(markJson: String): String =
+            """{"externalId":"AA:BB:CC:DD:EE:FF","platform":"android",""" +
+                """"updatedAt":"2025-10-01T00:00:00Z"$markJson}"""
+
+        val absent = adapter.fromJson(deviceJson(""))!!.toDomain()!!
+        assertNull(absent.markedAt)
+        assertFalse(absent.markedAtDirty)
+
+        val explicitNull = adapter.fromJson(deviceJson(""", "markedAt":null"""))!!.toDomain()!!
+        assertNull(explicitNull.markedAt)
+        assertTrue(explicitNull.markedAtDirty)
+
+        val explicitEmpty = adapter.fromJson(deviceJson(""", "markedAt":"""""))!!.toDomain()!!
+        assertNull(explicitEmpty.markedAt)
+        assertTrue(explicitEmpty.markedAtDirty)
+
+        val stamped = adapter.fromJson(
+            deviceJson(""", "markedAt":"2025-09-30T12:34:56.789Z""""),
+        )!!.toDomain()!!
+        assertEquals(Rfc3339.parse("2025-09-30T12:34:56.789Z"), stamped.markedAt)
+        assertTrue(stamped.markedAtDirty)
+    }
+
+    @Test
+    fun `push json maps markedAt tri-state`() {
+        val adapter = ApiClient.moshi().adapter(SyncPushRequest::class.java)
+        val record = SyncRecord(
+            id = UUID.randomUUID().toString(),
+            platform = PLATFORM_ANDROID,
+            externalId = "AA:BB:CC:DD:EE:FF",
+            name = "Tracker",
+            lastRssi = -55,
+            lastSeenTimestamp = 1_762_300_000_000,
+            updatedAt = 1_762_300_000_000,
+            markedAt = 1_762_300_000_000,
+            markedAtDirty = true,
+        )
+
+        // 未上报：字段缺失，服务端保持原值。
+        val absent = adapter.toJson(
+            SyncPushRequest("test", listOf(record.copy(markedAtDirty = false).toPushDto())),
+        )
+        assertFalse(absent.contains("\"markedAt\""))
+
+        // 标记：RFC3339 时间。
+        val markedJson = adapter.toJson(SyncPushRequest("test", listOf(record.toPushDto())))
+        assertTrue(markedJson.contains("\"markedAt\":\"${Rfc3339.format(1_762_300_000_000)}\""))
+
+        val nullRecord = record.copy(markedAt = null, markedAtDirty = true).toPushDto()
+        val nullJson = adapter.toJson(SyncPushRequest("test", listOf(nullRecord)))
+        assertTrue(nullJson, nullJson.contains("\"markedAt\":null"))
+
+        // 显式 null 与 absent 的幂等 key 必须不同。
+        assertNotEquals(
+            IdempotencyKeys.forBatch(listOf(record.copy(markedAtDirty = false))),
+            IdempotencyKeys.forBatch(listOf(record.copy(markedAt = null))),
+        )
     }
 }

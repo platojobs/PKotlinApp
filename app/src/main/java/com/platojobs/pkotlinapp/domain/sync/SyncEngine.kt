@@ -34,6 +34,14 @@ data class SyncRecord(
      * - 非空：覆盖。
      */
     val group: String? = null,
+    /**
+     * 设备标记时间（毫秒）。配合 [markedAtDirty] 构成三态：
+     * - dirty=false：未上报（absent），服务端保持原值；
+     * - dirty=true 且 markedAt=null：显式取消（JSON null）；
+     * - dirty=true 且非空：标记。
+     */
+    val markedAt: Long? = null,
+    val markedAtDirty: Boolean = false,
 )
 
 data class SyncPullPage(
@@ -118,6 +126,8 @@ object IdempotencyKeys {
                     record.deviceType?.let { add("type=$it") }
                     // group: null=absent（不参与哈希）；""=显式清除；其余=覆盖值。
                     record.group?.let { add("group=$it") }
+                    // markedAt: dirty=false=absent；null=显式取消；非空=标记时间。
+                    if (record.markedAtDirty) add("markedAt=${record.markedAt ?: "null"}")
                 }.joinToString("\u001E")
             }
         val digest = java.security.MessageDigest.getInstance("SHA-256")

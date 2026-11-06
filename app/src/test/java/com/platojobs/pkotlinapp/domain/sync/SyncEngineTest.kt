@@ -422,4 +422,119 @@ class SyncEngineTest {
         assertTrue(local.records.containsKey(pending.externalId))
         assertEquals(SyncState.PENDING, local.records.getValue(pending.externalId).syncState)
     }
+
+    @Test
+    fun `pull lands explicit null mark and does not leak to another device`() = runBlocking {
+        val marked = SyncRecord(
+            id = "client-1",
+            platform = "android",
+            externalId = "AA:BB:CC:DD:EE:11",
+            name = "已标记",
+            lastRssi = -50,
+            lastSeenTimestamp = 100,
+            updatedAt = 100,
+            markedAt = 1_000,
+        )
+        val other = marked.copy(
+            id = "client-2",
+            externalId = "AA:BB:CC:DD:EE:22",
+            name = "另一台",
+            markedAt = 2_000,
+        )
+        val local = FakeLocalStore(listOf(marked, other))
+        val remote = FakeRemote().apply {
+            pullPage = SyncPullPage(
+                changes = listOf(
+                    marked.copy(markedAt = null, markedAtDirty = true, updatedAt = 300),
+                ),
+                nextCursor = "mark-2",
+            )
+        }
+
+        SyncEngine(local, remote, FakeCursorStore()).pullChanges()
+
+        val applied = local.records.getValue(marked.externalId)
+        assertNull(applied.markedAt)
+        // 另一台设备的标记不受本次增量影响，避免本机数据串写。
+        assertEquals(2_000L, local.records.getValue(other.externalId).markedAt)
+    }
+
+    @Test
+    fun `pull keeps newer local mark over older server value`() = runBlocking {
+        val localMark = SyncRecord(
+            id = "client-1",
+            platform = "android",
+            externalId = "AA:BB:CC:DD:EE:11",
+            name = "本机较新",
+            lastRssi = -40,
+            lastSeenTimestamp = 200,
+            updatedAt = 200,
+            markedAt = 1_000,
+            markedAtDirty = true,
+            syncState = SyncState.PENDING,
+        )
+        val local = FakeLocalStore(listOf(localMark))
+        val remote = FakeRemote().apply {
+            pullPage = SyncPullPage(
+                changes = listOf(
+                    localMark.copy(
+                        name = "服务端较旧",
+                        updatedAt = 100,
+                        markedAt = null,
+                        markedAtDirty = true,
+                        syncState = SyncState.SYNCED,
+                    ),
+                ),
+                nextCursor = "mark-3",
+            )
+        }
+
+        SyncEngine(local, remote, FakeCursorStore()).pullChanges()
+
+        val kept = local.records.getValue(localMark.externalId)
+        assertEquals(1_000L, kept.markedAt)
+        assertEquals(SyncState.PENDING, kept.syncState)
+    }
+
+    @Test
+    fun `push conflict accepts newer server mark and reports conflict`() = runBlocking {
+        val localMark = SyncRecord(
+            id = "client-1",
+            platform = "android",
+            externalId = "AA:BB:CC:DD:EE:11",
+            name = "本机标记",
+            lastRssi = -50,
+            lastSeenTimestamp = 100,
+            updatedAt = 100,
+            markedAt = 1_000,
+            markedAtDirty = true,
+            syncState = SyncState.PENDING,
+        )
+        val serverRecord = localMark.copy(
+            name = "服务端取消",
+            updatedAt = 200,
+            markedAt = null,
+            markedAtDirty = true,
+            syncState = SyncState.SYNCED,
+        )
+        val remote = FakeRemote().apply {
+            conflicts = listOf(
+                SyncConflict(
+                    externalId = localMark.externalId,
+                    reason = "server_newer",
+                    serverRecord = serverRecord,
+                ),
+            )
+        }
+        val local = FakeLocalStore(listOf(localMark))
+        val engine = SyncEngine(local, remote, FakeCursorStore())
+
+        val outcome = engine.pushPending()
+
+        assertEquals(1, outcome.conflicts.size)
+        assertEquals("server_newer", outcome.conflicts.single().reason)
+        // 旧 updatedAt 冲突不覆盖服务端新值；本地接受服务端取消。
+        assertNull(local.records.getValue(localMark.externalId).markedAt)
+        assertEquals(SyncState.SYNCED, local.records.getValue(localMark.externalId).syncState)
+    }
 }

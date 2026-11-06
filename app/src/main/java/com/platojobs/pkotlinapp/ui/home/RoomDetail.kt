@@ -2,6 +2,7 @@ package com.platojobs.pkotlinapp.ui.home
 
 import com.platojobs.pkotlinapp.domain.model.Device
 import com.platojobs.pkotlinapp.domain.model.Room
+import com.platojobs.pkotlinapp.domain.model.SyncState
 import com.platojobs.pkotlinapp.domain.model.displayName
 import com.platojobs.pkotlinapp.domain.reading.Reading
 
@@ -11,6 +12,8 @@ data class RoomDeviceEntry(
     val name: String,
     val online: Boolean,
     val marked: Boolean,
+    /** 标记尚在本机等待上传（离线/未登录）；用于界面说明当前状态。 */
+    val pending: Boolean,
     val reading: Reading?,
 )
 
@@ -30,6 +33,9 @@ data class RoomDetail(
 
     /** 批量操作的默认目标：当前房间内所有设备。 */
     val allMacs: List<String> get() = entries.map { it.mac }
+
+    /** 已标记但尚未被服务端确认的设备数。 */
+    val pendingMarkCount: Int get() = entries.count { it.marked && it.pending }
 }
 
 object RoomDetailBuilder {
@@ -54,6 +60,7 @@ object RoomDetailBuilder {
                     name = device.displayName()?.takeIf(String::isNotBlank) ?: unknownName,
                     online = device.lastSeenTimestamp >= onlineSince,
                     marked = device.markedAt != null,
+                    pending = device.syncState == SyncState.PENDING,
                     reading = readings[device.mac],
                 )
             }

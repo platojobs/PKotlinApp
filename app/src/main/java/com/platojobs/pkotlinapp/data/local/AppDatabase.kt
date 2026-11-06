@@ -348,6 +348,13 @@ internal object PushDeviceMigrationSql {
     )
 }
 
+/** v22 -> v23：设备新增 markedAtDirty；默认 0，既有标记按「已确认」保留。 */
+internal object DeviceMarkDirtyMigrationSql {
+    val V22_TO_V23 = listOf(
+        "ALTER TABLE `devices` ADD COLUMN `markedAtDirty` INTEGER NOT NULL DEFAULT 0",
+    )
+}
+
 @Database(
     entities = [
         DeviceEntity::class,
@@ -365,7 +372,7 @@ internal object PushDeviceMigrationSql {
         CatalogSyncEntity::class,
         PushDeviceEntity::class,
     ],
-    version = 22,
+    version = 23,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -590,6 +597,13 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v22 -> v23：设备新增 markedAtDirty；既有行默认 0。 */
+        val MIGRATION_22_23 = object : Migration(22, 23) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                DeviceMarkDirtyMigrationSql.V22_TO_V23.forEach(db::execSQL)
+            }
+        }
+
         @Volatile
         private var instance: AppDatabase? = null
 
@@ -621,6 +635,7 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_19_20,
                     MIGRATION_20_21,
                     MIGRATION_21_22,
+                    MIGRATION_22_23,
                 )
                     .build()
                     .also { instance = it }

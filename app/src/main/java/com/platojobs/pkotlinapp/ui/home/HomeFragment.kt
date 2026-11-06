@@ -297,13 +297,17 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             setTextAppearance(R.style.TextAppearance_App_Caption)
             setTextColor(context.getColor(R.color.text_secondary))
         })
-        // 契约明确：UserDevice / PushDevice 没有 markedAt 字段，标记不会进入同步或 change_log。
-        content.addView(TextView(context).apply {
-            setText(R.string.room_detail_mark_local_hint)
-            setTextAppearance(R.style.TextAppearance_App_Caption)
-            setTextColor(context.getColor(R.color.text_secondary))
-            setPadding(0, dp(4), 0, 0)
-        })
+        // 标记随设备同步；离线/未登录时仍先写本机，明确告知等待上传的状态。
+        if (detail.pendingMarkCount > 0) {
+            content.addView(TextView(context).apply {
+                setText(
+                    getString(R.string.room_detail_mark_pending_hint, detail.pendingMarkCount),
+                )
+                setTextAppearance(R.style.TextAppearance_App_Caption)
+                setTextColor(context.getColor(R.color.text_secondary))
+                setPadding(0, dp(4), 0, 0)
+            })
+        }
 
         val selection = LinkedHashMap<String, CheckBox>()
         detail.entries.forEach { entry ->

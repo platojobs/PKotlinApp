@@ -3,6 +3,7 @@ package com.platojobs.pkotlinapp.data.sync
 import com.platojobs.pkotlinapp.data.remote.ApiLimits
 import com.platojobs.pkotlinapp.data.remote.AppliedChangeDto
 import com.platojobs.pkotlinapp.data.remote.ConflictDto
+import com.platojobs.pkotlinapp.data.remote.NullableReported
 import com.platojobs.pkotlinapp.data.remote.PushDeviceDto
 import com.platojobs.pkotlinapp.data.remote.PushReadingDto
 import com.platojobs.pkotlinapp.data.remote.Reported
@@ -293,6 +294,12 @@ internal fun SyncRecord.toPushDto(): PushDeviceDto {
         advertisedName = advertisedName?.takeIf { it.isNotBlank() }?.let(::Reported),
         // group 三态：null 不上报；空串显式清除；非空覆盖。
         group = group?.let(::Reported),
+        // markedAt 三态：未脏不上报；脏且为空=JSON null 取消；脏且非空=RFC3339。
+        markedAt = if (markedAtDirty) {
+            NullableReported(markedAt?.let(Rfc3339::format))
+        } else {
+            null
+        },
         rules = emptyMap(),
         scanRecords = scanRecords,
         updatedAt = Rfc3339.format(updatedAt.takeIf { it > 0 } ?: System.currentTimeMillis()),
@@ -330,6 +337,12 @@ internal fun SyncDeviceDto.toDomain(): SyncRecord? {
     val latestScan = scans.maxByOrNull { Rfc3339.parse(it.at) ?: Long.MIN_VALUE }
     val seenAt = latestScan?.let { Rfc3339.parse(it.at) } ?: updatedAt
 
+    // markedAt 三态：属性缺失=保持；JSON null 或空串=取消；合法 RFC3339=标记。
+    val markField = markedAt
+    val markRaw = markField?.value
+    val parsedMark = markRaw?.takeIf { it.isNotBlank() }?.let(Rfc3339::parse)
+    val markReported = markField != null && (markRaw.isNullOrBlank() || parsedMark != null)
+
     return SyncRecord(
         id = id?.takeIf { it.isNotBlank() } ?: normalized,
         platform = safePlatform,
@@ -347,6 +360,8 @@ internal fun SyncDeviceDto.toDomain(): SyncRecord? {
         compatibility = compatibility?.displayLabel()?.takeIf { it.isNotBlank() },
         // group 保留空串：与服务端「已显式清除」的语义一致；absent(null) 才表示未上报。
         group = group?.value,
+        markedAt = parsedMark,
+        markedAtDirty = markReported,
     )
 }
 

@@ -308,7 +308,11 @@ class RoomRepositoryTest {
             rows.values.count { it.syncState == "pending" }
 
         override suspend fun markDevice(mac: String, timestamp: Long) {
-            rows[mac]?.let { rows[mac] = it.copy(markedAt = timestamp) }
+            rows[mac]?.let { rows[mac] = it.copy(markedAt = timestamp, markedAtDirty = true) }
+        }
+
+        override suspend fun clearDeviceMark(mac: String, timestamp: Long) {
+            rows[mac]?.let { rows[mac] = it.copy(markedAt = null, markedAtDirty = true) }
         }
 
         override fun observeOnlineCount(since: Long): Flow<Int> =

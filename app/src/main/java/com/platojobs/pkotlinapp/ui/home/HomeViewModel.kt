@@ -649,6 +649,9 @@ class HomeViewModel(
                 val now = System.currentTimeMillis()
                 macs.forEach { deviceRepository.markDevice(it, now) }
             }.onSuccess {
+                // 标记走 /sync/push 字段级 LWW：先落本机 pending，再尽快触发上传；
+                // 离线/未登录时保持 pending，由界面提示「等待上传」。
+                syncScheduler.scheduleNow()
                 _messages.tryEmit(context.getString(R.string.room_batch_marked, macs.size))
             }.onFailure {
                 _messages.tryEmit(context.getString(R.string.room_batch_mark_failed))

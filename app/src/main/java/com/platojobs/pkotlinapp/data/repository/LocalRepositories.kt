@@ -98,7 +98,11 @@ class DeviceRepositoryImpl(
                 updatedAt = maxOf(device.updatedAt, device.lastSeenTimestamp),
                 deletedAt = null,
                 syncState = SyncState.PENDING,
-            ).toEntity(),
+            ).toEntity(
+                // 扫描/编辑不会改标记；保留已有 markedAt 与待上报位。
+                markedAt = existing?.markedAt ?: device.markedAt,
+                markedAtDirty = existing?.markedAtDirty == true,
+            ),
         )
     }
 
@@ -550,7 +554,10 @@ private fun DeviceEntity.toDomain() = Device(
     markedAt = markedAt,
 )
 
-private fun Device.toEntity() = DeviceEntity(
+private fun Device.toEntity(
+    markedAt: Long? = this.markedAt,
+    markedAtDirty: Boolean = false,
+) = DeviceEntity(
     mac = mac,
     name = name,
     lastRssi = lastRssi,
@@ -578,6 +585,7 @@ private fun Device.toEntity() = DeviceEntity(
     pendingHouseholdRemoteId = pendingHouseholdRemoteId,
     shared = shared,
     markedAt = markedAt,
+    markedAtDirty = markedAtDirty,
 )
 
 private fun RuleEntity.toDomain() = DeviceRule(

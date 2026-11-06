@@ -53,6 +53,8 @@ data class DeviceEntity(
     @ColumnInfo(defaultValue = "0") val shared: Boolean = false,
     // 场景「标记设备」动作写入的时间戳；null 表示未被标记。
     val markedAt: Long? = null,
+    // 本机标记是否待上报；服务端已确认后清零，避免无关更新重复上报 markedAt。
+    @ColumnInfo(defaultValue = "0") val markedAtDirty: Boolean = false,
 )
 
 /** 本地家庭：remoteId 为服务端 UUID；id 为本地自增，供房间/设备外键引用。 */

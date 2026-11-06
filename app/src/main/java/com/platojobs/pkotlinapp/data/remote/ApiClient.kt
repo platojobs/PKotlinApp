@@ -38,6 +38,7 @@ object ApiClient {
      */
     fun moshi(): Moshi = Moshi.Builder()
         .add(ReportedStringType, ReportedStringAdapter)
+        .add(NullableReported::class.java, NullableReportedAdapter)
         .add(KotlinJsonAdapterFactory())
         .build()
 

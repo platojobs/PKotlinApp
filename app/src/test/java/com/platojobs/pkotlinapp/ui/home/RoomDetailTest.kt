@@ -2,6 +2,7 @@ package com.platojobs.pkotlinapp.ui.home
 
 import com.platojobs.pkotlinapp.domain.model.Device
 import com.platojobs.pkotlinapp.domain.model.Room
+import com.platojobs.pkotlinapp.domain.model.SyncState
 import com.platojobs.pkotlinapp.domain.reading.Reading
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -24,6 +25,7 @@ class RoomDetailTest {
         roomId: Long? = 5,
         markedAt: Long? = null,
         advertisedName: String? = null,
+        syncState: SyncState = SyncState.SYNCED,
     ) = Device(
         mac = mac,
         name = name,
@@ -32,6 +34,7 @@ class RoomDetailTest {
         roomId = roomId,
         markedAt = markedAt,
         advertisedName = advertisedName,
+        syncState = syncState,
     )
 
     private fun reading(mac: String, value: Double = 26.5): Reading = Reading(
@@ -99,6 +102,20 @@ class RoomDetailTest {
 
         assertEquals(2, detail.markedCount)
         assertEquals(listOf(true, false, true), detail.entries.map { it.marked })
+    }
+
+    @Test
+    fun `pending marks are counted separately from synced marks`() {
+        val devices = listOf(
+            device("a", markedAt = 1L, syncState = SyncState.PENDING),
+            device("b", markedAt = 1L),
+            device("c", syncState = SyncState.PENDING),
+        )
+
+        val detail = RoomDetailBuilder.build(room, devices, emptyMap(), ONLINE_SINCE, "未知设备")
+
+        assertEquals(1, detail.pendingMarkCount)
+        assertEquals(2, detail.markedCount)
     }
 
     @Test

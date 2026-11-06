@@ -852,11 +852,11 @@
     <string name="room_detail_no_reading">No reading yet</string>
     <string name="room_detail_marked_suffix">· Marked</string>
     <string name="room_detail_mark">Mark devices</string>
-    <string name="room_detail_mark_local_hint">Marks are stored on this device only and are not synced.</string>
+    <string name="room_detail_mark_pending_hint">%1$d mark(s) waiting to upload; syncs automatically when online.</string>
     <string name="room_detail_disconnect">Disconnect</string>
     <string name="room_detail_add_device">Scan to add devices</string>
     <string name="room_detail_select_none">Select at least one device</string>
-    <string name="room_batch_marked">Marked on this device: %1$d</string>
+    <string name="room_batch_marked">Marked: %1$d</string>
     <string name="room_batch_mark_failed">Could not mark devices. Try again later.</string>
     <string name="room_batch_disconnected">Disconnected the currently connected device</string>
     <string name="room_batch_disconnect_none">None of the selected devices are connected</string>

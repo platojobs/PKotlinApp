@@ -128,6 +128,10 @@ class DeviceRepositoryImpl(
         dao.markDevice(mac, timestamp)
     }
 
+    override suspend fun clearDeviceMark(mac: String, timestamp: Long) {
+        dao.clearDeviceMark(mac, timestamp)
+    }
+
     override fun observeOnlineCount(since: Long): Flow<Int> = dao.observeOnlineCount(since)
 
     override fun observeOfflineCount(since: Long): Flow<Int> = dao.observeOfflineCount(since)

@@ -3,6 +3,7 @@ package com.platojobs.pkotlinapp.e2e
 import com.platojobs.pkotlinapp.data.remote.ApiClient
 import com.platojobs.pkotlinapp.data.remote.FeedbackContextDto
 import com.platojobs.pkotlinapp.data.remote.FeedbackCreateRequest
+import com.platojobs.pkotlinapp.data.remote.NullableReported
 import com.platojobs.pkotlinapp.data.remote.PushDeviceDto
 import com.platojobs.pkotlinapp.data.remote.PushReadingDto
 import com.platojobs.pkotlinapp.data.remote.ReadingMetricsResponse
@@ -148,6 +149,8 @@ class E2eContractTest {
         val now = System.currentTimeMillis()
         val baseUpdatedAt = now - 10_000
         val createdAt = now - 10_000
+        // 0.20.0 markedAt：带微秒精度，验证服务端持久化/回读不做毫秒截断。
+        val markAtMicros = Rfc3339.format(now - 5_000).dropLast(1) + "456Z"
         val androidPush = PushDeviceDto(
             id = UUID.randomUUID().toString(),
             platform = "android",
@@ -158,6 +161,7 @@ class E2eContractTest {
             alias = Reported("共享型号-Android"),
             advertisedName = Reported("PJ-Sensor"),
             group = Reported("联调"),
+            markedAt = NullableReported(markAtMicros),
             scanRecords = listOf(
                 SyncScanRecordDto(rssi = -55, at = Rfc3339.format(createdAt)),
             ),
@@ -184,6 +188,9 @@ class E2eContractTest {
         assertTrue(pushJson.contains("\"alias\":\"共享型号-Android\""))
         assertTrue(pushJson.contains("\"advertisedName\":\"PJ-Sensor\""))
         assertTrue(pushJson.contains("\"group\":\"联调\""))
+        // markedAt 只有显式上报时才出现；这里的微秒精度必须原样带上。
+        assertTrue(pushJson.contains("\"markedAt\":\"$markAtMicros\""))
+        assertFalse(pushJson.contains("\"markedAt\":null"))
         assertFalse(
             pushRequestAdapter.toJson(
                 SyncPushRequest(clientId = "e2e-android-client", devices = listOf(iosPush)),
@@ -220,6 +227,8 @@ class E2eContractTest {
             assertEquals("AA:BB:CC:00:00:01", body["externalId"])
             assertEquals("共享型号-Android", body["alias"])
             assertEquals("PJ-Sensor", body["advertisedName"])
+            // 回读必须与推送一致，且微秒精度不丢（不是截断到毫秒）。
+            assertEquals(markAtMicros, body["markedAt"])
             // 0.3.2 enrich：型号、厂商、固件、兼容性均由云端返回。
             assertEquals("nordic_uart", body["deviceType"])
             assertEquals("Nordic Semiconductor", body["vendor"])
@@ -261,6 +270,9 @@ class E2eContractTest {
             assertEquals(1, androidPayload.scanRecords.orEmpty().size)
             assertEquals(baseUpdatedAt, android.updatedAt)
             assertEquals("android", android.platform)
+            // entity=user_device 的 payload 必须带 markedAt，值与 push 一致。
+            assertNotNull(androidPayload.markedAt)
+            assertEquals(markAtMicros, androidPayload.markedAt?.value)
 
             val ios = iosChange.payload!!.toDomain()!!
             assertEquals("E621E1F8-C36C-495A-93FC-0C247A3E6E5F", ios.externalId)
@@ -296,6 +308,8 @@ class E2eContractTest {
                 alias = Reported("旧名称-冲突"),
                 advertisedName = null,
                 group = null,
+                // 冲突请求里不报 markedAt：服务端记录里的标记不能被误清。
+                markedAt = null,
                 updatedAt = Rfc3339.format(now - 120_000),
             )
             val conflictJson = pushRequestAdapter.toJson(
@@ -317,12 +331,17 @@ class E2eContractTest {
             // 请求里未上报的可缺省字段，解析回来必须仍是 absent，而不是空串。
             assertNull(conflict.client?.advertisedName)
             assertNull(conflict.client?.group)
+            // 服务端会回显 client 记录并补齐 markedAt（未标记为 null，而不是省略）。
+            assertNull(conflict.client?.markedAt?.value)
+            // 服务端记录里的 markedAt 原样回给客户端，冲突不覆盖本地新值。
+            assertEquals(markAtMicros, conflict.server?.markedAt?.value)
 
             // 冲突未落库：服务端仍是新名称，且没有产生新的 change。
             val myDevice = parseMap(
                 get("/my/devices/android/AA:BB:CC:00:00:01", user.token).body,
             )
             assertEquals("共享型号-Android", myDevice["alias"])
+            assertEquals(markAtMicros, myDevice["markedAt"])
             val after = changesResponseAdapter.fromJson(
                 get("/sync/changes?cursor=$cursorAfterPush", user.token).body,
             )!!
@@ -416,6 +435,8 @@ class E2eContractTest {
                 alias = null,
                 advertisedName = Reported("PJ-Sensor-3"),
                 group = null,
+                // 后续扫描不上报 markedAt：服务端必须保持原标记。
+                markedAt = null,
                 updatedAt = Rfc3339.format(now + 30_000),
             )
             assertEquals(
@@ -431,6 +452,7 @@ class E2eContractTest {
             val body = parseMap(get("/my/devices/android/AA:BB:CC:00:00:01", user.token).body)
             assertEquals("", body["group"])
             assertEquals("PJ-Sensor-3", body["advertisedName"])
+            assertEquals(markAtMicros, body["markedAt"])
         }
 
         step("clearing alias sends explicit empty string and keeps advertisedName") {
@@ -438,6 +460,7 @@ class E2eContractTest {
                 alias = Reported(""),
                 advertisedName = null,
                 group = null,
+                markedAt = null,
                 updatedAt = Rfc3339.format(now + 35_000),
             )
             val json = pushRequestAdapter.toJson(
@@ -453,6 +476,7 @@ class E2eContractTest {
             assertEquals("", body["alias"])
             assertEquals("PJ-Sensor-3", body["advertisedName"])
             assertEquals("", body["group"])
+            assertEquals(markAtMicros, body["markedAt"])
         }
 
         step("scan after alias clear does not revive the old alias") {
@@ -460,12 +484,14 @@ class E2eContractTest {
                 alias = null,
                 advertisedName = Reported("PJ-Sensor-4"),
                 group = null,
+                markedAt = null,
                 updatedAt = Rfc3339.format(now + 40_000),
             )
             val json = pushRequestAdapter.toJson(
                 SyncPushRequest("e2e-android-client", listOf(scan)),
             )
             assertFalse(json.contains("\"alias\""))
+            assertFalse(json.contains("\"markedAt\""))
 
             assertEquals(
                 200,
@@ -475,6 +501,44 @@ class E2eContractTest {
             assertEquals("", body["alias"])
             assertEquals("PJ-Sensor-4", body["advertisedName"])
             assertEquals("", body["group"])
+            assertEquals(markAtMicros, body["markedAt"])
+
+            // 显式 null 取消标记：回读为 null，并且 change_log 新增一条 payload 含 markedAt 的记录。
+            val before = changesResponseAdapter.fromJson(
+                get("/sync/changes?cursor=0", user.token).body,
+            )!!
+            val beforeCount = before.changes.orEmpty().size
+            val cancel = androidPush.copy(
+                alias = null,
+                advertisedName = null,
+                group = null,
+                markedAt = NullableReported(null),
+                updatedAt = Rfc3339.format(now + 45_000),
+            )
+            val cancelJson = pushRequestAdapter.toJson(
+                SyncPushRequest("e2e-android-client", listOf(cancel)),
+            )
+            // Moshi 默认会吞掉 name 后的 null；取消标记必须真的写出 "markedAt":null。
+            assertTrue(cancelJson.contains("\"markedAt\":null"))
+            assertEquals(
+                200,
+                push(cancelJson, user.token, "e2e-mark-clear-${UUID.randomUUID()}").code,
+            )
+            val cleared = parseMap(get("/my/devices/android/AA:BB:CC:00:00:01", user.token).body)
+            assertNull(cleared["markedAt"])
+            assertEquals("", cleared["alias"])
+            assertEquals("PJ-Sensor-4", cleared["advertisedName"])
+            assertEquals("", cleared["group"])
+
+            val after = changesResponseAdapter.fromJson(
+                get("/sync/changes?cursor=0", user.token).body,
+            )!!
+            assertEquals(beforeCount + 1, after.changes.orEmpty().size)
+            val latest = after.changes.orEmpty().maxByOrNull { it.seq ?: 0 }!!
+            assertEquals("user_device", latest.entity)
+            assertEquals("upsert", latest.op)
+            assertNotNull(latest.payload?.markedAt)
+            assertNull(latest.payload?.markedAt?.value)
         }
 
         step("cross-user access -> 404 NOT_FOUND") {

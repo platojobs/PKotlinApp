@@ -321,9 +321,10 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             content.addView(row)
         }
 
-        // 200% 字号下「断开连接」在横排里会折成两行，大字号改为整行竖排按钮。
+        // 三个动作（标记/取消/断开）横排在 100% 字号下也会把「断开连接」挤成两行，
+        // 统一改为竖排：普通字号右对齐自适应宽度，大字号整行铺满。
         val actions = LinearLayout(context).apply {
-            orientation = if (largeFont) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
+            orientation = LinearLayout.VERTICAL
             gravity = android.view.Gravity.END
             setPadding(0, dp(8), 0, 0)
         }
@@ -335,6 +336,14 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                 toast(getString(R.string.room_detail_select_none))
             } else {
                 viewModel.markDevices(macs)
+            }
+        })
+        actions.addView(batchButton(R.string.room_detail_unmark, largeFont) {
+            val macs = selectedMacs()
+            if (macs.isEmpty()) {
+                toast(getString(R.string.room_detail_select_none))
+            } else {
+                viewModel.unmarkDevices(macs)
             }
         })
         actions.addView(batchButton(R.string.room_detail_disconnect, largeFont) {
@@ -376,7 +385,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                 if (fullWidth) LinearLayout.LayoutParams.MATCH_PARENT else LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
             ).apply {
-                if (fullWidth) topMargin = dp(8)
+                topMargin = dp(8)
             }
             setOnClickListener { onClick() }
         }

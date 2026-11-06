@@ -659,6 +659,22 @@ class HomeViewModel(
         }
     }
 
+    /** 房间详情批量取消标记：本机先写 null + 脏位 + pending，随后随 /sync/push 上报。 */
+    fun unmarkDevices(macs: List<String>) {
+        if (macs.isEmpty()) return
+        viewModelScope.launch {
+            runCatching {
+                val now = System.currentTimeMillis()
+                macs.forEach { deviceRepository.clearDeviceMark(it, now) }
+            }.onSuccess {
+                syncScheduler.scheduleNow()
+                _messages.tryEmit(context.getString(R.string.room_batch_unmarked, macs.size))
+            }.onFailure {
+                _messages.tryEmit(context.getString(R.string.room_batch_unmark_failed))
+            }
+        }
+    }
+
     private fun handleScanResult(device: ScannedDevice) {
         _scanResults.update { current ->
             (current.filterNot { it.mac == device.mac } + device)

@@ -40,6 +40,9 @@ interface DeviceRepository {
     /** 场景「标记设备」动作：写入真实标记时间。 */
     suspend fun markDevice(mac: String, timestamp: Long = System.currentTimeMillis())
 
+    /** 取消标记：本机先写 null + 脏位 + pending，随后随 /sync/push 上报服务端。 */
+    suspend fun clearDeviceMark(mac: String, timestamp: Long = System.currentTimeMillis())
+
     // 首页设备状态聚合：全部走 SQL COUNT，不把全表拉进内存。
     fun observeOnlineCount(since: Long): Flow<Int>
 

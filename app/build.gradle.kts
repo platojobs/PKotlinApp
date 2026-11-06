@@ -56,8 +56,8 @@ android {
         applicationId = "com.platojobs.pkotlinapp"
         minSdk = 24
         targetSdk = 36
-        versionCode = 47
-        versionName = "0.32.3"
+        versionCode = 48
+        versionName = "0.32.4"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
     }

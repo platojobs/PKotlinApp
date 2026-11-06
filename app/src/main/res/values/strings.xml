@@ -856,12 +856,15 @@
     <string name="room_detail_no_reading">暂无读数</string>
     <string name="room_detail_marked_suffix">· 已标记</string>
     <string name="room_detail_mark">标记设备</string>
+    <string name="room_detail_unmark">取消标记</string>
     <string name="room_detail_mark_pending_hint">%1$d 个标记正在等待上传，联网后自动同步</string>
     <string name="room_detail_disconnect">断开连接</string>
     <string name="room_detail_add_device">扫描添加设备</string>
     <string name="room_detail_select_none">请先选择设备</string>
     <string name="room_batch_marked">已标记 %1$d 台设备</string>
     <string name="room_batch_mark_failed">标记设备失败，请稍后重试</string>
+    <string name="room_batch_unmarked">已取消 %1$d 台设备的标记</string>
+    <string name="room_batch_unmark_failed">取消标记失败，请稍后重试</string>
     <string name="room_batch_disconnected">已断开当前连接的设备</string>
     <string name="room_batch_disconnect_none">所选设备均未连接</string>
     <string name="room_manage_member_hint">只有家庭所有者可以新建、改名、排序或删除房间。</string>

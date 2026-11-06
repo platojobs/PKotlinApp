@@ -348,10 +348,21 @@ internal object PushDeviceMigrationSql {
     )
 }
 
-/** v22 -> v23：设备新增 markedAtDirty；默认 0，既有标记按「已确认」保留。 */
+/**
+ * v22 -> v23：设备新增 markedAtDirty；默认 0。
+ * v23 -> v24：v0.32.3 之前写入的 markedAt 只在本机，从未上报过服务端。
+ * 升级后把它们置为脏 + pending，并让 updatedAt 至少等于标记时间，
+ * 这样下一次 /sync/push 才真正把旧标记同步上去，而不是永远停留在本机。
+ */
 internal object DeviceMarkDirtyMigrationSql {
     val V22_TO_V23 = listOf(
         "ALTER TABLE `devices` ADD COLUMN `markedAtDirty` INTEGER NOT NULL DEFAULT 0",
+    )
+    val V23_TO_V24 = listOf(
+        "UPDATE `devices` SET `markedAtDirty` = 1, " +
+            "`updatedAt` = CASE WHEN `updatedAt` < `markedAt` THEN `markedAt` ELSE `updatedAt` END, " +
+            "`syncState` = 'pending' " +
+            "WHERE `markedAt` IS NOT NULL AND `shared` = 0",
     )
 }
 
@@ -372,7 +383,7 @@ internal object DeviceMarkDirtyMigrationSql {
         CatalogSyncEntity::class,
         PushDeviceEntity::class,
     ],
-    version = 23,
+    version = 24,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -604,6 +615,13 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v23 -> v24：把 v0.32.3 之前的纯本机标记补进待同步队列。 */
+        val MIGRATION_23_24 = object : Migration(23, 24) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                DeviceMarkDirtyMigrationSql.V23_TO_V24.forEach(db::execSQL)
+            }
+        }
+
         @Volatile
         private var instance: AppDatabase? = null
 
@@ -636,6 +654,7 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_20_21,
                     MIGRATION_21_22,
                     MIGRATION_22_23,
+                    MIGRATION_23_24,
                 )
                     .build()
                     .also { instance = it }

@@ -848,11 +848,12 @@
 
     <!-- 房间详情：聚合视图与批量操作 -->
     <string name="room_detail_summary">共 %1$d 台 · 在线 %2$d · 离线 %3$d · 已标记 %4$d</string>
-    <string name="room_detail_device_row">%1$s · %2$s · %3$s</string>
+    <string name="room_detail_device_title">%1$s · %2$s</string>
+    <string name="room_detail_device_meta">%1$s %2$s</string>
     <string name="room_detail_online">在线</string>
     <string name="room_detail_offline">离线</string>
     <string name="room_detail_no_reading">暂无读数</string>
-    <string name="room_detail_marked_suffix"> · 已标记</string>
+    <string name="room_detail_marked_suffix">· 已标记</string>
     <string name="room_detail_mark">标记设备</string>
     <string name="room_detail_disconnect">断开连接</string>
     <string name="room_detail_add_device">扫描添加设备</string>
@@ -911,7 +912,7 @@
     <string name="household_member_remove_message">移除后，对方的设备会回到其个人家庭，本家庭不再共享这些设备。确定移除吗？</string>
     <string name="household_member_remove_action">移除</string>
     <string name="household_member_removed">已移除成员</string>
-    <string name="household_member_actions_title">成员 %1$s：选择操作</string>
+    <string name="household_member_actions_title">%1$s：选择操作</string>
     <string name="household_transfer_title">转让所有权</string>
     <string name="household_transfer_message">转让后你将降为普通成员，失去改家庭名、签发邀请码和移除成员的权限；对方将成为家庭所有者。确定转让给 %1$s 吗？</string>
     <string name="household_transfer_action">转让所有权</string>

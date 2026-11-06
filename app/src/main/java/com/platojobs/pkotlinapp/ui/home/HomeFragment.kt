@@ -339,7 +339,9 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         val reading = entry.reading?.let(::formatReading)
             ?: getString(R.string.room_detail_no_reading)
         val marked = if (entry.marked) getString(R.string.room_detail_marked_suffix) else ""
-        return getString(R.string.room_detail_device_row, entry.name, status, reading) + marked
+        // 名称/状态与读数分两行：长名称或 100% 字号下也不会在词中间换行。
+        val meta = getString(R.string.room_detail_device_meta, reading, marked)
+        return getString(R.string.room_detail_device_title, entry.name, status) + "\n" + meta
     }
 
     private fun batchButton(textRes: Int, onClick: () -> Unit): MaterialButton =

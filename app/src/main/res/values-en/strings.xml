@@ -844,11 +844,12 @@
 
     <!-- Room detail: aggregate view and batch actions -->
     <string name="room_detail_summary">Total: %1$d · online: %2$d · offline: %3$d · marked: %4$d</string>
-    <string name="room_detail_device_row">%1$s · %2$s · %3$s</string>
+    <string name="room_detail_device_title">%1$s · %2$s</string>
+    <string name="room_detail_device_meta">%1$s %2$s</string>
     <string name="room_detail_online">Online</string>
     <string name="room_detail_offline">Offline</string>
     <string name="room_detail_no_reading">No reading yet</string>
-    <string name="room_detail_marked_suffix"> · Marked</string>
+    <string name="room_detail_marked_suffix">· Marked</string>
     <string name="room_detail_mark">Mark devices</string>
     <string name="room_detail_disconnect">Disconnect</string>
     <string name="room_detail_add_device">Scan to add devices</string>
@@ -907,7 +908,7 @@
     <string name="household_member_remove_message">After removal, their devices return to their personal household and are no longer shared here. Remove this member?</string>
     <string name="household_member_remove_action">Remove</string>
     <string name="household_member_removed">Member removed</string>
-    <string name="household_member_actions_title">Member %1$s: choose an action</string>
+    <string name="household_member_actions_title">%1$s: choose an action</string>
     <string name="household_transfer_title">Transfer ownership</string>
     <string name="household_transfer_message">After transferring you become a regular member and lose the ability to rename the household, issue invitations, and remove members; the other person becomes the owner. Transfer to %1$s?</string>
     <string name="household_transfer_action">Transfer ownership</string>

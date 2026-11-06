@@ -1,9 +1,9 @@
-# 真机验收清单（v0.27.0）
+# 真机验收清单（v0.28.1）
 
 本清单用于「执行人不在开发现场」时也能照着做完验收。每项都写明**操作步骤、预期现象、失败判定**。
 所有结果请记录到文末的「验收记录表」；未实际执行的项不要填 PASS。
 
-- 适用版本：`versionName = 0.27.0`（`versionCode = 35`）
+- 适用版本：`versionName = 0.28.1`（`versionCode = 37`）
 - 应用包名：`com.platojobs.pkotlinapp`
 - 主界面：`com.platojobs.pkotlinapp.ui.MainActivity`
 - 设备详情：`com.platojobs.pkotlinapp.ui.detail.DeviceDetailActivity`
@@ -55,7 +55,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versionCode"
 ```
 
-预期：`versionName=0.27.0`、`versionCode=35`。
+预期：`versionName=0.28.1`、`versionCode=37`。
 
 ---
 
@@ -1311,7 +1311,7 @@ apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk
 - 跨 DST 的真实时区切换（自动化已覆盖 02:30 → 03:30 与秋季重复小时，真机仅作补充）。
 - 场景 6 个 `SCENE_*` 码在真实后端联调环境的逐条触发（fixture 中只做了映射与文案验证）。
 
-## 14. 真 Postgres e2e 与界面截图（v0.28.0）
+## 14. 真 Postgres e2e 与界面截图（v0.28.1）
 
 ### 14.1 场景链路（真 Postgres）
 
@@ -1333,12 +1333,18 @@ apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk
 - 截图停点（v0.28.0）：每张滚动页的视口顶部第一个可见元素必须是完整卡片或完整区块标题，不允许上一张卡只剩一行尾巴。停点用 uiautomator 节点树自动断言，不靠肉眼：
   `adb shell uiautomator dump /sdcard/ui.xml && adb exec-out cat /sdcard/ui.xml > /tmp/ui.xml && python3 scripts/check-screenshot-top.py /tmp/ui.xml --expect-top 客厅温湿度计`
   脚本取视口内第一个带 `text` 的节点（跳过 `contentDescription`，卡片自身的 content-desc 会排在标题前造成误判），要求其文字以 `--expect-top` 开头、且其所属 `CardView` 的 top 不高于视口 top（容差 2dp × density）。首页断言「客厅温湿度计」卡片 top=1024 / 视口 top=993（间隙 31px），家庭区断言「家庭」卡 top=394 / 视口 top=394（间隙 0px），均 PASS。列表底部露出下一张卡的半截属于正常滚动暗示，脚本只输出 WARN 不判失败（`--strict-bottom` 才计入失败）。
+- 截图构图（v0.28.1）：`home.png` 重截为 scroll 0，从「首页」标题开始，今日概览（2400 条读数、峰值 23 点 100 条）与设备状态（10 在线 / 2 离线 / 0 未分配 / 0 低电量）完整可见；视口仍为 `[0,993][1080,2211]`，图片裁到 1080×2073，底部切点落在「设备状态」卡底 2060 与「最近活动」卡顶 2081 之间（13px 间隙），不切字。`profile_household.png` 停点保持「家庭」卡顶部（卡 `[42,394][1038,1997]`、标题 top=407），图片裁到 1080×2020，「加入家庭」按钮 `[84,1829][996,1955]` 为最后一个完整元素，卡底 1997 下保留 23px 留白，「迁移到新设备」卡（top=2029）完全不出现。断言输出：`check-screenshot-top.py /tmp/pback2.xml --expect-top 今日概览` → 「OK 顶部: 首个可见文字『今日概览』卡片 top=1014，视口 top=993（间隙 21px）」+ PASS；`check-screenshot-top.py /tmp/pfam_stop.xml --expect-top 家庭` → 「OK 顶部: 首个可见文字『家庭』卡片 top=394，视口 top=394（间隙 0px）」+ PASS。底部均人工复核：无半句、无 Tab 栏。
 - 峰值小时口径（v0.28.0）：「今日读数按小时分布，峰值 X 点 Y 条」的 X 由 `List<HourCount>.peakHour()` 计算，并列时取最晚出现的小时（旧实现 `maxByOrNull` 并列取首个，导致均匀数据下永远是 0 点）。本地今日 0–22 点各 100 条、23 点 25 条，页面显示「峰值 22 点 100 条」；`HourlyPeakTest` 覆盖并列 / 单峰 / 无数据。
 - 失败判定：出现占位图/拼图/旧图、页面空白或崩溃、可滚动页面最后一项被系统手势条遮挡、设备详情指标名显示「其他」而原始 key 不是未知值、200% 字号下文字重叠或按钮不可点。
 
 ### 14.4 截图过程中修复的界面问题（需单独提交）
 
-本版（v0.28.0）：
+本版（v0.28.1）：
+
+- 首页 `home.png` 从「客厅温湿度计」卡开始，把今日概览与设备状态整块滚没了：重截为 scroll 0，并裁到底部卡片间隙（1080×2073）。
+- 家庭区 `profile_household.png` 底部露出「迁移到新设备」半句：裁到家庭卡底边留白（1080×2020），「加入家庭」按钮为最后一个完整元素。
+
+v0.28.0：
 
 - 首页截图顶部残留「今日读数按小时分布，峰值 0 点 100 条」一行（今日概览卡被滚掉上半截）：停点改为「客厅温湿度计」卡顶部。
 - 家庭区截图「我的」标题下残留「断开自动停止。」（后台采集卡的最后一行）：停点改为「家庭」卡顶部。

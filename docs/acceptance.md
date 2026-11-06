@@ -1,9 +1,9 @@
-# 真机验收清单（v0.25.0）
+# 真机验收清单（v0.26.0）
 
 本清单用于「执行人不在开发现场」时也能照着做完验收。每项都写明**操作步骤、预期现象、失败判定**。
 所有结果请记录到文末的「验收记录表」；未实际执行的项不要填 PASS。
 
-- 适用版本：`versionName = 0.25.0`（`versionCode = 33`）
+- 适用版本：`versionName = 0.26.0`（`versionCode = 34`）
 - 应用包名：`com.platojobs.pkotlinapp`
 - 主界面：`com.platojobs.pkotlinapp.ui.MainActivity`
 - 设备详情：`com.platojobs.pkotlinapp.ui.detail.DeviceDetailActivity`
@@ -55,7 +55,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versionCode"
 ```
 
-预期：`versionName=0.25.0`、`versionCode=33`。
+预期：`versionName=0.26.0`、`versionCode=34`。
 
 ---
 
@@ -1311,7 +1311,7 @@ apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk
 - 跨 DST 的真实时区切换（自动化已覆盖 02:30 → 03:30 与秋季重复小时，真机仅作补充）。
 - 场景 6 个 `SCENE_*` 码在真实后端联调环境的逐条触发（fixture 中只做了映射与文案验证）。
 
-## 14. 真 Postgres e2e 与界面截图（v0.25.0）
+## 14. 真 Postgres e2e 与界面截图（v0.26.0）
 
 ### 14.1 场景链路（真 Postgres）
 
@@ -1328,13 +1328,22 @@ apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk
 ### 14.3 真实界面截图（模拟器 + 本地后端 + seed 数据）
 
 - 环境：Pixel_10a 模拟器（Android 37，1080×2400）+ 本机 `PJGoIoT v0.22.0` 干净 worktree（API `10.0.2.2:8080`，真 Postgres），App 使用 `-PapiBaseUrl=http://10.0.2.2:8080/` 构建。
-- 造数：`python3 scripts/seed-screenshots.py http://127.0.0.1:8080/api/v1`，再用配对码在「我的 → 8 位配对码」接管账号；数据含 3 家庭 / 6 房间 / 12 设备（7/3/2 分布，5 种型号、2 台离线）/ 4 场景（1 个 `rejected`、1 个定时、1 个 `deviceMissing`）/ 3 条服务端反馈（1 条已关闭）。
-- 预期：15 张截图位于 `docs/screenshots/`，覆盖首页、设备详情、智能（列表 + 详情）、产品（列表 + 详情）、市场、我的、家庭、房间、会话、反馈详情，以及 200% 字号的首页与场景页；`README.md` 以相对路径引用并写明来源。
+- 造数：`python3 scripts/seed-screenshots.py http://127.0.0.1:8080/api/v1`，再用配对码在「我的 → 8 位配对码」接管账号，最后 `python3 scripts/seed-local-db.py` 注入本地读数与扫描日志；数据含 3 家庭 / 6 房间 / 12 设备（7/3/2 分布，5 种型号、2 台离线）/ 4 场景（1 个 `rejected`、1 个定时、1 个 `deviceMissing`）/ 3 条服务端反馈（1 条已关闭）/ 12 条本地扫描日志；服务端读数每 10 分钟一条、共 7 天。
+- 预期：16 张截图位于 `docs/screenshots/`，覆盖首页、设备详情（24 小时 48 桶、折线 + min–max 带、横轴 `MM-dd`）、智能（列表 + 详情）、产品（列表 + 详情）、市场、我的、我的 · 家庭区（`profile_household.png`，成员显示「成员 N · 角色」而非原始 ID）、我的 · 扫描日志（`profile_scan_logs.png`，12 条）、房间、会话、反馈详情，以及 200% 字号的首页与场景页；`README.md` 以相对路径引用并写明来源。
 - 失败判定：出现占位图/拼图/旧图、页面空白或崩溃、可滚动页面最后一项被系统手势条遮挡、设备详情指标名显示「其他」而原始 key 不是未知值、200% 字号下文字重叠或按钮不可点。
 
 ### 14.4 截图过程中修复的界面问题（需单独提交）
 
-本版（v0.25.0）：
+本版（v0.26.0）：
+
+- 设备详情 24 小时图只有两个数据点、几乎空白：seed 读数只集中在几分钟内；改为 7 天、每 10 分钟一条原始读数，并由客户端把原始读数聚合成 30 分钟桶（48 桶），7 天视图走服务端 `1h`（168 桶）。
+- 折线 `Paint` 默认 `FILL`，`drawPath` 把开放折线隐式闭合填成实心面，盖住 min–max 区间带；改为 `Paint.Style.STROKE`。
+- 横轴首尾标签重复（都是 `20:31`）：新增 `ChartAxisLabelFormatter`，按跨度选 `MM-dd`/`HH:mm`/`HH:mm:ss`，首尾同串时自动加细；补三种跨度单测。
+- 截图滚动停在半截，顶部「扫描日志」「场景仅在保存本机…」被切：截图前回到 section 顶部，说明文案放在固定 header。
+- 成员行显示原始用户 ID：`HouseholdMember.displayName` 优先，缺失时回落「成员 N · 角色」，原始 ID 只在排障/长按提示出现。
+- `household.png` 名不副实（实际是「我的」里的家庭区）：重命名为 `profile_household.png`；扫描日志造 12 条真实记录。
+
+v0.25.0（历史）：
 
 - 可滚动内容容器没有吃到底部 `WindowInsets`，最后一项被系统手势条压住；统一 `clipToPadding=false` + 底部 `systemBars.bottom` padding。底部导航固定 56dp 高度只加 padding 会把 item 压成 21px，改为「高度 = 56dp + inset、inset 作为 padding」。
 - 服务端指标 key（`temperature_celsius`/`relative_humidity`/`pressure_hpa` 等）没有映射到本地展示名，设备详情与场景摘要显示「其他」；新增 `ReadingMetrics.displayAlias()`，未知 key 才回落「其他（原始 key）」，`MetricThreshold.displayUnit` 同步识别别名单位。

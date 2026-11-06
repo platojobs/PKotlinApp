@@ -1007,21 +1007,22 @@ cursor=0 changes=4 nextCursor=59 entities=['household', 'room', 'user_device']
 CI：GitHub Actions 的 `e2e-postgres` job 与该次运行同一脚本，日志与测试报告见
 <https://github.com/platojobs/PKotlinApp/actions/workflows/android.yml>。
 
-## 16. 界面截图（v0.25.0）
+## 16. 界面截图（v0.26.0）
 
 以下截图全部来自 **Android 模拟器（Pixel_10a，Android 37）+ 本机 PJGoIoT v0.22.0 后端（真 Postgres）+ `scripts/seed-screenshots.py` 造的演示数据**，不是设计稿、拼图或真机生产环境。
 
 | 截图 | 页面 |
 | --- | --- |
 | [home.png](docs/screenshots/home.png) | 首页：3 个家庭（7/3/2 台）、今日概览（温度/湿度/气压/心率/电量）、在线/离线状态、房间分组、最近活动 |
-| [device_detail.png](docs/screenshots/device_detail.png) | 设备详情：服务端指标 key 映射为「湿度 · 14 条」「温度 · 14 条」，图表与底部导出按钮完整露出 |
+| [device_detail.png](docs/screenshots/device_detail.png) | 设备详情：24 小时视图 48 个桶、7 天视图 168 个桶，折线与 min–max 区间带可见，横轴按跨度显示 `11-05` / `11-06` |
 | [scenes.png](docs/screenshots/scenes.png) | 智能：4 个场景，含 `rejected` 与 `deviceMissing` 徽标、1 个定时场景 |
 | [scene_detail.png](docs/screenshots/scene_detail.png) | 场景详情（编辑弹窗）：定时触发与动作列表 |
 | [products.png](docs/screenshots/products.png) | 产品列表：按型号分组与设备数量 |
 | [product_detail.png](docs/screenshots/product_detail.png) | 产品详情：说明、可解析指标、兼容性 |
 | [market.png](docs/screenshots/market.png) | 市场：兼容性查询与服务入口 |
 | [profile.png](docs/screenshots/profile.png) | 我的：同步状态、权限、告警设置 |
-| [household.png](docs/screenshots/household.png) | 家庭管理：当前家庭 7 台设备、3 个房间、成员计数 |
+| [profile_household.png](docs/screenshots/profile_household.png) | 我的 · 家庭区：当前家庭 7 台设备、3 个房间、成员显示「成员 1 · 所有者（我）」与「成员 2 · 成员」 |
+| [profile_scan_logs.png](docs/screenshots/profile_scan_logs.png) | 我的 · 扫描日志：最近 12 条真实扫描记录（在线/离线设备、RSSI -45 ~ -88 dBm） |
 | [rooms.png](docs/screenshots/rooms.png) | 房间管理：当前家庭的 3 个房间（客厅/主卧/次卧），排序与删除 |
 | [sessions.png](docs/screenshots/sessions.png) | 会话管理：当前会话与其他会话的吊销入口 |
 | [feedback_list.png](docs/screenshots/feedback_list.png) | 我的反馈记录：3 条反馈（1 条已关闭） |
@@ -1029,12 +1030,13 @@ CI：GitHub Actions 的 `e2e-postgres` job 与该次运行同一脚本，日志�
 | [home_font200.png](docs/screenshots/home_font200.png) | 系统字号 200% 的首页（大字号不炸） |
 | [scenes_font200.png](docs/screenshots/scenes_font200.png) | 系统字号 200% 的场景页（徽标独立成行，不挤场景名） |
 
-数据口径：3 个家庭（12 台设备按 7/3/2 分布）、6 个房间（按家庭分别建 3/2/1 个，设备归属各自家庭）、12 台设备（5 种 `deviceType`，2 台离线）、4 个场景（1 个 `rejected`、1 个定时、1 个引用已删除设备的 `deviceMissing`）、3 条服务端反馈（1 条已关闭）。家庭设备是服务端共享关系，seed 脚本按家庭分别创建房间并通过 `PATCH /my/devices` 写归属，可重复执行（每次新建匿名账号）。读数在服务端保留 7 天；首页与详情展示的读数来自 App 本地 Room（与 BLE 采集同一张表），由 seed 脚本按同一表结构写入，覆盖温度、湿度、气压、心率与电量。`rejected` 场景是本地 `syncState` 的展示态（服务端不会持久化被拒状态），截图时让本地字段更新时间晚于服务端快照，避免启动同步把它拉回 `synced`；这属于演示数据构造，不是产品行为。
+数据口径：3 个家庭（12 台设备按 7/3/2 分布）、6 个房间（按家庭分别建 3/2/1 个，设备归属各自家庭）、12 台设备（5 种 `deviceType`，2 台离线）、4 个场景（1 个 `rejected`、1 个定时、1 个引用已删除设备的 `deviceMissing`）、3 条服务端反馈（1 条已关闭）、12 条本地扫描日志。家庭设备是服务端共享关系，seed 脚本按家庭分别创建房间并通过 `PATCH /my/devices` 写归属，可重复执行（每次新建匿名账号）。读数在服务端保留 7 天，`seed-screenshots.py` 每 10 分钟写一条原始读数（正弦 + 噪声 + 偶发尖峰，电量每小时），24 小时视图由客户端拉原始读数后聚合成 30 分钟桶（48 个），7 天视图走服务端 `1h` 分桶（168 个），每桶内 3/6 个样本足以画出折线与 min–max 区间带；首页与详情离线兜底读本地 Room，`seed-local-db.py` 按同一表结构写入 7 天读数、12 条扫描日志与设备在线状态/房间归属。`rejected` 场景是本地 `syncState` 的展示态（服务端不会持久化被拒状态），截图时让本地字段更新时间晚于服务端快照，避免启动同步把它拉回 `synced`；这属于演示数据构造，不是产品行为。
 
-本版截图走查修复了三个问题：可滚动页面的底部内容被系统手势条压住（`clipToPadding=false` + `bottom = systemBars.bottom`，底部导航改为「高度补足 inset、inset 作为 padding」，避免固定 56dp 把 item 压扁）；seed 从「一个家庭 12 台」改为 7/3/2 的三家庭多房间结构；设备详情把服务端指标 key（`temperature_celsius`/`relative_humidity`/`pressure_hpa` 等）映射为本地展示名，未知 key 回落「其他（原始 key）」。同页还修了 200% 字号下场景拒绝徽标与标题同行把场景名挤成 0 宽的问题。原仓库与 `PJGoIoT` 主干未提交内容均未改动，后端跑在 `v0.22.0` 的干净 worktree。
+本版截图走查修复了五个问题：**图表撑不起来**——seed 读数原来只集中在几分钟内，24 小时图只有两个点；改为 7 天、每 10 分钟一条原始读数，客户端把原始读数聚合为 30 分钟桶（48 桶），并修复折线 `Paint` 默认 `FILL` 把开放路径隐式闭合成实心面、盖住 min–max 带的问题（`Paint.Style.STROKE`）。**横轴标签重复**——新增 `ChartAxisLabelFormatter`，跨度 ≥ 1 天 `MM-dd`、≥ 1 小时 `HH:mm`、< 1 小时 `HH:mm:ss`，首尾同串时自动加细到 `MM-dd HH:mm`/`HH:mm:ss`/`HH:mm:ss.SSS`。**滚动位置切字**——截图前先回到 section 顶部，页面说明文案放在固定 header 而不是可滚动首项。**成员显示原始 ID**——`HouseholdMember.displayName` 优先，缺失时回落「成员 N · 角色」，原始 ID 只在排障/长按提示出现。**文件名与页面不符**——「家庭管理」实际是「我的」里的家庭区，`household.png` 重命名为 `profile_household.png`，另补 `profile_scan_logs.png`。原仓库与 `PJGoIoT` 主干未提交内容均未改动，后端跑在 `v0.22.0` 的干净 worktree。
 
 ## 17. 版本记录
 
+- `v0.26.0`：截图验收五项修复。**图表数据**：`scripts/seed-screenshots.py` 改为 7 天、每 10 分钟一条原始读数（温度/湿度/气压/心率，正弦 + 噪声 + 偶发尖峰；电量每小时），24 小时视图不再依赖服务端白名单里的 `30m`，由 `ReadingPager` 分页拉原始读数后经 `ReadingSeriesBucketing.aggregateRemote` 聚合成 48 个 30 分钟桶，7 天视图走服务端 `1h` 共 168 桶；修复 `ReadingChartView` 折线 `Paint` 默认 `FILL` 把开放路径隐式闭合、盖住 min–max 区间带的问题。**横轴标签**：新增 `ChartAxisLabelFormatter`，按跨度选 `MM-dd`/`HH:mm`/`HH:mm:ss`，首尾同串时加细到 `MM-dd HH:mm`/`HH:mm:ss`/`HH:mm:ss.SSS`，补 `ChartAxisLabelFormatterTest` 覆盖三种跨度与同串细分。**成员显示名**：`HouseholdMember.displayName` 优先，缺失时回落「成员 N · 角色」，原始用户 ID 只在长按/转让提示等排障场景出现，补 `HouseholdMemberLabelTest`。**造数**：`scripts/seed-local-db.py` 注入 7 天本地读数、12 条扫描日志（含在线/离线设备）与设备在线状态/房间归属，可重复执行且不污染已有账号；重新截图并把 `household.png` 重命名为 `profile_household.png`，新增 `profile_scan_logs.png`，共 16 张。单测、lint、fixture e2e 与真 Postgres e2e 全绿，tag `v0.26.0`（`versionCode = 34`）。
 - `v0.25.0`：截图验收三项修复。**底部 inset**：新增 `applyBottomInsetPadding()`/`applyBottomInsetHeight()`，首页、智能、产品、市场、我的、产品详情、设备详情、反馈记录等可滚动容器统一 `clipToPadding=false` + 底部 `systemBars.bottom` padding；底部导航固定 56dp 高度改为「高度 = 56dp + inset、inset 作为 padding」，修复固定高度下把 item 压成 21px 的问题，最后一项可完整滚到手势条上方。**指标展示名**：`ReadingMetrics.displayAlias()` 补 `temperature_celsius`/`relative_humidity`/`pressure_hpa`/`battery_percent`/`co2_ppm` 等服务端 key，详情页、场景/规则摘要、通知文案与首页今日概览统一走该映射；未知 key 回落「其他（原始 key）」便于排查，`MetricThreshold.displayUnit` 同步识别别名单位。**造数**：`scripts/seed-screenshots.py` 改为 3 个家庭 7/3/2、按家庭分别创建 6 个房间并通过 `PATCH /my/devices` 写家庭/房间归属，可重复执行；另修 200% 字号下场景徽标挤占标题的问题（徽标独立成行）。重截首页、设备详情、家庭、房间、场景、场景详情、产品/产品详情、市场、我的、会话、反馈与两张 200% 字号截图，共 15 张。单测、lint、fixture e2e 与真 Postgres e2e 全绿，tag `v0.25.0`（`versionCode = 33`）。
 - `v0.24.0`：真 Postgres e2e 补齐场景与会话链路。场景侧覆盖首次上传并写回 `remoteId`、LWW 双端改不同字段都保留、软删后列表排除且 owner/陌生人均 404、引用设备软删后 `deviceMissing` 置真且不级联删场景；会话侧覆盖 refresh 轮换后旧 token 401、吊销非当前会话后该 token 401、跨用户访问 404。联调中发现 Go `time.Time` 输出 RFC3339Nano（小数位 0–9 位）且 create 返回 `Z`、list 返回 `+08:00`，客户端只接受固定 3 位毫秒且把 `Z` 当字面量，导致场景响应被整条丢弃；`SceneTimestamps` 改为统一补齐/截断到毫秒并用 `XXX` 解析时区，补 `SceneTimestampsTest`。新增 `scripts/seed-screenshots.py`（3 家庭/6 房间/12 设备/4 场景/3 反馈，含离线、`deviceMissing` 与定时场景），产出 14 张模拟器真实截图（含 200% 字号两张），图片清单与数据口径见上节。截图过程中修复三个界面问题：Material `Chip` 设置 `isSingleLine=false` 会抛异常导致市场/设备详情崩溃、二级页 `Toolbar` 固定高度叠加状态栏内边距导致标题被压扁、场景编辑弹窗输入框固定高度导致文字裁切。单测、lint、fixture e2e 与真 Postgres e2e 全绿，tag `v0.24.0`（`versionCode = 32`）。
 - `v0.19.0`：把意见反馈从「本地待发队列」接成真实发送链路（后端 PJGoIoT v0.16.0 / 契约 0.12.0）。`feedback_drafts` 增加 `retryCount/lastError/lastErrorCode/lastErrorRetryAfterSeconds/remoteFeedbackId/lastAttemptAt`，状态机 `pending→sending→sent/failed`，只有 2xx 且拿到 `feedbackId` 才标 sent；用草稿本地 ID 作 `Idempotency-Key`，断网重试复用同一键不产生重复记录，同 key 不同内容映射 409 `IDEMPOTENCY_CONFLICT`。失败后台只安排有界指数退避（10s 起、5 分钟封顶、最多 5 次自动重试），429 按 `Retry-After` 提示手动稍后再试、不自动狂重试；失败草稿永久保留，前台可无限手动重试。上下文自动填充 `BuildConfig.VERSION_NAME/BUILD_TYPE`、系统版本与 `Build.MODEL`。新增「我的反馈记录」页：`GET /feedback/mine` 游标分页、下拉刷新、触底加载更多，空/加载/错误复用 `ThreeStateHost`；列表 DTO 不含 contact/diagnostics。Room v17（`MIGRATION_16_17`）迁移旧草稿；新增 `FeedbackStoreTest`（状态机/幂等键/429/失败保留/退避上限/上下文）、`FeedbackDtoContractTest`、`FeedbackSyncMigrationTest`（真实 SQLite v16→v17）；fixture e2e 补提交、幂等重放、409、400、本人列表、游标分页与跨账号隔离。单测全绿、`lintDebug` 0 issue、`assembleDebug`、fixture e2e 全绿，tag `v0.19.0`（`versionCode = 27`）。

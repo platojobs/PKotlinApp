@@ -80,6 +80,8 @@ class DeviceDetailActivity : AppCompatActivity() {
     }
 
     private var receiverRegistered = false
+    /** 连接状态与设备信息提示共用的派生状态。 */
+    private var connectionUi: ConnectionUi? = null
     private var renderedMetricSignatures: List<String> = emptyList()
     private var renderedRangeChips = false
     private var connectedForCollection = false
@@ -253,21 +255,27 @@ class DeviceDetailActivity : AppCompatActivity() {
     }
 
     private fun renderConnection(state: BleConnectionState) {
-        val connected = state is BleConnectionState.Connected && state.mac == mac
-        val connecting = state is BleConnectionState.Connecting && state.mac == mac
-        val keyMissing = state is BleConnectionState.KeyMissing && state.mac == mac
+        // 连接状态与设备信息提示共用同一个派生状态，避免两块读不同来源。
+        val ui = ConnectionUi.from(state, mac)
+        connectionUi = ui
+        val connected = ui.phase == ConnectionPhase.CONNECTED
 
-        binding.connectionStatus.text = when {
-            connected -> getString(R.string.detail_connected)
-            connecting -> getString(R.string.detail_connecting)
-            keyMissing -> getString(R.string.detail_key_missing_title)
-            else -> getString(R.string.detail_disconnected)
+        binding.connectionStatus.text = when (ui.phase) {
+            ConnectionPhase.CONNECTED -> getString(R.string.detail_connected)
+            ConnectionPhase.CONNECTING -> getString(R.string.detail_connecting)
+            ConnectionPhase.KEY_MISSING -> getString(R.string.detail_key_missing_title)
+            ConnectionPhase.DISCONNECTED -> getString(R.string.detail_disconnected)
         }
-        binding.connectButton.visibility =
-            if (!connected && !connecting && !keyMissing) View.VISIBLE else View.GONE
-        binding.disconnectButton.visibility =
-            if (connected || connecting) View.VISIBLE else View.GONE
-        binding.keyMissingCard.visibility = if (keyMissing) View.VISIBLE else View.GONE
+        binding.connectButton.visibility = if (ui.showConnect) View.VISIBLE else View.GONE
+        binding.disconnectButton.visibility = if (ui.showDisconnect) View.VISIBLE else View.GONE
+        binding.disconnectButton.text = getString(
+            if (ui.cancelConnect) R.string.detail_cancel_connecting else R.string.action_disconnect,
+        )
+        binding.disconnectButton.contentDescription = binding.disconnectButton.text
+        binding.rssiRow.visibility = if (ui.rssiVisible) View.VISIBLE else View.GONE
+        binding.keyMissingCard.visibility =
+            if (ui.phase == ConnectionPhase.KEY_MISSING) View.VISIBLE else View.GONE
+        renderInfo(viewModel.info.value)
 
         // 后台采集开关只在连接态可见；连接成功时若开关已持久化为开启，自动恢复服务。
         renderCollectionSwitch(connected)
@@ -353,8 +361,19 @@ class DeviceDetailActivity : AppCompatActivity() {
             if (state is DeviceDetailViewModel.InfoState.Loading) View.VISIBLE else View.GONE
         binding.infoContent.visibility =
             if (state is DeviceDetailViewModel.InfoState.Success) View.VISIBLE else View.GONE
-        binding.infoHint.visibility =
-            if (state is DeviceDetailViewModel.InfoState.Idle) View.VISIBLE else View.GONE
+        // 设备信息提示只跟随连接状态源，避免「正在连接…」与「当前未连接」同时出现。
+        val hint = if (state is DeviceDetailViewModel.InfoState.Idle) {
+            connectionUi?.infoHint ?: ConnectionInfoHint.DISCONNECTED
+        } else {
+            ConnectionInfoHint.NONE
+        }
+        binding.infoHint.visibility = if (hint != ConnectionInfoHint.NONE) View.VISIBLE else View.GONE
+        binding.infoHint.text = when (hint) {
+            ConnectionInfoHint.CONNECTING -> getString(R.string.detail_info_connecting_hint)
+            ConnectionInfoHint.DISCONNECTED -> getString(R.string.detail_disconnected_hint)
+            ConnectionInfoHint.LOADING -> getString(R.string.detail_info_loading)
+            ConnectionInfoHint.NONE -> ""
+        }
         binding.infoError.visibility =
             if (state is DeviceDetailViewModel.InfoState.Error) View.VISIBLE else View.GONE
         binding.infoRetryButton.visibility =

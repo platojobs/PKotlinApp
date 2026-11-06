@@ -127,6 +127,8 @@
     <string name="detail_title">Device details</string>
     <string name="detail_status_title">Connection status</string>
     <string name="detail_connecting">Connecting…</string>
+    <string name="detail_cancel_connecting">Cancel</string>
+    <string name="detail_info_connecting_hint">Connecting. Vendor and firmware information is read from the server once connected.</string>
     <string name="detail_connected">Connected</string>
     <string name="detail_disconnected">Disconnected</string>
     <string name="detail_key_missing_title">Device bond information lost. Please re-pair the device</string>

@@ -129,6 +129,8 @@
     <string name="detail_title">设备详情</string>
     <string name="detail_status_title">连接状态</string>
     <string name="detail_connecting">正在连接…</string>
+    <string name="detail_cancel_connecting">取消</string>
+    <string name="detail_info_connecting_hint">正在连接，连接成功后会从服务端读取厂商与固件信息。</string>
     <string name="detail_connected">已连接</string>
     <string name="detail_disconnected">未连接</string>
     <string name="detail_key_missing_title">设备绑定信息丢失，请重新配对</string>

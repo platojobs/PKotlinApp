@@ -4,6 +4,7 @@ import java.io.File
 import javax.xml.parsers.DocumentBuilderFactory
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.w3c.dom.Element
@@ -113,6 +114,23 @@ class BilingualAuditTest {
         val text = file.readText().lowercase()
         assertFalse("英文资源不得出现 pairing code", text.contains("pairing code"))
         assertTrue("英文资源缺少 Transfer Code", file.readText().contains("Transfer Code"))
+    }
+
+    @Test
+    fun `家庭普通成员文案不与序号同构重复`() {
+        val (zhStrings, _) = readStrings(File(resDir, "values/strings.xml"), skipUntranslatable = true)
+        val (enStrings, _) = readStrings(File(resDir, "values-en/strings.xml"), skipUntranslatable = false)
+
+        assertEquals("普通成员", zhStrings.getValue("household_role_member").text)
+        assertEquals("Regular member", enStrings.getValue("household_role_member").text)
+
+        // 成员行渲染为「序号 · 角色」；去掉 %1$d 后若与角色词相同，会出现「Member 2 · Member」同构重复。
+        listOf("values/strings.xml", "values-en/strings.xml").forEach { path ->
+            val strings = if (path.startsWith("values-en")) enStrings else zhStrings
+            val ordinal = strings.getValue("household_member_ordinal").text.replace("%1\$d", "").trim()
+            val role = strings.getValue("household_role_member").text
+            assertNotEquals("$path 的成员序号与角色重复：$role", role, ordinal)
+        }
     }
 
     @Test

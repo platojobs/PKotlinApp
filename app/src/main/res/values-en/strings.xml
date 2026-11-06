@@ -838,7 +838,7 @@
     <string name="household_current">Current household: %1$s (%2$s)</string>
     <string name="household_none">Households not synced yet; showing local data</string>
     <string name="household_role_owner">Owner</string>
-    <string name="household_role_member">Member</string>
+    <string name="household_role_member">Regular member</string>
     <string name="household_members_title">Members</string>
     <string name="household_members_empty">No member info yet (not synced)</string>
     <string name="household_member_row">%1$s · %2$s%3$s</string>

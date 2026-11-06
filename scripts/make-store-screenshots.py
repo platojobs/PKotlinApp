@@ -21,6 +21,11 @@ OUT = SRC / "play"
 W, H = 1080, 1920
 CAPTION_FONT = "/System/Library/Fonts/Supplemental/Arial Unicode.ttf"
 
+# 六张图的设备框统一宽度：以 1080 宽源截图缩放到 695px，外框再加 10px 白边；
+# 圆角固定为外框 40px / 屏幕 30px，避免 03/04/05 裁短后与 02/06 宽度不一致。
+FRAME_WIDTH = 695
+FRAME_MAX_HEIGHT = 1560
+
 # (源截图, 输出文件名, 文案, 底部裁剪高度)。文案只写该截图里实际可见的元素：
 # home 只有今日概览与设备状态（无设备卡片）；device_detail 只有曲线与汇总（无阈值告警）；
 # products 只有设备类型目录（无 GATT 服务表）；profile_household 只有家庭与成员行（无房间行）。
@@ -72,7 +77,9 @@ def compose(src: Path, caption: str, crop_bottom=None) -> Image.Image:
     shot = Image.open(src).convert("RGB")
     if crop_bottom is not None:
         shot = shot.crop((0, 0, shot.width, crop_bottom))
-    scale = min(1320 / shot.width, 1560 / shot.height)
+    scale = FRAME_WIDTH / shot.width
+    if round(shot.height * scale) > FRAME_MAX_HEIGHT:
+        scale = FRAME_MAX_HEIGHT / shot.height
     size = (round(shot.width * scale), round(shot.height * scale))
     shot = shot.resize(size, Image.LANCZOS)
 

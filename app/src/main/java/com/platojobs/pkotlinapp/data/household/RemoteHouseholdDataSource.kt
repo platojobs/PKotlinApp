@@ -82,6 +82,9 @@ class RemoteHouseholdDataSource(
                 kind = it.kind.orEmpty(),
                 joinedAt = Rfc3339.parse(it.joinedAt) ?: 0L,
                 isSelf = it.isSelf == true,
+                displayName = listOf(it.displayName, it.name, it.nickname)
+                    .firstOrNull { value -> value?.isNotBlank() == true }
+                    ?.trim(),
             )
         }
     }

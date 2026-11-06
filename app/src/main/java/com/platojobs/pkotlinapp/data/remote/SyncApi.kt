@@ -145,6 +145,10 @@ data class HouseholdMemberDto(
     val joinedAt: String? = null,
     /** 服务端（v0.14.0 起）标记该行是否为当前账号；缺失表示老后端。 */
     val isSelf: Boolean? = null,
+    /** 可选的成员展示名；当前后端为匿名账号，通常为 null。 */
+    val displayName: String? = null,
+    val name: String? = null,
+    val nickname: String? = null,
 )
 
 data class HouseholdOwnershipTransferRequest(val userId: String)

@@ -38,7 +38,21 @@ data class HouseholdMember(
     val joinedAt: Long,
     /** 服务端 v0.14.0 起直接标记「这一行是我」，不再靠用户名或 id 比对。 */
     val isSelf: Boolean = false,
+    /** 服务端返回的人名/昵称；老后端没有该字段时为 null。 */
+    val displayName: String? = null,
 )
+
+/** 成员行的可读名称：有人名/昵称用人名，否则用「成员 N」，原始 ID 只留给排障入口。 */
+object HouseholdMemberLabel {
+    fun resolve(
+        displayName: String?,
+        ordinal: Int,
+        ordinalLabel: (Int) -> String,
+    ): String {
+        val name = displayName?.trim()?.takeIf { it.isNotEmpty() }
+        return name ?: ordinalLabel(ordinal)
+    }
+}
 
 data class HouseholdInvitation(
     val code: String,

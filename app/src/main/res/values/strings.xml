@@ -836,6 +836,7 @@
     <string name="household_members_title">家庭成员</string>
     <string name="household_members_empty">暂无成员信息（未同步）</string>
     <string name="household_member_row">%1$s · %2$s%3$s</string>
+    <string name="household_member_ordinal">成员 %1$d</string>
     <string name="household_member_self_mark">（我）</string>
     <string name="household_create">创建家庭</string>
     <string name="household_name_hint">家庭名称</string>

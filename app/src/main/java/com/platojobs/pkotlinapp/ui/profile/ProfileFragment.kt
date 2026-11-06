@@ -47,6 +47,7 @@ import com.platojobs.pkotlinapp.domain.feedback.FeedbackState
 import com.platojobs.pkotlinapp.domain.household.Household
 import com.platojobs.pkotlinapp.domain.household.HouseholdInvitationInfo
 import com.platojobs.pkotlinapp.domain.household.HouseholdMember
+import com.platojobs.pkotlinapp.domain.household.HouseholdMemberLabel
 import com.platojobs.pkotlinapp.domain.household.HouseholdRole
 import com.platojobs.pkotlinapp.domain.household.HouseholdSyncStatus
 import com.platojobs.pkotlinapp.domain.household.InvitationStatus
@@ -631,14 +632,17 @@ class ProfileFragment : Fragment() {
             section.householdMembersList.addView(memberRow(getString(R.string.household_members_empty)))
             return
         }
-        members.forEach { member ->
+        members.forEachIndexed { index, member ->
             val isOwnerRow = member.role == HouseholdRole.OWNER
             val role = getString(
                 if (isOwnerRow) R.string.household_role_owner else R.string.household_role_member,
             )
             val selfMark = if (member.isSelf) getString(R.string.household_member_self_mark) else ""
+            val name = HouseholdMemberLabel.resolve(member.displayName, index + 1) {
+                getString(R.string.household_member_ordinal, it)
+            }
             val row = memberRow(
-                getString(R.string.household_member_row, shortUserId(member.userId), role, selfMark),
+                getString(R.string.household_member_row, name, role, selfMark),
             )
             // 服务端 isSelf 标记「这一行是我」：自己的行不出现移除/转让入口。
             val actionable = capabilities.canRemoveMembers && !member.isSelf && !isOwnerRow

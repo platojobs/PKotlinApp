@@ -2,6 +2,8 @@ package com.platojobs.pkotlinapp.data.repository
 
 import com.platojobs.pkotlinapp.data.local.ReadingDao
 import com.platojobs.pkotlinapp.data.local.ReadingEntity
+import com.platojobs.pkotlinapp.domain.model.HourCount
+import com.platojobs.pkotlinapp.domain.model.MetricCount
 import com.platojobs.pkotlinapp.domain.reading.Reading
 import com.platojobs.pkotlinapp.domain.reading.ReadingMetric
 import com.platojobs.pkotlinapp.domain.reading.ReadingMetrics
@@ -46,6 +48,24 @@ class ReadingRepositoryImpl(
 
     override fun observeLatestPerDevice(): Flow<List<Reading>> =
         dao.observeLatestPerDevice().map { rows -> rows.map(ReadingEntity::toDomain) }
+
+    override fun observeCountBetween(from: Long, to: Long): Flow<Int> =
+        dao.observeCountBetween(from, to)
+
+    override fun observeMetricCountsBetween(from: Long, to: Long): Flow<List<MetricCount>> =
+        dao.observeMetricCountsBetween(from, to).map { rows ->
+            rows.map { MetricCount(metric = it.metric, count = it.count) }
+        }
+
+    override fun observeHourlyCountsBetween(from: Long, to: Long): Flow<List<HourCount>> =
+        dao.observeHourlyCountsBetween(from, to).map { rows ->
+            rows.map { HourCount(hourIndex = it.hourIndex, count = it.count) }
+        }
+
+    override fun observeLatestPerDeviceMetric(metric: String): Flow<List<Reading>> =
+        dao.observeLatestPerDeviceMetric(metric).map { rows ->
+            rows.map(ReadingEntity::toDomain)
+        }
 
     override suspend fun getRecent(deviceId: String, metric: String, limit: Int): List<Reading> =
         dao.getRecent(deviceId, metric, limit).map(ReadingEntity::toDomain)

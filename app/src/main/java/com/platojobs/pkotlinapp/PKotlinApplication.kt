@@ -1,6 +1,7 @@
 package com.platojobs.pkotlinapp
 
 import android.app.Application
+import com.platojobs.pkotlinapp.data.scene.SceneScheduleWorker
 import com.platojobs.pkotlinapp.di.AppContainer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -32,5 +33,12 @@ class PKotlinApplication : Application() {
         appScope.launch { runCatching { container.readingRepository.cleanup() } }
         appScope.launch { runCatching { container.syncManager.coldStartPull() } }
         appScope.launch { runCatching { container.syncScheduler.schedule() } }
+        appScope.launch {
+            runCatching {
+                container.ruleEngine.refresh()
+                container.ruleEngine.onScheduleTick()
+            }
+        }
+        SceneScheduleWorker.schedule(this)
     }
 }

@@ -22,6 +22,8 @@ class RuleEngine(
     private val eventRepository: RuleEventRepository,
     private val textProvider: RuleTextProvider,
     private val alertSink: RuleAlertSink? = null,
+    private val triggerObserver: RuleTriggerObserver? = null,
+    private val now: () -> Long = System::currentTimeMillis,
 ) {
 
     private var cachedRules: List<DeviceRule> = emptyList()
@@ -122,6 +124,30 @@ class RuleEngine(
         }
     }
 
+    /**
+     * 定时规则的判定入口：间隔到达后触发，由后台定时任务调用。
+     * 同一条定时规则在间隔内只触发一次；`lastTriggeredTimestamp` 跨进程重启后仍有效。
+     */
+    suspend fun onScheduleTick(): List<RuleEvent> = mutex.withLock {
+        if (!loaded) loadRules()
+        val scheduled = cachedRules.filter { it.type == RuleType.SCHEDULE }
+        val current = now()
+        scheduled.mapNotNull { rule ->
+            val interval = rule.intervalMinutes ?: return@mapNotNull null
+            if (interval <= 0) return@mapNotNull null
+            val key = keyOf(rule, SCHEDULE_MAC)
+            val last = lastTriggeredAt[key] ?: rule.lastTriggeredTimestamp
+            if (current - last < interval * 60_000L) return@mapNotNull null
+            trigger(
+                rule = rule,
+                mac = SCHEDULE_MAC,
+                displayName = "",
+                rssi = null,
+                message = textProvider.scheduled(interval),
+            )
+        }
+    }
+
     private suspend fun trigger(
         rule: DeviceRule,
         mac: String,
@@ -133,30 +159,45 @@ class RuleEngine(
         thresholdValue: Double? = null,
         unit: String? = null,
     ): RuleEvent? {
-        val now = System.currentTimeMillis()
+        val timestamp = now()
         val key = keyOf(rule, mac)
         val last = lastTriggeredAt[key]
-        if (last != null && now - last < COOLDOWN_MS) return null
+        if (last != null && timestamp - last < COOLDOWN_MS) return null
 
-        lastTriggeredAt[key] = now
+        lastTriggeredAt[key] = timestamp
         activeAlerts.add(key)
-        ruleRepository.markTriggered(rule.id, now)
+        ruleRepository.markTriggered(rule.id, timestamp)
         val event = RuleEvent(
             id = 0,
             ruleType = rule.type,
             mac = mac,
             message = message,
-            timestamp = now,
+            timestamp = timestamp,
             metric = metric,
             value = value,
             thresholdValue = thresholdValue,
             unit = unit,
         )
         val id = eventRepository.add(event)
-        if (rule.isMetricRule) {
-            alertSink?.onMetricTriggered(rule, mac, displayName, metric.orEmpty(), value ?: 0.0, unit.orEmpty(), now)
+        if (rule.sceneId != null) {
+            // 场景动作自行决定是否通知；普通告警只对独立规则投递，避免同一次触发发两条通知。
+            runCatching {
+                triggerObserver?.onRuleTriggered(
+                    rule = rule,
+                    mac = mac,
+                    displayName = displayName,
+                    rssi = rssi,
+                    metric = metric,
+                    value = value,
+                    thresholdValue = thresholdValue,
+                    unit = unit,
+                    timestamp = timestamp,
+                )
+            }
+        } else if (rule.isMetricRule) {
+            alertSink?.onMetricTriggered(rule, mac, displayName, metric.orEmpty(), value ?: 0.0, unit.orEmpty(), timestamp)
         } else {
-            alertSink?.onTriggered(rule, mac, displayName, rssi, now)
+            alertSink?.onTriggered(rule, mac, displayName, rssi, timestamp)
         }
         return event.copy(id = id)
     }
@@ -165,7 +206,7 @@ class RuleEngine(
         val key = keyOf(rule, mac)
         if (!activeAlerts.remove(key)) return
         lastTriggeredAt.remove(key)
-        alertSink?.onRecovered(rule, mac, displayName, rssi)
+        if (rule.sceneId == null) alertSink?.onRecovered(rule, mac, displayName, rssi)
     }
 
     /** 指标不满足阈值时调用；只在之前确实触发过时才发恢复通知。 */
@@ -180,12 +221,16 @@ class RuleEngine(
         val key = keyOf(rule, mac)
         if (!activeAlerts.remove(key)) return
         lastTriggeredAt.remove(key)
-        alertSink?.onMetricRecovered(rule, mac, displayName, metric, value, unit)
+        if (rule.sceneId == null) {
+            alertSink?.onMetricRecovered(rule, mac, displayName, metric, value, unit)
+        }
     }
 
     private fun keyOf(rule: DeviceRule, mac: String) = "${rule.id}:$mac"
 
     private companion object {
         const val COOLDOWN_MS = 60_000L
+        /** 定时规则与设备无关，用固定占位 MAC。 */
+        const val SCHEDULE_MAC = ""
     }
 }

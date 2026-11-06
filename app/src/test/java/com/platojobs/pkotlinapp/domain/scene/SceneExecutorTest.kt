@@ -116,6 +116,28 @@ class SceneExecutorTest {
     }
 
     @Test
+    fun `notify and mark device call real runtime effects`() = runBlocking {
+        val runtime = FakeRuntime()
+        val executor = SceneExecutor(runtime, canConnect = { true })
+
+        val result = executor.run(
+            scene(
+                SceneAction(SceneActionType.NOTIFY),
+                SceneAction(SceneActionType.RECORD_LOG),
+                SceneAction(SceneActionType.MARK_DEVICE, deviceMac = mac),
+            ),
+        )
+
+        assertEquals(3, result.successCount)
+        assertEquals(1, runtime.calls.count { it.startsWith("notify:") })
+        assertTrue(runtime.calls.first().startsWith("notify:回家:"))
+        assertTrue(runtime.calls.last() == "mark:$mac")
+        assertEquals(SceneActionType.NOTIFY, result.outcomes.first().action.type)
+        assertTrue(result.allSucceeded)
+    }
+
+
+    @Test
     fun `summary distinguishes all success partial and all failure`() {
         val all = SceneRunResult(
             1L,
@@ -192,6 +214,16 @@ class SceneExecutorTest {
         override fun syncNow() {
             calls += "sync"
         }
+
+        override suspend fun notify(sceneName: String, details: String): Boolean {
+            calls += "notify:$sceneName:$details"
+            return true
+        }
+
+        override suspend fun markDevice(mac: String): Boolean {
+            calls += "mark:$mac"
+            return true
+        }
     }
 }
 
@@ -202,4 +234,7 @@ private fun SceneActionType.displayLabel(): String = when (this) {
     SceneActionType.STOP_COLLECTION -> "停止后台采集"
     SceneActionType.MUTE_ALERTS -> "静音告警"
     SceneActionType.SYNC_NOW -> "刷新同步"
+    SceneActionType.NOTIFY -> "本地通知"
+    SceneActionType.RECORD_LOG -> "记录日志"
+    SceneActionType.MARK_DEVICE -> "标记设备"
 }

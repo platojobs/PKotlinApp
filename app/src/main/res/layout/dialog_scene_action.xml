@@ -49,6 +49,24 @@
             android:layout_width="match_parent"
             android:layout_height="@dimen/touch_min"
             android:text="@string/scene_action_sync_now" />
+
+        <RadioButton
+            android:id="@+id/typeNotify"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/touch_min"
+            android:text="@string/scene_action_notify" />
+
+        <RadioButton
+            android:id="@+id/typeRecordLog"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/touch_min"
+            android:text="@string/scene_action_record_log" />
+
+        <RadioButton
+            android:id="@+id/typeMarkDevice"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/touch_min"
+            android:text="@string/scene_action_mark_device" />
     </RadioGroup>
 
     <Spinner

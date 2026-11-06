@@ -1,5 +1,7 @@
 package com.platojobs.pkotlinapp.data.repository
 
+import com.platojobs.pkotlinapp.data.local.HourCountRow
+import com.platojobs.pkotlinapp.data.local.MetricCountRow
 import com.platojobs.pkotlinapp.data.local.ReadingDao
 import com.platojobs.pkotlinapp.data.local.ReadingEntity
 import com.platojobs.pkotlinapp.data.local.ReadingMetricRow
@@ -219,6 +221,39 @@ class ReadingRepositoryTest {
 
         override suspend fun pendingCount(): Int =
             stored.count { it.syncState == Reading.SYNC_STATE_PENDING }
+
+        override fun observeCountBetween(from: Long, to: Long): Flow<Int> =
+            MutableStateFlow(stored.count { it.recordedAt in from..to })
+
+        override fun observeMetricCountsBetween(from: Long, to: Long): Flow<List<MetricCountRow>> =
+            MutableStateFlow(
+                stored.filter { it.recordedAt in from..to }
+                    .groupBy { it.metric }
+                    .map { (metric, rows) -> MetricCountRow(metric, rows.size) }
+                    .sortedByDescending { it.count },
+            )
+
+        override fun observeHourlyCountsBetween(from: Long, to: Long): Flow<List<HourCountRow>> =
+            MutableStateFlow(
+                stored.filter { it.recordedAt in from..to }
+                    .groupBy { hourOf(it.recordedAt) }
+                    .map { (hour, rows) -> HourCountRow(hour, rows.size) }
+                    .sortedBy { it.hourIndex },
+            )
+
+        override fun observeLatestPerDeviceMetric(metric: String): Flow<List<ReadingEntity>> =
+            MutableStateFlow(
+                stored.filter { it.metric == metric }
+                    .groupBy { it.deviceId }
+                    .values
+                    .mapNotNull { rows -> rows.maxByOrNull { it.recordedAt } },
+            )
+
+        private fun hourOf(timestamp: Long): Int {
+            val calendar = java.util.Calendar.getInstance()
+            calendar.timeInMillis = timestamp
+            return calendar.get(java.util.Calendar.HOUR_OF_DAY)
+        }
 
         override suspend fun markSynced(ids: List<String>) {
             stored.replaceAll {

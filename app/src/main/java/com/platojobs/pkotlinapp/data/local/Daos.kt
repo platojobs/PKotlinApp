@@ -126,6 +126,41 @@ interface DeviceDao {
     @Query("SELECT COUNT(*) FROM devices WHERE syncState = 'pending'")
     suspend fun pendingCount(): Int
 
+    /** 首页设备状态：在线设备数（最近出现时间在阈值内，且未删除）。 */
+    @Query(
+        "SELECT COUNT(*) FROM devices WHERE deletedAt IS NULL AND lastSeenTimestamp >= :since",
+    )
+    fun observeOnlineCount(since: Long): Flow<Int>
+
+    /** 首页设备状态：离线设备数（未删除且最近出现时间早于阈值）。 */
+    @Query(
+        "SELECT COUNT(*) FROM devices WHERE deletedAt IS NULL AND lastSeenTimestamp < :since",
+    )
+    fun observeOfflineCount(since: Long): Flow<Int>
+
+    /** 首页设备状态：未分配房间的设备数。 */
+    @Query("SELECT COUNT(*) FROM devices WHERE deletedAt IS NULL AND roomId IS NULL")
+    fun observeUnassignedRoomCount(): Flow<Int>
+
+    /** 首页下钻：按在线/离线筛选设备。 */
+    @Query(
+        "SELECT * FROM devices WHERE deletedAt IS NULL AND " +
+            "(:online = 1 AND lastSeenTimestamp >= :since OR :online = 0 AND lastSeenTimestamp < :since) " +
+            "ORDER BY lastSeenTimestamp DESC",
+    )
+    fun observeByOnlineState(online: Boolean, since: Long): Flow<List<DeviceEntity>>
+
+    @Query("SELECT * FROM devices WHERE deletedAt IS NULL AND roomId IS NULL " +
+        "ORDER BY lastSeenTimestamp DESC")
+    fun observeUnassignedRoomDevices(): Flow<List<DeviceEntity>>
+
+    @Query("SELECT * FROM devices WHERE deletedAt IS NULL AND mac IN (:macs) " +
+        "ORDER BY lastSeenTimestamp DESC")
+    fun observeByMacs(macs: List<String>): Flow<List<DeviceEntity>>
+
+    @Query("SELECT COUNT(*) FROM devices WHERE deletedAt IS NULL")
+    fun observeActiveCount(): Flow<Int>
+
     @Query("UPDATE devices SET syncState = 'synced' WHERE externalId IN (:externalIds)")
     suspend fun markSyncedByExternalIds(externalIds: List<String>)
 
@@ -153,6 +188,10 @@ interface DeviceDao {
     /** 云端分组只在成功拿到 UserDevice 时更新，避免未同步设备把本地分组清空。 */
     @Query("UPDATE devices SET deviceGroup = :group WHERE externalId = :externalId")
     suspend fun updateGroup(externalId: String, group: String?)
+
+    /** 场景「标记设备」动作：真实写入标记时间，设备卡片据此展示标记。 */
+    @Query("UPDATE devices SET markedAt = :timestamp WHERE mac = :mac")
+    suspend fun markDevice(mac: String, timestamp: Long)
 
     /** 重新登录到新匿名账号后，把本机全部记录重新排队，推送到新账号。 */
     @Query("UPDATE devices SET syncState = 'pending'")
@@ -295,6 +334,18 @@ data class ReadingMetricRow(
     val lastAt: Long,
 )
 
+/** 首页今日概览：按指标分组的真实读数条数。 */
+data class MetricCountRow(
+    val metric: String,
+    val count: Int,
+)
+
+/** 首页今日概览：按小时分组的真实读数条数（0 起，相对本地当天 0 点）。 */
+data class HourCountRow(
+    val hourIndex: Int,
+    val count: Int,
+)
+
 @Dao
 interface ReadingDao {
 
@@ -312,6 +363,47 @@ interface ReadingDao {
             "ORDER BY recordedAt DESC LIMIT :limit",
     )
     fun observeRecent(deviceId: String, metric: String, limit: Int): Flow<List<ReadingEntity>>
+
+    /** 首页今日概览：本地当天窗口内的真实读数总量。 */
+    @Query("SELECT COUNT(*) FROM readings WHERE recordedAt >= :from AND recordedAt < :to")
+    fun observeCountBetween(from: Long, to: Long): Flow<Int>
+
+    /** 首页今日概览：按指标 GROUP BY，避免把全表拉到内存里再统计。 */
+    @Query(
+        """
+        SELECT metric AS metric, COUNT(*) AS count FROM readings
+        WHERE recordedAt >= :from AND recordedAt < :to
+        GROUP BY metric
+        ORDER BY count DESC, metric ASC
+        """,
+    )
+    fun observeMetricCountsBetween(from: Long, to: Long): Flow<List<MetricCountRow>>
+
+    /** 首页今日概览：按小时 GROUP BY（小时序号相对本地 0 点）。 */
+    @Query(
+        """
+        SELECT CAST((recordedAt - :from) / 3600000 AS INTEGER) AS hourIndex,
+               COUNT(*) AS count
+        FROM readings
+        WHERE recordedAt >= :from AND recordedAt < :to
+        GROUP BY hourIndex
+        ORDER BY hourIndex ASC
+        """,
+    )
+    fun observeHourlyCountsBetween(from: Long, to: Long): Flow<List<HourCountRow>>
+
+    /** 每台设备某个指标的最新一条读数（首页低电量下钻/统计）。 */
+    @Query(
+        """
+        SELECT r.* FROM readings r
+        INNER JOIN (
+            SELECT deviceId, MAX(recordedAt) AS maxAt FROM readings
+            WHERE metric = :metric GROUP BY deviceId
+        ) m ON r.deviceId = m.deviceId AND r.recordedAt = m.maxAt
+        WHERE r.metric = :metric
+        """,
+    )
+    fun observeLatestPerDeviceMetric(metric: String): Flow<List<ReadingEntity>>
 
     /**
      * 每台设备最近一条读数（首页卡片展示；同一时刻多条时由调用方取第一条）。
@@ -400,9 +492,11 @@ interface RuleDao {
     @Insert
     suspend fun insert(rule: RuleEntity): Long
 
-    @Query("SELECT * FROM rules ORDER BY createdAt ASC")
+    /** 自动化规则列表：场景触发规则由场景编辑器管理，不在此重复展示。 */
+    @Query("SELECT * FROM rules WHERE sceneId IS NULL ORDER BY createdAt ASC")
     fun observeRules(): Flow<List<RuleEntity>>
 
+    /** 引擎判定需要全部规则（含场景触发规则）。 */
     @Query("SELECT * FROM rules ORDER BY createdAt ASC")
     suspend fun getAllRules(): List<RuleEntity>
 
@@ -429,6 +523,17 @@ interface RuleEventDao {
     @Query("SELECT COUNT(*) FROM rule_events WHERE timestamp >= :from AND timestamp < :to")
     fun observeCountBetween(from: Long, to: Long): Flow<Int>
 
+    /** 今日指标越界次数：只统计带指标证据的事件，不含断连/RSSI 告警。 */
+    @Query(
+        "SELECT COUNT(*) FROM rule_events WHERE timestamp >= :from AND timestamp < :to " +
+            "AND metric IS NOT NULL",
+    )
+    fun observeMetricViolationCountBetween(from: Long, to: Long): Flow<Int>
+
+    @Query("SELECT * FROM rule_events WHERE timestamp >= :from AND timestamp < :to " +
+        "ORDER BY timestamp DESC LIMIT 1")
+    fun observeLatestBetween(from: Long, to: Long): Flow<RuleEventEntity?>
+
     @Query("SELECT * FROM rule_events ORDER BY timestamp DESC LIMIT :limit")
     suspend fun getRecent(limit: Int): List<RuleEventEntity>
 
@@ -436,11 +541,14 @@ interface RuleEventDao {
     suspend fun clear()
 }
 
-/** 场景及其有序动作；@Relation 由 Room 在事务内一次性取回动作列表。 */
+/** 场景及其有序动作；@Relation 由 Room 在事务内一次性取回动作列表与触发规则。 */
 data class SceneWithActions(
     @Embedded val scene: SceneEntity,
     @Relation(parentColumn = "id", entityColumn = "sceneId")
     val actions: List<SceneActionEntity>,
+    // 触发规则；空列表表示手动场景。规则由引擎判定，场景只负责执行动作。
+    @Relation(parentColumn = "id", entityColumn = "sceneId")
+    val rules: List<RuleEntity> = emptyList(),
 )
 
 @Dao
@@ -454,6 +562,9 @@ interface SceneDao {
     @Query("SELECT * FROM scenes ORDER BY createdAt ASC")
     suspend fun getAll(): List<SceneWithActions>
 
+    @Query("SELECT * FROM scenes WHERE id = :id LIMIT 1")
+    suspend fun find(id: Long): SceneEntity?
+
     @Insert
     suspend fun insertScene(scene: SceneEntity): Long
 
@@ -463,11 +574,122 @@ interface SceneDao {
     @Query("UPDATE scenes SET name = :name WHERE id = :id")
     suspend fun rename(id: Long, name: String)
 
+    @Query("UPDATE scenes SET enabled = :enabled WHERE id = :id")
+    suspend fun setEnabled(id: Long, enabled: Boolean)
+
     @Query("DELETE FROM scene_actions WHERE sceneId = :sceneId")
     suspend fun deleteActions(sceneId: Long)
 
     @Query("DELETE FROM scenes WHERE id = :id")
     suspend fun delete(id: Long)
+
+    // ---- 场景触发规则：复用 rules 表，由 RuleEngine 消费，不另造平行配置。 ----
+
+    @Insert
+    suspend fun insertRule(rule: RuleEntity): Long
+
+    @Query("SELECT * FROM rules WHERE sceneId = :sceneId LIMIT 1")
+    suspend fun findRuleForScene(sceneId: Long): RuleEntity?
+
+    @Query(
+        "UPDATE rules SET type = :type, threshold = :threshold, metric = :metric, " +
+            "comparator = :comparator, thresholdValue = :thresholdValue, " +
+            "consecutive = :consecutive, intervalMinutes = :intervalMinutes, enabled = :enabled " +
+            "WHERE sceneId = :sceneId",
+    )
+    suspend fun updateRuleForScene(
+        sceneId: Long,
+        type: String,
+        threshold: Int,
+        metric: String?,
+        comparator: String,
+        thresholdValue: Double,
+        consecutive: Int,
+        intervalMinutes: Int?,
+        enabled: Boolean,
+    )
+
+    @Query("UPDATE rules SET enabled = :enabled WHERE sceneId = :sceneId")
+    suspend fun setRulesEnabled(sceneId: Long, enabled: Boolean)
+
+    @Query("DELETE FROM rules WHERE sceneId = :sceneId")
+    suspend fun deleteRules(sceneId: Long)
+
+    /** 新建场景与其触发规则、动作在同一事务内落库。 */
+    @Transaction
+    suspend fun createSceneWithRule(
+        scene: SceneEntity,
+        rule: RuleEntity?,
+        actions: List<SceneActionEntity>,
+    ): Long {
+        val sceneId = insertScene(scene)
+        if (rule != null) insertRule(rule.copy(sceneId = sceneId))
+        insertActions(actions.map { it.copy(sceneId = sceneId) })
+        return sceneId
+    }
+
+    /** 更新场景：名称、启停、触发规则与动作整体替换。 */
+    @Transaction
+    suspend fun updateSceneWithRule(
+        sceneId: Long,
+        name: String,
+        enabled: Boolean,
+        rule: RuleEntity?,
+        actions: List<SceneActionEntity>,
+    ) {
+        rename(sceneId, name)
+        setEnabled(sceneId, enabled)
+        deleteActions(sceneId)
+        insertActions(actions.map { it.copy(sceneId = sceneId) })
+        if (rule == null) {
+            deleteRules(sceneId)
+        } else {
+            val existing = findRuleForScene(sceneId)
+            if (existing == null) {
+                insertRule(rule.copy(sceneId = sceneId, enabled = enabled))
+            } else {
+                updateRuleForScene(
+                    sceneId = sceneId,
+                    type = rule.type,
+                    threshold = rule.threshold,
+                    metric = rule.metric,
+                    comparator = rule.comparator,
+                    thresholdValue = rule.thresholdValue,
+                    consecutive = rule.consecutive,
+                    intervalMinutes = rule.intervalMinutes,
+                    enabled = enabled,
+                )
+            }
+        }
+    }
+
+    /** 删除场景及其触发规则（执行记录保留，用于历史回溯）。 */
+    @Transaction
+    suspend fun deleteSceneWithRule(sceneId: Long) {
+        deleteActions(sceneId)
+        deleteRules(sceneId)
+        delete(sceneId)
+    }
+}
+
+/** 场景执行记录：只增不改，清理由用户显式触发。 */
+@Dao
+interface SceneRunDao {
+
+    @Insert
+    suspend fun insert(run: SceneRunEntity): Long
+
+    @Query("SELECT * FROM scene_runs ORDER BY timestamp DESC, id DESC LIMIT :limit")
+    fun observeRecent(limit: Int): Flow<List<SceneRunEntity>>
+
+    @Query("SELECT * FROM scene_runs ORDER BY timestamp DESC, id DESC LIMIT 1")
+    fun observeLatest(): Flow<SceneRunEntity?>
+
+    @Query("SELECT * FROM scene_runs ORDER BY timestamp DESC, id DESC LIMIT :limit")
+    suspend fun getRecent(limit: Int): List<SceneRunEntity>
+
+    @Query("DELETE FROM scene_runs")
+    suspend fun clear()
 }
 
 /** 本地反馈草稿：pending 即「未发送」，等待未来接入远端后重试。 */

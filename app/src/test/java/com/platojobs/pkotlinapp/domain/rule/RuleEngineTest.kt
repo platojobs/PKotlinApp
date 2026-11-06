@@ -56,7 +56,14 @@ class RuleEngineTest {
 
         override fun observeRecent(limit: Int): Flow<List<RuleEvent>> = flowOf(events.toList())
 
-        override fun observeCountBetween(from: Long, to: Long): Flow<Int> = flowOf(events.size)
+        override fun observeCountBetween(from: Long, to: Long): Flow<Int> =
+            flowOf(events.count { it.timestamp in from..to })
+
+        override fun observeMetricViolationCountBetween(from: Long, to: Long): Flow<Int> =
+            flowOf(events.count { it.timestamp in from..to && it.metric != null })
+
+        override fun observeLatestBetween(from: Long, to: Long): Flow<RuleEvent?> =
+            flowOf(events.filter { it.timestamp in from..to }.maxByOrNull { it.timestamp })
 
         override suspend fun getRecent(limit: Int): List<RuleEvent> = events.takeLast(limit)
 
@@ -77,6 +84,8 @@ class RuleEngineTest {
         override fun disconnected(deviceName: String): String = "$deviceName 已断开"
 
         override fun bondLost(deviceName: String): String = "$deviceName 绑定丢失"
+
+        override fun scheduled(intervalMinutes: Int): String = "定时规则每 $intervalMinutes 分钟触发"
 
         override fun metricThreshold(
             deviceName: String,

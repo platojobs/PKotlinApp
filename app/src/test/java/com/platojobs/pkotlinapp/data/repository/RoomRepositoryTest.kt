@@ -307,6 +307,34 @@ class RoomRepositoryTest {
         override suspend fun pendingCount(): Int =
             rows.values.count { it.syncState == "pending" }
 
+        override suspend fun markDevice(mac: String, timestamp: Long) {
+            rows[mac]?.let { rows[mac] = it.copy(markedAt = timestamp) }
+        }
+
+        override fun observeOnlineCount(since: Long): Flow<Int> =
+            flowOf(rows.values.count { it.lastSeenTimestamp >= since })
+
+        override fun observeOfflineCount(since: Long): Flow<Int> =
+            flowOf(rows.values.count { it.lastSeenTimestamp < since })
+
+        override fun observeUnassignedRoomCount(): Flow<Int> =
+            flowOf(rows.values.count { it.roomId == null })
+
+        override fun observeByOnlineState(online: Boolean, since: Long): Flow<List<DeviceEntity>> =
+            flowOf(
+                rows.values.filter {
+                    if (online) it.lastSeenTimestamp >= since else it.lastSeenTimestamp < since
+                },
+            )
+
+        override fun observeUnassignedRoomDevices(): Flow<List<DeviceEntity>> =
+            flowOf(rows.values.filter { it.roomId == null })
+
+        override fun observeByMacs(macs: List<String>): Flow<List<DeviceEntity>> =
+            flowOf(rows.values.filter { it.mac in macs })
+
+        override fun observeActiveCount(): Flow<Int> = flowOf(rows.values.size)
+
         override suspend fun markSyncedByExternalIds(externalIds: List<String>) = Unit
 
         override suspend fun updateEnrich(

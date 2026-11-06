@@ -6,6 +6,22 @@
 
 ---
 
+## v0.18.0
+
+**主题：场景从配置变成引擎真正执行的闭环；首页改为真实聚合**
+
+- 场景触发复用 `rules` 表：`rules.sceneId` 非空即代表场景触发规则，`RuleEngine` 与普通自动化规则走同一条判定路径（RSSI / 断连 / 指标阈值 / 冷却 / 连续读数防抖），不存在不被引擎消费的平行配置。
+- 引擎回调：场景规则命中时不再走普通 `RuleAlertSink`，改由 `RuleTriggerObserver` 交给 `SceneTriggerRunner` 执行动作，避免同一次触发弹两条通知；`SceneTriggerRunner` 在动作执行后写 `scene_runs`，记录时间、场景名、触发类型/值、成功/失败动作数与失败原因，界面只读展示与清空。
+- 定时触发：新增 `RuleType.SCHEDULE` + `rules.intervalMinutes`，由 WorkManager 15 分钟周期任务与冷启动调用 `RuleEngine.onScheduleTick()`；场景级 60 秒冷却与规则冷却叠加，冷却期内不重复执行。
+- 场景动作新增本地通知、记录日志、标记设备；`MARK_DEVICE` 写 `devices.markedAt`，首页设备卡片显示「已标记」。
+- 场景编辑器补齐触发条件（手动/断连/低 RSSI/指标越界/定时）与动作选择，编辑时按现有触发条件回填；场景可停用，停用同时把绑定规则的 `enabled` 置 false，手动运行仍可用。
+- 执行记录区块：`item_scene_run.xml` + `SceneRunAdapter`，空态复用 `ThreeStateHost` 与 `EmptyStateView`，可一键清空。
+- 首页真实聚合：今日读数总量、按指标 `GROUP BY`、按小时 `GROUP BY`、指标越界次数、最近一条告警全部来自 `readings` / `rule_events`；在线/离线/未分配房间走 SQL `COUNT`，低电量用「每设备最新电量」子查询；最近活动展示最近同步、最近告警、最近场景触发，无记录时显示空态文案。
+- 设备状态下钻：点击在线/离线/未分配/低电量后平铺对应设备，再点同一维度取消筛选；聚合卡片展示在线口径（最近 15 分钟）。
+- 下拉刷新：`SwipeRefreshLayout` 触发一次 `manualSync()` 并重算今日窗口（跨零点）与在线阈值，失败提示「刷新失败，请稍后重试」。
+- Room v16（`MIGRATION_15_16`）：`rules` 增加 `sceneId`/`intervalMinutes`，`scenes` 增加 `enabled`（默认 1），`devices` 增加 `markedAt`，新建 `scene_runs` 与 timestamp 索引；真实 SQLite 迁移测试验证旧规则/场景/设备数据保留。
+- 测试：新增 `SceneEngineLoopTest`（越界读数 → 引擎触发 → 写执行记录 → 通知仅一次；冷却期内不重复；停用场景不执行）、`SceneEngineMigrationTest`（v15→v16 真实 SQLite）、`HomeAggregationTest`（真实 Room 验证窗口切分、`GROUP BY` 指标/小时、每设备最新电量、越界与最近记录）、`SceneRepositoryTest` 补「触发规则落库并随启停同步」；`SceneExecutorTest` 补通知/标记动作。单测全绿、`lintDebug` 0 issue、`assembleDebug` 与 fixture e2e 全绿；tag `v0.18.0`。
+
 ## v0.17.0
 
 **主题：接入后端 v0.15.0 的家庭结构增量同步，市场改为「设备与服务市场」且不造假**

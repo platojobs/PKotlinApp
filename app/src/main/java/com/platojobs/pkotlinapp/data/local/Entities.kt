@@ -47,6 +47,8 @@ data class DeviceEntity(
     val pendingHouseholdRemoteId: String? = null,
     // 是否为其他家庭成员共享的设备（只读，不参与 push）。
     @ColumnInfo(defaultValue = "0") val shared: Boolean = false,
+    // 场景「标记设备」动作写入的时间戳；null 表示未被标记。
+    val markedAt: Long? = null,
 )
 
 /** 本地家庭：remoteId 为服务端 UUID；id 为本地自增，供房间/设备外键引用。 */
@@ -131,6 +133,10 @@ data class RuleEntity(
     @ColumnInfo(defaultValue = "'>'") val comparator: String = ">",
     @ColumnInfo(defaultValue = "0") val thresholdValue: Double = 0.0,
     @ColumnInfo(defaultValue = "1") val consecutive: Int = 1,
+    // 绑定到场景的触发规则：null 表示独立的自动化规则；非 null 时由场景执行器消费。
+    val sceneId: Long? = null,
+    // 定时规则的执行间隔（分钟）；仅 SCHEDULE 规则使用。
+    val intervalMinutes: Int? = null,
 )
 
 @Entity(tableName = "rule_events")
@@ -155,6 +161,30 @@ data class SceneEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val name: String,
     val createdAt: Long,
+    // 停用后自动触发不再执行；手动运行仍可用。
+    @ColumnInfo(defaultValue = "1") val enabled: Boolean = true,
+)
+
+/**
+ * 场景执行记录：由引擎或手动触发真实写入，界面只读展示。
+ * sceneId 不带外键，场景删除后历史记录仍然保留（sceneName 为当时的快照）。
+ */
+@Entity(tableName = "scene_runs", indices = [Index("timestamp")])
+data class SceneRunEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val sceneId: Long,
+    val sceneName: String,
+    val timestamp: Long,
+    /** 触发来源：RuleType 名称或 MANUAL。 */
+    val triggerType: String,
+    /** 触发值快照（如指标=33.0℃、RSSI=-85、间隔=30 分钟）。 */
+    val triggerValue: String,
+    val successCount: Int,
+    val failureCount: Int,
+    /** 失败汇总原因；全部成功时为 null。 */
+    val failureReason: String? = null,
+    /** 逐动作结果（换行分隔），失败原因包含在内。 */
+    val detail: String,
 )
 
 @Entity(

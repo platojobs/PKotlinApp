@@ -1,16 +1,21 @@
 package com.platojobs.pkotlinapp.data.repository
 
+import com.platojobs.pkotlinapp.data.local.RuleEntity
 import com.platojobs.pkotlinapp.data.local.SceneActionEntity
 import com.platojobs.pkotlinapp.data.local.SceneDao
 import com.platojobs.pkotlinapp.data.local.SceneEntity
 import com.platojobs.pkotlinapp.data.local.SceneWithActions
+import com.platojobs.pkotlinapp.domain.model.RuleComparator
+import com.platojobs.pkotlinapp.domain.model.RuleType
 import com.platojobs.pkotlinapp.domain.scene.Scene
 import com.platojobs.pkotlinapp.domain.scene.SceneAction
 import com.platojobs.pkotlinapp.domain.scene.SceneActionType
+import com.platojobs.pkotlinapp.domain.scene.SceneTrigger
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -75,6 +80,41 @@ class SceneRepositoryTest {
     }
 
     @Test
+    fun `trigger rule is persisted for the engine and follows scene enable state`() = runBlocking {
+        val dao = FakeSceneDao()
+        val repository = SceneRepositoryImpl(dao)
+        val trigger = SceneTrigger.MetricThreshold(
+            metric = "temperature",
+            comparator = RuleComparator.GREATER,
+            thresholdValue = 30.0,
+            consecutive = 1,
+        )
+
+        val id = repository.saveScene(
+            id = null,
+            name = "温度越界",
+            actions = listOf(SceneAction(SceneActionType.NOTIFY)),
+            trigger = trigger,
+            enabled = true,
+        )
+
+        // 落库的是一条真正的 rules 行，引擎可直接消费，不是平行配置。
+        val rule = dao.findRuleForScene(id)!!
+        assertEquals(RuleType.METRIC_THRESHOLD.name, rule.type)
+        assertEquals("temperature", rule.metric)
+        assertEquals(30.0, rule.thresholdValue, 0.0)
+        assertEquals(RuleComparator.GREATER.name, rule.comparator)
+        assertEquals(id, rule.sceneId)
+        assertTrue(rule.enabled)
+
+        assertEquals(trigger, repository.getScene(id)!!.trigger)
+
+        repository.setEnabled(id, false)
+        assertFalse(repository.getScene(id)!!.enabled)
+        assertFalse(dao.findRuleForScene(id)!!.enabled)
+    }
+
+    @Test
     fun `delete removes scene and its actions`() = runBlocking {
         val dao = FakeSceneDao()
         val repository = SceneRepositoryImpl(dao)
@@ -133,12 +173,16 @@ class SceneRepositoryTest {
     private class FakeSceneDao : SceneDao {
         val scenes = LinkedHashMap<Long, SceneEntity>()
         val actions = mutableListOf<SceneActionEntity>()
+        val rules = mutableListOf<RuleEntity>()
         private var nextSceneId = 1L
         private var nextActionId = 1L
+        private var nextRuleId = 1L
 
         override fun observeAll(): Flow<List<SceneWithActions>> = flowOf(snapshot())
 
         override suspend fun getAll(): List<SceneWithActions> = snapshot()
+
+        override suspend fun find(id: Long): SceneEntity? = scenes[id]
 
         override suspend fun insertScene(scene: SceneEntity): Long {
             val id = nextSceneId++
@@ -154,6 +198,10 @@ class SceneRepositoryTest {
             scenes[id]?.let { scenes[id] = it.copy(name = name) }
         }
 
+        override suspend fun setEnabled(id: Long, enabled: Boolean) {
+            scenes[id]?.let { scenes[id] = it.copy(enabled = enabled) }
+        }
+
         override suspend fun deleteActions(sceneId: Long) {
             actions.removeAll { it.sceneId == sceneId }
         }
@@ -163,10 +211,58 @@ class SceneRepositoryTest {
             deleteActions(id)
         }
 
+        override suspend fun insertRule(rule: RuleEntity): Long {
+            rules += rule.copy(id = nextRuleId++)
+            return nextRuleId - 1
+        }
+
+        override suspend fun findRuleForScene(sceneId: Long): RuleEntity? =
+            rules.firstOrNull { it.sceneId == sceneId }
+
+        override suspend fun updateRuleForScene(
+            sceneId: Long,
+            type: String,
+            threshold: Int,
+            metric: String?,
+            comparator: String,
+            thresholdValue: Double,
+            consecutive: Int,
+            intervalMinutes: Int?,
+            enabled: Boolean,
+        ) {
+            val index = rules.indexOfFirst { it.sceneId == sceneId }
+            if (index >= 0) {
+                rules[index] = rules[index].copy(
+                    type = type,
+                    threshold = threshold,
+                    metric = metric,
+                    comparator = comparator,
+                    thresholdValue = thresholdValue,
+                    consecutive = consecutive,
+                    intervalMinutes = intervalMinutes,
+                    enabled = enabled,
+                )
+            }
+        }
+
+        override suspend fun setRulesEnabled(sceneId: Long, enabled: Boolean) {
+            rules.replaceAll {
+                if (it.sceneId == sceneId) it.copy(enabled = enabled) else it
+            }
+        }
+
+        override suspend fun deleteRules(sceneId: Long) {
+            rules.removeAll { it.sceneId == sceneId }
+        }
+
         private fun snapshot(): List<SceneWithActions> = scenes.values
             .sortedBy { it.createdAt }
             .map { scene ->
-                SceneWithActions(scene, actions.filter { it.sceneId == scene.id })
+                SceneWithActions(
+                    scene = scene,
+                    actions = actions.filter { it.sceneId == scene.id },
+                    rules = rules.filter { it.sceneId == scene.id },
+                )
             }
     }
 }

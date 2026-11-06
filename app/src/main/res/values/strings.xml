@@ -646,6 +646,86 @@
     <string name="intelligence_scene_delete_failed">场景删除失败</string>
     <string name="intelligence_scene_status_success">成功</string>
     <string name="intelligence_scene_status_failure">失败</string>
+
+    <!-- 场景触发条件 -->
+    <string name="scene_trigger_title">触发条件</string>
+    <string name="scene_trigger_manual">仅手动运行</string>
+    <string name="scene_trigger_disconnected">设备离线</string>
+    <string name="scene_trigger_low_rssi">RSSI 低于阈值</string>
+    <string name="scene_trigger_metric">指标越界</string>
+    <string name="scene_trigger_schedule">定时</string>
+    <string name="scene_trigger_rssi_hint">RSSI 阈值（-100 ~ 0）</string>
+    <string name="scene_trigger_metric_hint">指标</string>
+    <string name="scene_trigger_consecutive_hint">连续满足条数（1–5）</string>
+    <string name="scene_trigger_interval">执行间隔</string>
+    <string name="scene_trigger_interval_option">%1$d 分钟</string>
+    <string name="scene_trigger_invalid">%1$s</string>
+    <string name="scene_trigger_summary_manual">仅手动</string>
+    <string name="scene_trigger_summary_disconnected">设备离线</string>
+    <string name="scene_trigger_summary_low_rssi">RSSI &lt; %1$d dBm</string>
+    <string name="scene_trigger_summary_metric">%1$s %2$s %3$s</string>
+    <string name="scene_trigger_summary_schedule">每 %1$d 分钟</string>
+    <string name="scene_trigger_summary_none">未设置触发条件</string>
+    <string name="scene_enable_switch">启用场景</string>
+    <string name="scene_state_enabled">已启用</string>
+    <string name="scene_state_disabled">已停用</string>
+    <string name="scene_meta_trigger">%1$s · %2$s</string>
+    <string name="scene_action_notify">发送本地通知</string>
+    <string name="scene_action_record_log">记录日志</string>
+    <string name="scene_action_mark_device">标记设备</string>
+
+    <!-- 场景执行记录 -->
+    <string name="intelligence_runs_title">执行记录</string>
+    <string name="intelligence_runs_hint">记录由引擎或手动执行真实写入，可清空</string>
+    <string name="intelligence_runs_clear">清空</string>
+    <string name="intelligence_runs_empty_title">暂无执行记录</string>
+    <string name="intelligence_runs_empty_hint">场景触发后会在这里留下时间、触发值与动作结果</string>
+    <string name="intelligence_runs_result_success">成功 %1$d 个动作</string>
+    <string name="intelligence_runs_result_partial">部分成功：%1$d 成功 / %2$d 失败</string>
+    <string name="intelligence_runs_result_failure">失败 %1$d 个动作</string>
+    <string name="intelligence_runs_failure_reason">失败原因：%1$s</string>
+    <string name="intelligence_runs_trigger_manual">手动触发</string>
+    <string name="intelligence_runs_trigger_rule">%1$s · %2$s</string>
+    <string name="intelligence_runs_cleared">执行记录已清空</string>
+    <string name="intelligence_runs_clear_failed">清空执行记录失败</string>
+    <string name="scene_trigger_type_low_rssi">RSSI 低于阈值</string>
+    <string name="scene_trigger_type_disconnected">设备离线</string>
+    <string name="scene_trigger_type_metric">指标越界</string>
+    <string name="scene_trigger_type_schedule">定时触发</string>
+    <string name="scene_trigger_type_bond_lost">绑定丢失</string>
+    <string name="scene_trigger_type_manual">手动</string>
+
+    <!-- 场景本地通知 -->
+    <string name="scene_notification_title">场景通知</string>
+    <string name="scene_notification_text">%1$s：%2$s</string>
+    <string name="scene_notification_channel_name">场景通知</string>
+    <string name="scene_notification_channel_description">场景动作触发的本地通知</string>
+    <string name="rule_event_scheduled">定时规则已触发（间隔 %1$d 分钟）</string>
+
+    <!-- 首页真实聚合 -->
+    <string name="home_today_title">今日概览</string>
+    <string name="home_today_readings">今日读数</string>
+    <string name="home_today_violations">越界 %1$d 次</string>
+    <string name="home_today_metrics_empty">今日暂无读数</string>
+    <string name="home_today_metric_row">%1$s %2$d</string>
+    <string name="home_today_hourly_desc">今日读数按小时分布，峰值 %1$d 点 %2$d 条</string>
+    <string name="home_device_status_title">设备状态</string>
+    <string name="home_status_online">在线</string>
+    <string name="home_status_offline">离线</string>
+    <string name="home_status_unassigned">未分配房间</string>
+    <string name="home_status_low_battery">电量低于 %1$d</string>
+    <string name="home_status_online_hint">在线指最近 %1$d 分钟内有出现</string>
+    <string name="home_status_filter_active">%1$s · %2$d 台</string>
+    <string name="home_status_filter_clear">清除筛选</string>
+    <string name="home_activity_title">最近活动</string>
+    <string name="home_activity_sync">最近同步：%1$s</string>
+    <string name="home_activity_alert">最近告警：%1$s</string>
+    <string name="home_activity_scene">最近场景触发：%1$s</string>
+    <string name="home_activity_none">暂无记录</string>
+    <string name="home_activity_no_sync">尚未同步</string>
+    <string name="home_marked_badge">已标记</string>
+    <string name="home_refresh_failed">刷新失败，请稍后重试</string>
+
     <string name="room_title">房间</string>
     <string name="room_unassigned">未分配</string>
     <string name="room_manage">房间管理</string>

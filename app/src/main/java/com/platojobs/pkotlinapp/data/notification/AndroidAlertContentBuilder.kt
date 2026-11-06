@@ -58,6 +58,11 @@ class AndroidAlertContentBuilder(
                 MetricThreshold.displayUnit(rule.metric.orEmpty()),
                 time,
             )
+
+            RuleType.SCHEDULE -> context.getString(
+                R.string.rule_event_scheduled,
+                rule.intervalMinutes ?: 0,
+            )
         }
         return AlertNotificationContent(
             id = AlertNotificationIds.forRule(rule.id, mac),

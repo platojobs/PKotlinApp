@@ -160,23 +160,26 @@ app/src/main/java/com/platojobs/pkotlinapp/
 
 ## 6. 数据层与多设备同步
 
-### Room 与迁移（当前 v11）
+### Room 与迁移（当前 v16）
 
-数据库 `device_dashboard.db` 当前版本 **11**，共含设备、读数、规则、规则事件、扫描日志、场景、场景动作与房间等表：
+数据库 `device_dashboard.db` 当前版本 **16**，共含设备、读数、规则、规则事件、扫描日志、场景、场景动作、房间与场景执行记录等表：
 
 | 表 | 关键字段 |
 | --- | --- |
-| `devices` | `mac` 主键、`name`（用户别名）、`aliasDirty`（用户是否显式编辑过别名，默认 0）、`advertisedName`（广播名）、`lastRssi`、`lastSeenTimestamp`、`id`（客户端 UUID）、`platform`、`externalId`、`updatedAt`、`deletedAt`、`syncState(pending/synced)`、`deviceType/vendor/firmwareVersion/compatibility`（enrich 缓存）、`deviceTypeName`（catalog 展示名）、`deviceGroup`（云端分组，`NULL`=未上报/未知，`""`=已显式清空）、`roomId`（本机房间归属，`NULL`=未分配） |
+| `devices` | `mac` 主键、`name`（用户别名）、`aliasDirty`（用户是否显式编辑过别名，默认 0）、`advertisedName`（广播名）、`lastRssi`、`lastSeenTimestamp`、`id`（客户端 UUID）、`platform`、`externalId`、`updatedAt`、`deletedAt`、`syncState(pending/synced)`、`deviceType/vendor/firmwareVersion/compatibility`（enrich 缓存）、`deviceTypeName`（catalog 展示名）、`deviceGroup`（云端分组，`NULL`=未上报/未知，`""`=已显式清空）、`roomId`（本机房间归属，`NULL`=未分配）、`markedAt`（场景「标记设备」写入，`NULL`=未标记） |
 | `rooms` | 自增 id、`name`、`sortOrder`、`createdAt`；仅本机维护，不参与云端同步 |
-| `rules` | 自增 id、`type`、`threshold`（RSSI 规则）、`enabled`、`createdAt`、`lastTriggeredTimestamp`；v10 新增 `metric`、`comparator`、`thresholdValue`、`consecutive`（指标规则；旧规则为 NULL/默认值） |
+| `rules` | 自增 id、`type`、`threshold`（RSSI 规则）、`enabled`、`createdAt`、`lastTriggeredTimestamp`；v10 新增 `metric`、`comparator`、`thresholdValue`、`consecutive`（指标规则；旧规则为 NULL/默认值）；v16 新增 `sceneId`（非空表示场景触发规则）与 `intervalMinutes`（定时场景间隔） |
 | `rule_events` | 规则触发记录；v10 新增 `metric`、`value`、`thresholdValue`、`unit`，保存指标命中的触发值与阈值证据 |
+| `scenes` | 自增 id、`name`、`createdAt`；v16 新增 `enabled`（默认 1，停用后绑定规则同步禁用） |
+| `scene_runs` | 自增 id、`sceneId`（刻意不做外键，删场景后历史仍可查）、`sceneName`、`timestamp`（索引）、`triggerType`、`triggerValue`、`successCount`、`failureCount`、`failureReason`、`detail` |
 | `scan_logs` | 扫描日志 |
 
 - `MIGRATION_1_2` 使用 `ALTER TABLE ... ADD COLUMN` 扩展字段，再逐行回填客户端 UUID、`platform=android`、`externalId=规范化大写 MAC`、`updatedAt=lastSeenTimestamp`、`syncState=pending`，**不丢已有设备数据**。
 - `MIGRATION_2_3` 新增 4 个 enrich 可空列；`MIGRATION_3_4` 新增 `deviceTypeName` 与 `deviceGroup` 可空列；`MIGRATION_4_5` 新增 `advertisedName` 可空列，历史行保持 null，由展示层回退到别名/型号名；`MIGRATION_5_6` 新增 `aliasDirty INTEGER NOT NULL DEFAULT 0`，历史行默认 0；`MIGRATION_6_7` 新增 `readings`；`MIGRATION_7_8` 新增 `devices.createdAt`；`MIGRATION_8_9` 新增本机场景表。
 - `MIGRATION_9_10` 为 `rules` 增加 `metric/comparator/thresholdValue/consecutive`，为 `rule_events` 增加 `metric/value/thresholdValue/unit`。旧 RSSI 规则的 `type` 与 `threshold` **原样保留**（仍走 `rssi < threshold`），只回填 `comparator='<'` 与 `thresholdValue=threshold` 作为语义副本；其它旧规则保持默认值。`RuleMigrationTest` 用真实 SQLite 验证列、回填与旧规则字段不变。
 - `MIGRATION_10_11` 新增本机 `rooms` 表，并给 `devices` 增加可空 `roomId`。旧设备全部为 `NULL`（未分配），`deviceGroup` 原样保留；`RoomMigrationTest` 用真实 SQLite 验证设备数量/字段不变与 `roomId` 为 null。
-- 迁移后 schema 输出在 `app/schemas/com.platojobs.pkotlinapp.data.local.AppDatabase/11.json`。
+- `MIGRATION_15_16`（场景引擎）：`rules` 增加可空 `sceneId/intervalMinutes`，`scenes` 增加 `enabled INTEGER NOT NULL DEFAULT 1`，`devices` 增加可空 `markedAt`，新建 `scene_runs` 与 `index_scene_runs_timestamp`。旧规则、场景、设备数据原样保留；`SceneEngineMigrationTest` 用真实 SQLite 验证列、默认值与新表写入。
+- 迁移后 schema 输出在 `app/schemas/com.platojobs.pkotlinapp.data.local.AppDatabase/16.json`。
 - 别名与广播名隔离：扫描只写 `advertisedName`，详情页编辑只写 `name`（alias），两者互不覆盖；列表/详情展示优先级为「用户别名 → 广播名 → catalog 型号名 → 未知设备」。
 - **别名清空语义**：`aliasDirty` 只在详情页保存且别名相对初始值发生变化时置 1（一旦置位保持），扫描路径永远不置位。置位后即使 `name` 为空，推送也会显式上报 `"alias":""`；未置位时不报空别名。服务端返回空别名时按「已清空」写回本地（`name=""`），展示层回退到广播名，旧别名不会被拉回复活。
 - `DeviceDao` 使用 `@Upsert insertOrUpdate`、`suspend getAllDevices`，并提供待同步查询、待同步计数、按 externalId 标记 synced 等同步专用方法。
@@ -631,6 +634,19 @@ Debug / Release 都可通过 `apiBaseUrl` 切换；发布前请传入正式域�
 - **示例数据默认隐藏**：市场条目（来自 `GET /markets`）只在用户打开开关后展示，并固定标注「示例数据，不代表真实在售」，不显示库存/价格/销量；开关默认关闭且持久化。
 - **三态复用**：市场页仍使用现有 `ThreeStateHost`，未新增第二套加载/空/错误组件。
 
+### 6.16 场景执行闭环与首页真实聚合（v0.18.0）
+
+- **触发条件落在规则模型上**：场景触发就是 `rules` 表里 `sceneId` 非空的一行，`RuleEngine` 加载全部启用规则，因此低 RSSI / 断连 / 指标阈值与普通自动化共用阈值、连续读数防抖和 60 秒冷却。编辑器只写这些字段，不引入引擎读不懂的第二份配置。
+- **引擎到动作的通道**：场景规则命中时 `RuleEngine` 不调用 `RuleAlertSink`，而是回调 `RuleTriggerObserver`（实现为 `SceneTriggerRunner`）；后者加载场景、执行动作、写一条 `scene_runs`。`SceneEngineLoopTest` 用真实的 `RuleEngine` + `SceneTriggerRunner` + `SceneExecutor` 构造越界读数，断言「通知只发一次、设备被真的标记、执行记录只有一条、普通告警 0 条」，冷却期内再次越界不新增记录，停用场景后不再执行。
+- **执行记录不是界面伪造**：`scene_runs` 只由 `SceneTriggerRunner` 在动作完成后写入（时间、场景名、触发类型/值、成功/失败动作数、失败原因、动作明细）；界面只读该表并提供清空，没有「运行成功」这类前端直接拼出的行。
+- **定时触发**：`RuleType.SCHEDULE` + `rules.intervalMinutes`，`RuleEngine.onScheduleTick()` 按间隔与上次触发时间判定；`SceneScheduleWorker` 每 15 分钟、冷启动各调用一次。WorkManager 最小周期即 15 分钟，低于该值不会被系统接受。
+- **动作真实副作用**：本地通知走 `NotificationChannel` 并检查 `POST_NOTIFICATIONS`；记录日志写入执行记录的 `detail`；标记设备写 `devices.markedAt`（首页设备卡展示「已标记」）并在设备不存在时如实失败。
+- **启停与去重**：停用场景同时把绑定规则 `enabled=0`，手动运行仍允许；场景级 60 秒冷却叠加规则冷却，同一场景不会在冷却窗口内重复执行。
+- **今日概览走 SQL**：`readings` 按 `[本地零点, 次日零点)` 做 `COUNT`、`GROUP BY metric`、`GROUP BY` 相对小时；越界次数来自 `rule_events.metric IS NOT NULL`，最近告警来自窗口内最新事件。`HomeAggregationTest` 用真实 Room 验证「昨天读数不进入今日窗口」「按指标 3/1」「10 点与 15 点各 3/1」。
+- **设备状态与最近活动**：在线/离线/未分配房间是 SQL `COUNT`（在线口径 = 最近 15 分钟出现）；低电量用 `GROUP BY deviceId + MAX(recordedAt)` 的每设备最新电量，再按阈值 20 过滤。最近同步取 `SyncStatus.lastSyncAt`，最近场景触发取 `scene_runs` 最新行；没有记录就显示「暂无」文案，不填假数据。
+- **下钻与下拉刷新**：点击状态卡片的四个格子会把设备列表平铺成对应集合，再点同一格取消；`SwipeRefreshLayout` 下拉调用一次 `manualSync()` 并重算今日窗口与在线阈值（跨零点也能切到新的一天）。
+- **Room v16（`MIGRATION_15_16`）**：`rules` 加 `sceneId/intervalMinutes`，`scenes` 加 `enabled DEFAULT 1`，`devices` 加 `markedAt`，新建 `scene_runs` 与 timestamp 索引；`SceneEngineMigrationTest` 在真实 SQLite 上验证旧规则/场景/设备保留、默认值与新表可写。
+
 ---
 
 ## 7. 构建与运行
@@ -640,7 +656,7 @@ export JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk-21.jdk/Contents/Home
 
 ./gradlew assembleDebug        # Debug APK
 ./gradlew lintDebug            # Lint
-./gradlew testDebugUnitTest    # 单元测试：278 个（含规则防抖/恢复/迁移、图表命中、推荐模板、双语/无障碍/200% 字号、家庭结构同步/未知 entity、市场洞察、反馈队列）
+./gradlew testDebugUnitTest    # 单元测试：286 个（含规则防抖/恢复/迁移、图表命中、推荐模板、双语/无障碍/200% 字号、家庭结构同步/未知 entity、市场洞察、场景引擎闭环、首页聚合、反馈队列）
 ./gradlew assembleRelease      # 签名 Release APK
 ./gradlew bundleRelease        # 签名 Release AAB
 
@@ -981,6 +997,7 @@ CI：GitHub Actions 的 `e2e-postgres` job 与该次运行同一脚本，日志�
 
 ## 16. 版本记录
 
+- `v0.18.0`：把「智能」场景接成引擎真正执行的闭环，并把首页改成真实聚合。场景触发复用 `rules`（`sceneId` 非空即场景规则），与普通自动化共用阈值/防抖/60 秒冷却；命中时引擎改走 `RuleTriggerObserver`，由 `SceneTriggerRunner` 执行动作并写入真实 `scene_runs`（时间/场景名/触发值/动作结果/失败原因），界面只读可清空。新增通知、记录日志、标记设备三种动作（`markDevice` 写 `devices.markedAt`）；新增 `RuleType.SCHEDULE` + `intervalMinutes`，WorkManager 15 分钟与冷启动驱动；停用场景同步禁用绑定规则，场景级冷却防止重复。Room v16（`MIGRATION_15_16`）扩展 `rules/scenes/devices` 并新建 `scene_runs`。首页今日读数总量、按指标/小时 `GROUP BY`、越界次数、最近告警全部来自 `readings/rule_events`；在线/离线/未分配走 SQL `COUNT`，低电量用每设备最新电量；最近同步/告警/场景触发来自真实记录，无记录显示空态。状态卡四格可下钻并在再次点击时取消，下拉刷新触发一次同步并重算本地零点窗口。新增 `SceneEngineLoopTest`（越界读数 → 触发 → 写记录 → 通知仅一次、冷却不重复、停用不执行）、`SceneEngineMigrationTest`（真实 SQLite v15→v16）、`HomeAggregationTest`（真实 Room 验证窗口与 `GROUP BY`）、`SceneRepositoryTest` 触发落库断言。单测 286 全绿、`lintDebug` 0 issue、`assembleDebug`、fixture e2e 全绿，tag `v0.18.0`。
 - `v0.17.0`：接入后端 v0.15.0（openapi 0.11.0）的家庭结构增量同步，并把「市场」改成不造假的产品内容。`change_log` 解析按 `entity` 显式分派：`household`/`room` 进入 `StructuralChange`，未知 entity 直接丢弃但 `nextCursor` 无条件前进（`SyncUnknownEntityTest` 用固定 JSON 锁定）。`household upsert` 更新名称/接收者角色/成员数，本地缺该家庭时同一次内跑 `GET /households` 全量基线；`household delete` 整段移除房间、共享设备、归属与家庭行；`room upsert` 按 `sortOrder` 落序，`room delete` 删房间并清空设备归属但保留设备本身。Room v15（`MIGRATION_14_15`）为 `rooms` 增加 `pendingEdit/serverName/serverSortOrder`：本地未同步房间编辑优先，收到同房间结构 upsert 只暂存服务端值，下次同步先上传本地值再合并；重排 409 先放弃 pending。成员移除后不再收到新结构、离开前历史仍可读，按正常语义处理；`410 RESYNC_REQUIRED` 仍清游标后 `cursor=0` 全量重拉。市场删除虚构商品与 `MarketAdapter`：兼容性由 `ProductCatalog` 服务 UUID + `ReadingUuids.supported` 推导指标/GATT 服务/限制（NUS 逐行输出），选购指南按健康/环境/组网给出带证据的推荐，无匹配如实为空；配对向导、连接排障、采集省电三条入口直达真实功能；示例条目默认隐藏且固定标注「示例数据，不代表真实在售」。新增 `HouseholdStructuralSyncTest`、`SyncUnknownEntityTest`、`RoomStructuralMigrationTest`（v14→v15 真实 SQLite）、`MarketInsightsTest`；e2e 补结构同步全链路（改名/建房/删房/转让/移除后可见性/新成员不回放历史），真 Postgres 410 分支改为结构缺口（过期一条 `household` 后旧游标 410、`cursor=0` 拉回 household/room）。单测 278 全绿、`lintDebug` 0 issue、`assembleDebug`、fixture 与真 Postgres e2e 全绿，tag `v0.17.0`。
 - `v0.16.0`：接入后端 v0.14.0 的所有权转让与 `isSelf`，产品页升级为真实产品目录，「我的」补齐帮助中心 / 意见反馈 / 关于三入口。Room v14（`MIGRATION_13_14`）新增 `feedback_drafts` 表（id/category/description/contact/createdAt/state，默认 `pending`）。成员 DTO 增加 `isSelf`，本机不再按用户名/id 猜「这一行是我」；owner 长按其他成员行可并列选择「移除成员 / 转让所有权」，`isSelf` 为真或非 owner 时两者都不出现。转让二次确认写明降级后果；403/404/409 统一可读提示并刷新家庭与成员；成功及失败后都重拉成员与能力矩阵，入口随角色收起。老后端成员列表全缺 `isSelf` 或转让返回 405 时静默隐藏入口。产品页按 `deviceType` 分组为健康/环境/网关·中继/其他（Chip 带 catalog 数量徽标），详情页展示类型说明、`ReadingUuids.supported` 判定的可解析指标、兼容性/固件/GATT 服务与同类型「我的设备」，列表与详情复用 `ThreeStateHost`。帮助中心为 5 条可展开 FAQ（答案对齐 409 退出、7 天读数保留、冲突以服务端为准）；意见反馈落本地待发队列，无远端时如实标注「未发送」并支持重试/删除；关于页版本号/构建类型取 `BuildConfig`，许可/隐私/数据安全复用现有文档。新增 `FeedbackStoreTest`、`FeedbackMigrationTest`（v13→v14，真实 SQLite）、`ProductCatalogTest`、`ProductsUiStateTest`、`HouseholdDtoContractTest`（`isSelf` 缺失/真假与转让请求序列化）；e2e 补「isSelf 双视角 → member 转让 403 → 未知目标 404 → 转让成功降级 → 旧 owner 改名/签发 403 → 新 owner 移除并退出」，fixture 与真 Postgres 均通过。单测 266 全绿、`lintDebug` 0 issue、`assembleDebug`，tag `v0.16.0`。
 - `v0.15.0`：接入后端 v0.13.0 的家庭管理能力。Room v13（`MIGRATION_12_13`）为 `households` 增加 `roomCount`，统一保存服务端 `memberCount/deviceCount/roomCount` 真实数字，首页 Chip 与家庭卡片不再数本地缓存。新增 `DELETE /households/{id}/members/{userId}`（owner 移除成员，本地刷新计数并重拉设备清理共享行）、`POST /households/{id}/leave`（成员退出，owner 有其他成员时 409；本地删除该家庭房间/共享设备/归属并回落个人家庭）、`GET /households/{id}/invitations`（只取 `codeHashPrefix`/状态/过期时间，绝无明文）与 `DELETE .../invitations/{invitationId}`、`PUT /households/{id}/rooms/order`（整段集合排序）。409 机读判定为 HTTP 409 + `error.code`（后端 v0.13.0 无 `ROOM_SET_MISMATCH`），重排冲突自动重拉并提示「房间列表已变化，已刷新」，离线保留本地顺序标「未同步」。`householdCapabilities()` 统一 owner/member 可见性：member 看不到重命名、邀请码签发/撤销与成员移除，owner 带成员退出时提示「请先转让所有权或移除其他成员」。新增 `HouseholdRepositoryTest`（成员移除清理、退出回落、邀请码列表/撤销、重排 409 重试、离线排序）、`HouseholdMigrationTest` v12→v13 与 owner/member 能力单测；fixture 与真 Postgres e2e 补「服务端计数 → 邀请码列表无明文 → 撤销后 claim 404 → 重排缺项 409 → owner 带成员退出 409 → 移除成员后对方 404 → owner 退出 204」。单测 245 全绿、`lintDebug` 0 issue、`assembleDebug`、两套 e2e 全绿，tag `v0.15.0`。

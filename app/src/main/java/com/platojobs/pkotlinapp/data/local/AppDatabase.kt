@@ -178,6 +178,36 @@ internal object RoomStructuralSyncMigrationSql {
     )
 }
 
+/** v15 -> v16：场景接入规则引擎，新增触发规则绑定、定时间隔、启停与执行记录表。 */
+internal object SceneEngineMigrationSql {
+    val V15_TO_V16 = listOf(
+        // 场景触发规则写入 rules 表，由 RuleEngine 判定；sceneId 为空仍是独立自动化规则。
+        "ALTER TABLE rules ADD COLUMN sceneId INTEGER",
+        // 定时规则间隔（分钟）。
+        "ALTER TABLE rules ADD COLUMN intervalMinutes INTEGER",
+        // 场景停用后自动触发不再执行，历史场景默认启用。
+        "ALTER TABLE scenes ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1",
+        // 场景「标记设备」动作的真实落点。
+        "ALTER TABLE devices ADD COLUMN markedAt INTEGER",
+        """
+        CREATE TABLE IF NOT EXISTS `scene_runs` (
+            `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+            `sceneId` INTEGER NOT NULL,
+            `sceneName` TEXT NOT NULL,
+            `timestamp` INTEGER NOT NULL,
+            `triggerType` TEXT NOT NULL,
+            `triggerValue` TEXT NOT NULL,
+            `successCount` INTEGER NOT NULL,
+            `failureCount` INTEGER NOT NULL,
+            `failureReason` TEXT,
+            `detail` TEXT NOT NULL
+        )
+        """.trimIndent(),
+        "CREATE INDEX IF NOT EXISTS `index_scene_runs_timestamp` " +
+            "ON `scene_runs` (`timestamp`)",
+    )
+}
+
 @Database(
     entities = [
         DeviceEntity::class,
@@ -187,11 +217,12 @@ internal object RoomStructuralSyncMigrationSql {
         ReadingEntity::class,
         SceneEntity::class,
         SceneActionEntity::class,
+        SceneRunEntity::class,
         RoomEntity::class,
         HouseholdEntity::class,
         FeedbackDraftEntity::class,
     ],
-    version = 15,
+    version = 16,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -207,6 +238,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun readingDao(): ReadingDao
 
     abstract fun sceneDao(): SceneDao
+
+    abstract fun sceneRunDao(): SceneRunDao
 
     abstract fun roomDao(): RoomDao
 
@@ -362,6 +395,13 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v15 -> v16：场景触发规则、定时间隔、启停与执行记录；既有场景默认启用且无触发规则。 */
+        val MIGRATION_15_16 = object : Migration(15, 16) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                SceneEngineMigrationSql.V15_TO_V16.forEach(db::execSQL)
+            }
+        }
+
         @Volatile
         private var instance: AppDatabase? = null
 
@@ -386,6 +426,7 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_12_13,
                     MIGRATION_13_14,
                     MIGRATION_14_15,
+                    MIGRATION_15_16,
                 )
                     .build()
                     .also { instance = it }

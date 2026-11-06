@@ -4,14 +4,18 @@ import android.content.Context
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.platojobs.pkotlinapp.R
 import com.platojobs.pkotlinapp.databinding.ItemDeviceCardBinding
+import com.platojobs.pkotlinapp.databinding.ItemHomeActivityBinding
 import com.platojobs.pkotlinapp.databinding.ItemHomeAlertBinding
+import com.platojobs.pkotlinapp.databinding.ItemHomeOverviewBinding
 import com.platojobs.pkotlinapp.databinding.ItemHomeRoomBinding
+import com.platojobs.pkotlinapp.databinding.ItemHomeStatusBinding
 import com.platojobs.pkotlinapp.databinding.ItemRoomEmptyBinding
 import com.platojobs.pkotlinapp.databinding.ItemHomeScenesBinding
 import com.platojobs.pkotlinapp.databinding.ItemHomeSectionBinding
@@ -19,9 +23,11 @@ import com.platojobs.pkotlinapp.databinding.ItemSceneCardBinding
 import com.platojobs.pkotlinapp.domain.model.Device
 import com.platojobs.pkotlinapp.domain.model.displayName
 import com.platojobs.pkotlinapp.domain.reading.Reading
+import com.platojobs.pkotlinapp.domain.reading.ReadingMetrics
 import com.platojobs.pkotlinapp.domain.scene.Scene
 import com.platojobs.pkotlinapp.domain.scene.SceneAction
 import com.platojobs.pkotlinapp.domain.scene.SceneActionType
+import com.platojobs.pkotlinapp.ui.common.TimeFormat
 import com.platojobs.pkotlinapp.ui.common.enableCardPressScale
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -31,6 +37,19 @@ sealed interface HomeItem {
     val span: Int get() = 2
 
     data class Alert(val count: Int) : HomeItem
+
+    /** 今日概览：读数总量、按指标分布、越界次数。 */
+    data class TodayOverview(val overview: HomeOverview) : HomeItem
+
+    /** 设备状态：在线/离线/未分配/低电量，点击下钻。 */
+    data class DeviceStatus(
+        val overview: HomeOverview,
+        val filter: HomeStatusFilter?,
+        val onlineWindowMinutes: Int,
+    ) : HomeItem
+
+    /** 最近活动：同步、告警、场景触发，均来自真实记录。 */
+    data class RecentActivity(val overview: HomeOverview) : HomeItem
 
     data class DevicesHeader(val count: Int, val groupCount: Int) : HomeItem
 
@@ -74,10 +93,14 @@ class HomeAdapter(
     private val onCreateRoom: () -> Unit,
     private val onRoomClick: (roomId: Long?, empty: Boolean) -> Unit,
     private val onDeviceLongClick: (Device) -> Unit,
+    private val onStatusClick: (HomeStatusFilter) -> Unit,
 ) : ListAdapter<HomeItem, RecyclerView.ViewHolder>(Diff) {
 
     override fun getItemViewType(position: Int): Int = when (getItem(position)) {
         is HomeItem.Alert -> TYPE_ALERT
+        is HomeItem.TodayOverview -> TYPE_TODAY
+        is HomeItem.DeviceStatus -> TYPE_STATUS
+        is HomeItem.RecentActivity -> TYPE_ACTIVITY
         is HomeItem.DevicesHeader -> TYPE_SECTION
         is HomeItem.RoomHeader -> TYPE_ROOM
         HomeItem.RoomEmpty -> TYPE_ROOM_EMPTY
@@ -90,6 +113,9 @@ class HomeAdapter(
         val inflater = LayoutInflater.from(parent.context)
         return when (viewType) {
             TYPE_ALERT -> AlertHolder(ItemHomeAlertBinding.inflate(inflater, parent, false))
+            TYPE_TODAY -> TodayHolder(ItemHomeOverviewBinding.inflate(inflater, parent, false))
+            TYPE_STATUS -> StatusHolder(ItemHomeStatusBinding.inflate(inflater, parent, false))
+            TYPE_ACTIVITY -> ActivityHolder(ItemHomeActivityBinding.inflate(inflater, parent, false))
             TYPE_SECTION -> SectionHolder(ItemHomeSectionBinding.inflate(inflater, parent, false))
             TYPE_ROOM -> RoomHolder(ItemHomeRoomBinding.inflate(inflater, parent, false))
             TYPE_ROOM_EMPTY -> RoomEmptyHolder(ItemRoomEmptyBinding.inflate(inflater, parent, false))
@@ -101,12 +127,183 @@ class HomeAdapter(
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         when (val item = getItem(position)) {
             is HomeItem.Alert -> (holder as AlertHolder).bind(item)
+            is HomeItem.TodayOverview -> (holder as TodayHolder).bind(item)
+            is HomeItem.DeviceStatus -> (holder as StatusHolder).bind(item)
+            is HomeItem.RecentActivity -> (holder as ActivityHolder).bind(item)
             is HomeItem.DevicesHeader -> (holder as SectionHolder).bindDevices(item)
             is HomeItem.RoomHeader -> (holder as RoomHolder).bind(item)
             HomeItem.RoomEmpty -> (holder as RoomEmptyHolder).bind()
             is HomeItem.DeviceCard -> (holder as DeviceHolder).bind(item)
             is HomeItem.ScenesHeader -> (holder as SectionHolder).bindScenes(item)
             is HomeItem.SceneCards -> (holder as ScenesHolder).bind(item)
+        }
+    }
+
+    private inner class TodayHolder(
+        private val binding: ItemHomeOverviewBinding,
+    ) : RecyclerView.ViewHolder(binding.root) {
+
+        fun bind(item: HomeItem.TodayOverview) {
+            val context = binding.root.context
+            val overview = item.overview
+            binding.todayReadingsValue.text = overview.todayReadings.toString()
+            binding.todayViolations.visibility =
+                if (overview.violationCount > 0) View.VISIBLE else View.GONE
+            binding.todayViolations.text = context.getString(
+                R.string.home_today_violations,
+                overview.violationCount,
+            )
+
+            binding.todayMetrics.removeAllViews()
+            overview.metricCounts.forEach { row ->
+                val line = TextView(context).apply {
+                    text = context.getString(
+                        R.string.home_today_metric_row,
+                        metricName(context, row.metric),
+                        row.count,
+                    )
+                    setTextAppearance(R.style.TextAppearance_App_Body)
+                    setTextColor(ContextCompat.getColor(context, R.color.text_secondary))
+                    contentDescription = text
+                }
+                binding.todayMetrics.addView(line)
+            }
+            binding.todayMetricsEmpty.visibility =
+                if (overview.metricCounts.isEmpty()) View.VISIBLE else View.GONE
+
+            val peak = overview.hourlyCounts.maxByOrNull { it.count }
+            binding.todayHourly.visibility = if (peak == null) View.GONE else View.VISIBLE
+            if (peak != null) {
+                binding.todayHourly.text = context.getString(
+                    R.string.home_today_hourly_desc,
+                    peak.hourIndex,
+                    peak.count,
+                )
+            }
+            binding.root.contentDescription = context.getString(
+                R.string.home_today_metric_row,
+                context.getString(R.string.home_today_readings),
+                overview.todayReadings,
+            )
+        }
+    }
+
+    private inner class StatusHolder(
+        private val binding: ItemHomeStatusBinding,
+    ) : RecyclerView.ViewHolder(binding.root) {
+
+        fun bind(item: HomeItem.DeviceStatus) {
+            val context = binding.root.context
+            val overview = item.overview
+            bindCell(
+                binding.statusOnline,
+                binding.statusOnlineCount,
+                context.getString(R.string.home_status_online),
+                overview.onlineCount,
+            ) { onStatusClick(HomeStatusFilter.ONLINE) }
+            bindCell(
+                binding.statusOffline,
+                binding.statusOfflineCount,
+                context.getString(R.string.home_status_offline),
+                overview.offlineCount,
+            ) { onStatusClick(HomeStatusFilter.OFFLINE) }
+            bindCell(
+                binding.statusUnassigned,
+                binding.statusUnassignedCount,
+                context.getString(R.string.home_status_unassigned),
+                overview.unassignedCount,
+            ) { onStatusClick(HomeStatusFilter.UNASSIGNED) }
+            binding.statusLowBatteryLabel.text = context.getString(
+                R.string.home_status_low_battery,
+                HomeViewModel.LOW_BATTERY_THRESHOLD.toInt(),
+            )
+            bindCell(
+                binding.statusLowBattery,
+                binding.statusLowBatteryCount,
+                binding.statusLowBatteryLabel.text.toString(),
+                overview.lowBatteryCount,
+            ) { onStatusClick(HomeStatusFilter.LOW_BATTERY) }
+
+            val filter = item.filter
+            binding.statusFilterHint.visibility = View.VISIBLE
+            if (filter == null) {
+                binding.statusFilterHint.text = context.getString(
+                    R.string.home_status_online_hint,
+                    item.onlineWindowMinutes,
+                )
+            } else {
+                val label = when (filter) {
+                    HomeStatusFilter.ONLINE -> context.getString(R.string.home_status_online)
+                    HomeStatusFilter.OFFLINE -> context.getString(R.string.home_status_offline)
+                    HomeStatusFilter.UNASSIGNED -> context.getString(R.string.home_status_unassigned)
+                    HomeStatusFilter.LOW_BATTERY -> context.getString(
+                        R.string.home_status_low_battery,
+                        HomeViewModel.LOW_BATTERY_THRESHOLD.toInt(),
+                    )
+                }
+                val count = when (filter) {
+                    HomeStatusFilter.ONLINE -> overview.onlineCount
+                    HomeStatusFilter.OFFLINE -> overview.offlineCount
+                    HomeStatusFilter.UNASSIGNED -> overview.unassignedCount
+                    HomeStatusFilter.LOW_BATTERY -> overview.lowBatteryCount
+                }
+                binding.statusFilterHint.text = context.getString(
+                    R.string.home_status_filter_active,
+                    label,
+                    count,
+                )
+            }
+            binding.root.contentDescription = context.getString(
+                R.string.home_device_status_title,
+            )
+        }
+
+        private fun bindCell(
+            cell: View,
+            countView: TextView,
+            label: String,
+            count: Int,
+            onClick: () -> Unit,
+        ) {
+            countView.text = count.toString()
+            cell.contentDescription = "$label $count"
+            cell.setOnClickListener { onClick() }
+        }
+    }
+
+    private inner class ActivityHolder(
+        private val binding: ItemHomeActivityBinding,
+    ) : RecyclerView.ViewHolder(binding.root) {
+
+        fun bind(item: HomeItem.RecentActivity) {
+            val context = binding.root.context
+            val overview = item.overview
+            val none = context.getString(R.string.home_activity_none)
+            binding.activitySync.text = overview.latestSyncAt?.let { at ->
+                context.getString(
+                    R.string.home_activity_sync,
+                    TimeFormat.relative(context, at),
+                )
+            } ?: context.getString(
+                R.string.home_activity_sync,
+                context.getString(R.string.home_activity_no_sync),
+            )
+            binding.activityAlert.text = overview.latestAlert?.let { alert ->
+                context.getString(
+                    R.string.home_activity_alert,
+                    TimeFormat.relative(context, alert.timestamp),
+                )
+            } ?: context.getString(R.string.home_activity_alert, none)
+            binding.activityScene.text = overview.latestSceneRun?.let { run ->
+                context.getString(
+                    R.string.home_activity_scene,
+                    context.getString(
+                        R.string.list_meta_line,
+                        run.sceneName,
+                        TimeFormat.relative(context, run.timestamp),
+                    ),
+                )
+            } ?: context.getString(R.string.home_activity_scene, none)
         }
     }
 
@@ -209,6 +406,8 @@ class HomeAdapter(
             val context = binding.root.context
             val device = item.device
             binding.deviceName.text = device.displayName() ?: unknownName
+            binding.markedBadge.visibility =
+                if (device.markedAt != null) View.VISIBLE else View.GONE
             binding.connectionStatus.setText(
                 if (item.connected) R.string.home_device_connected
                 else R.string.home_device_disconnected,
@@ -306,6 +505,9 @@ class HomeAdapter(
                 oldItem.device.mac == newItem.device.mac
 
             oldItem is HomeItem.Alert && newItem is HomeItem.Alert -> true
+            oldItem is HomeItem.TodayOverview && newItem is HomeItem.TodayOverview -> true
+            oldItem is HomeItem.DeviceStatus && newItem is HomeItem.DeviceStatus -> true
+            oldItem is HomeItem.RecentActivity && newItem is HomeItem.RecentActivity -> true
             oldItem is HomeItem.DevicesHeader && newItem is HomeItem.DevicesHeader -> true
 
             oldItem is HomeItem.RoomHeader && newItem is HomeItem.RoomHeader ->
@@ -329,9 +531,24 @@ class HomeAdapter(
         const val TYPE_SCENES = 4
         const val TYPE_ROOM = 5
         const val TYPE_ROOM_EMPTY = 6
+        const val TYPE_TODAY = 7
+        const val TYPE_STATUS = 8
+        const val TYPE_ACTIVITY = 9
         const val MAX_QUICK_SCENES = 3
     }
 }
+
+private fun metricName(context: Context, metric: String): String = context.getString(
+    when (ReadingMetrics.normalize(metric)) {
+        ReadingMetrics.TEMPERATURE -> R.string.readings_metric_temperature
+        ReadingMetrics.HUMIDITY -> R.string.readings_metric_humidity
+        ReadingMetrics.BATTERY -> R.string.readings_metric_battery
+        ReadingMetrics.HEART_RATE -> R.string.readings_metric_heart_rate
+        ReadingMetrics.CO2 -> R.string.readings_metric_co2
+        ReadingMetrics.PRESSURE -> R.string.readings_metric_pressure
+        else -> R.string.readings_metric_other
+    },
+)
 
 private fun formatTime(timestamp: Long): String =
     SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(timestamp))
@@ -352,4 +569,7 @@ fun sceneActionLabel(context: Context, action: SceneAction): String = when (acti
     SceneActionType.STOP_COLLECTION -> context.getString(R.string.scene_action_stop_collection)
     SceneActionType.MUTE_ALERTS -> context.getString(R.string.scene_action_mute_alerts)
     SceneActionType.SYNC_NOW -> context.getString(R.string.scene_action_sync_now)
+    SceneActionType.NOTIFY -> context.getString(R.string.scene_action_notify)
+    SceneActionType.RECORD_LOG -> context.getString(R.string.scene_action_record_log)
+    SceneActionType.MARK_DEVICE -> context.getString(R.string.scene_action_mark_device)
 }

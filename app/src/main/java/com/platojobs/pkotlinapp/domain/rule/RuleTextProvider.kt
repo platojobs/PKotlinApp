@@ -12,6 +12,8 @@ interface RuleTextProvider {
 
     fun bondLost(deviceName: String): String
 
+    fun scheduled(intervalMinutes: Int): String
+
     /** 指标阈值命中文案，数值与单位都由调用方给出（domain 不依赖 Android 资源）。 */
     fun metricThreshold(
         deviceName: String,

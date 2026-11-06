@@ -131,6 +131,11 @@ class AppContainer(context: Context) {
         SceneRepositoryImpl(database.sceneDao())
     }
 
+    /** 场景执行记录：由引擎真实写入，界面只读。 */
+    val sceneRunRepository: com.platojobs.pkotlinapp.domain.repository.SceneRunRepository by lazy {
+        com.platojobs.pkotlinapp.data.repository.SceneRunRepositoryImpl(database.sceneRunDao())
+    }
+
     private val remoteSyncDataSource by lazy {
         RemoteSyncDataSource(
             api = syncApi,
@@ -214,6 +219,7 @@ class AppContainer(context: Context) {
             eventRepository = ruleEventRepository,
             textProvider = AndroidRuleTextProvider(appContext),
             alertSink = alertNotifier,
+            triggerObserver = sceneTriggerRunner,
         )
     }
 
@@ -253,6 +259,15 @@ class AppContainer(context: Context) {
                 devices = deviceRepository,
             ),
             canConnect = { BlePermissions.hasConnect(appContext) },
+        )
+    }
+
+    /** 引擎触发规则的场景执行入口；手动运行复用同一执行器与记录写入。 */
+    val sceneTriggerRunner: com.platojobs.pkotlinapp.data.scene.SceneTriggerRunner by lazy {
+        com.platojobs.pkotlinapp.data.scene.SceneTriggerRunner(
+            sceneRepository = sceneRepository,
+            sceneRunRepository = sceneRunRepository,
+            executor = sceneExecutor,
         )
     }
 }

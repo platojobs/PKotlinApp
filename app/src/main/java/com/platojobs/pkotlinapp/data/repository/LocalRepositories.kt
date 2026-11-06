@@ -34,8 +34,14 @@ import com.platojobs.pkotlinapp.domain.repository.SceneRepository
 import com.platojobs.pkotlinapp.domain.rule.MetricThreshold
 import com.platojobs.pkotlinapp.domain.scene.Scene
 import com.platojobs.pkotlinapp.domain.scene.SceneAction
+import com.platojobs.pkotlinapp.data.local.SceneRunDao
+import com.platojobs.pkotlinapp.data.local.SceneRunEntity
+import com.platojobs.pkotlinapp.domain.repository.SceneRunRepository
 import com.platojobs.pkotlinapp.domain.scene.SceneActionType
+import com.platojobs.pkotlinapp.domain.scene.SceneRun
+import com.platojobs.pkotlinapp.domain.scene.SceneTrigger
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import java.util.UUID
 
@@ -108,6 +114,29 @@ class DeviceRepositoryImpl(
     override suspend fun assignRoom(mac: String, roomId: Long?) {
         dao.assignRoom(mac, roomId)
     }
+
+    override suspend fun markDevice(mac: String, timestamp: Long) {
+        dao.markDevice(mac, timestamp)
+    }
+
+    override fun observeOnlineCount(since: Long): Flow<Int> = dao.observeOnlineCount(since)
+
+    override fun observeOfflineCount(since: Long): Flow<Int> = dao.observeOfflineCount(since)
+
+    override fun observeUnassignedRoomCount(): Flow<Int> = dao.observeUnassignedRoomCount()
+
+    override fun observeActiveCount(): Flow<Int> = dao.observeActiveCount()
+
+    override fun observeDevicesByOnlineState(online: Boolean, since: Long): Flow<List<Device>> =
+        dao.observeByOnlineState(online, since).map { list -> list.map { it.toDomain() } }
+
+    override fun observeUnassignedRoomDevices(): Flow<List<Device>> =
+        dao.observeUnassignedRoomDevices().map { list -> list.map { it.toDomain() } }
+
+    override fun observeDevicesByMacs(macs: List<String>): Flow<List<Device>> {
+        if (macs.isEmpty()) return flowOf(emptyList())
+        return dao.observeByMacs(macs).map { list -> list.map { it.toDomain() } }
+    }
 }
 
 class RuleRepositoryImpl(
@@ -166,6 +195,12 @@ class RuleEventRepositoryImpl(
     override fun observeCountBetween(from: Long, to: Long): Flow<Int> =
         dao.observeCountBetween(from, to)
 
+    override fun observeMetricViolationCountBetween(from: Long, to: Long): Flow<Int> =
+        dao.observeMetricViolationCountBetween(from, to)
+
+    override fun observeLatestBetween(from: Long, to: Long): Flow<RuleEvent?> =
+        dao.observeLatestBetween(from, to).map { it?.toDomain() }
+
     override suspend fun getRecent(limit: Int): List<RuleEvent> =
         dao.getRecent(limit).map { it.toDomain() }
 
@@ -197,45 +232,141 @@ class SceneRepositoryImpl(
     override suspend fun getScenes(): List<Scene> =
         dao.getAll().map { it.toDomain() }
 
+    override suspend fun getScene(id: Long): Scene? =
+        dao.getAll().firstOrNull { it.scene.id == id }?.toDomain()
+
+    override suspend fun findSceneByRuleId(ruleId: Long): Scene? =
+        dao.getAll().firstOrNull { row -> row.rules.any { it.id == ruleId } }?.toDomain()
+
     override suspend fun saveScene(
         id: Long?,
         name: String,
         actions: List<SceneAction>,
+        trigger: SceneTrigger?,
+        enabled: Boolean,
     ): Long {
-        val sceneId = if (id == null) {
-            dao.insertScene(
-                SceneEntity(name = name, createdAt = System.currentTimeMillis()),
+        val entities = actions.mapIndexed { index, action ->
+            SceneActionEntity(
+                sceneId = 0,
+                position = index,
+                type = action.type.name,
+                deviceMac = action.deviceMac,
+                muteMinutes = action.muteMinutes,
+            )
+        }
+        val rule = trigger?.takeIf { it != SceneTrigger.Manual }?.toRuleEntity(enabled)
+        return if (id == null) {
+            dao.createSceneWithRule(
+                scene = SceneEntity(
+                    name = name,
+                    createdAt = System.currentTimeMillis(),
+                    enabled = enabled,
+                ),
+                rule = rule,
+                actions = entities,
             )
         } else {
-            dao.rename(id, name)
-            dao.deleteActions(id)
+            dao.updateSceneWithRule(
+                sceneId = id,
+                name = name,
+                enabled = enabled,
+                rule = rule,
+                actions = entities,
+            )
             id
         }
-        if (actions.isNotEmpty()) {
-            dao.insertActions(
-                actions.mapIndexed { index, action ->
-                    SceneActionEntity(
-                        sceneId = sceneId,
-                        position = index,
-                        type = action.type.name,
-                        deviceMac = action.deviceMac,
-                        muteMinutes = action.muteMinutes,
-                    )
-                },
-            )
-        }
-        return sceneId
+    }
+
+    override suspend fun setEnabled(id: Long, enabled: Boolean) {
+        dao.setEnabled(id, enabled)
+        dao.setRulesEnabled(id, enabled)
     }
 
     override suspend fun deleteScene(id: Long) {
-        dao.delete(id)
+        dao.deleteSceneWithRule(id)
     }
+}
+
+/** 场景执行记录仓库：只做真实落库与读取，不生成界面伪数据。 */
+class SceneRunRepositoryImpl(
+    private val dao: SceneRunDao,
+) : SceneRunRepository {
+
+    override fun observeRecent(limit: Int): Flow<List<SceneRun>> =
+        dao.observeRecent(limit).map { rows -> rows.map { it.toDomain() } }
+
+    override fun observeLatest(): Flow<SceneRun?> =
+        dao.observeLatest().map { it?.toDomain() }
+
+    override suspend fun getRecent(limit: Int): List<SceneRun> =
+        dao.getRecent(limit).map { it.toDomain() }
+
+    override suspend fun add(run: SceneRun): Long = dao.insert(run.toEntity())
+
+    override suspend fun clear() = dao.clear()
+}
+
+private fun SceneTrigger.toRuleEntity(enabled: Boolean): RuleEntity = when (this) {
+    SceneTrigger.Manual -> error("手动场景不应创建触发规则")
+    SceneTrigger.Disconnected -> RuleEntity(
+        type = RuleType.DISCONNECTED.name,
+        threshold = 0,
+        enabled = enabled,
+        createdAt = 0L,
+        lastTriggeredTimestamp = 0L,
+    )
+
+    is SceneTrigger.LowRssi -> RuleEntity(
+        type = RuleType.LOW_RSSI.name,
+        threshold = threshold,
+        enabled = enabled,
+        createdAt = 0L,
+        lastTriggeredTimestamp = 0L,
+        comparator = RuleComparator.LESS.name,
+        thresholdValue = threshold.toDouble(),
+    )
+
+    is SceneTrigger.MetricThreshold -> RuleEntity(
+        type = RuleType.METRIC_THRESHOLD.name,
+        threshold = 0,
+        enabled = enabled,
+        createdAt = 0L,
+        lastTriggeredTimestamp = 0L,
+        metric = metric,
+        comparator = comparator.name,
+        thresholdValue = thresholdValue,
+        consecutive = MetricThreshold.sanitizeConsecutive(consecutive),
+    )
+
+    is SceneTrigger.Schedule -> RuleEntity(
+        type = RuleType.SCHEDULE.name,
+        threshold = 0,
+        enabled = enabled,
+        createdAt = 0L,
+        lastTriggeredTimestamp = 0L,
+        intervalMinutes = intervalMinutes,
+    )
 }
 
 private fun SceneWithActions.toDomain(): Scene = Scene(
     id = scene.id,
     name = scene.name,
     createdAt = scene.createdAt,
+    enabled = scene.enabled,
+    trigger = rules.firstOrNull()?.let { rule ->
+        when (ruleTypeOf(rule.type)) {
+            RuleType.METRIC_THRESHOLD -> SceneTrigger.MetricThreshold(
+                metric = rule.metric.orEmpty(),
+                comparator = RuleComparator.parse(rule.comparator),
+                thresholdValue = rule.thresholdValue,
+                consecutive = MetricThreshold.sanitizeConsecutive(rule.consecutive),
+            )
+
+            RuleType.LOW_RSSI -> SceneTrigger.LowRssi(rule.threshold)
+            RuleType.SCHEDULE -> SceneTrigger.Schedule(rule.intervalMinutes ?: 30)
+            RuleType.DISCONNECTED, RuleType.BOND_LOST -> SceneTrigger.Disconnected
+        }
+    },
     actions = actions
         .sortedBy { it.position }
         .mapNotNull { entity ->
@@ -247,6 +378,31 @@ private fun SceneWithActions.toDomain(): Scene = Scene(
                 muteMinutes = entity.muteMinutes,
             )
         },
+)
+
+private fun SceneRunEntity.toDomain() = SceneRun(
+    id = id,
+    sceneId = sceneId,
+    sceneName = sceneName,
+    timestamp = timestamp,
+    triggerType = triggerType,
+    triggerValue = triggerValue,
+    successCount = successCount,
+    failureCount = failureCount,
+    failureReason = failureReason,
+    detail = detail,
+)
+
+private fun SceneRun.toEntity() = SceneRunEntity(
+    sceneId = sceneId,
+    sceneName = sceneName,
+    timestamp = timestamp,
+    triggerType = triggerType,
+    triggerValue = triggerValue,
+    successCount = successCount,
+    failureCount = failureCount,
+    failureReason = failureReason,
+    detail = detail,
 )
 
 private fun DeviceEntity.toDomain() = Device(
@@ -274,6 +430,7 @@ private fun DeviceEntity.toDomain() = Device(
     remoteRoomId = remoteRoomId,
     shared = shared,
     pendingRoomPatch = pendingRoomPatch,
+    markedAt = markedAt,
 )
 
 private fun Device.toEntity() = DeviceEntity(
@@ -303,6 +460,7 @@ private fun Device.toEntity() = DeviceEntity(
     pendingRoomLocalId = pendingRoomLocalId,
     pendingHouseholdRemoteId = pendingHouseholdRemoteId,
     shared = shared,
+    markedAt = markedAt,
 )
 
 private fun RuleEntity.toDomain() = DeviceRule(
@@ -316,6 +474,8 @@ private fun RuleEntity.toDomain() = DeviceRule(
     comparator = RuleComparator.parse(comparator),
     thresholdValue = thresholdValue,
     consecutive = MetricThreshold.sanitizeConsecutive(consecutive),
+    sceneId = sceneId,
+    intervalMinutes = intervalMinutes,
 )
 
 private fun RuleEventEntity.toDomain() = RuleEvent(

@@ -18,6 +18,9 @@ class AndroidRuleTextProvider(private val context: Context) : RuleTextProvider {
     override fun bondLost(deviceName: String): String =
         context.getString(R.string.rule_event_bond_lost, deviceName)
 
+    override fun scheduled(intervalMinutes: Int): String =
+        context.getString(R.string.rule_event_scheduled, intervalMinutes)
+
     override fun metricThreshold(
         deviceName: String,
         metric: String,

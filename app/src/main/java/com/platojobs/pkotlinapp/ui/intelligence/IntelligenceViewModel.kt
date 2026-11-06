@@ -17,14 +17,17 @@ import com.platojobs.pkotlinapp.domain.repository.DeviceRepository
 import com.platojobs.pkotlinapp.domain.repository.ReadingRepository
 import com.platojobs.pkotlinapp.domain.repository.RuleEventRepository
 import com.platojobs.pkotlinapp.domain.repository.RuleRepository
+import com.platojobs.pkotlinapp.data.scene.SceneTriggerRunner
 import com.platojobs.pkotlinapp.domain.repository.SceneRepository
+import com.platojobs.pkotlinapp.domain.repository.SceneRunRepository
 import com.platojobs.pkotlinapp.domain.rule.RuleEngine
 import com.platojobs.pkotlinapp.domain.rule.RuleTemplate
 import com.platojobs.pkotlinapp.domain.rule.RuleTemplates
 import com.platojobs.pkotlinapp.domain.scene.Scene
 import com.platojobs.pkotlinapp.domain.scene.SceneAction
-import com.platojobs.pkotlinapp.domain.scene.SceneExecutor
+import com.platojobs.pkotlinapp.domain.scene.SceneRun
 import com.platojobs.pkotlinapp.domain.scene.SceneRunResult
+import com.platojobs.pkotlinapp.domain.scene.SceneTrigger
 import com.platojobs.pkotlinapp.ui.home.SceneProgress
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -44,6 +47,7 @@ data class IntelligenceUiState(
     val events: List<RuleEvent> = emptyList(),
     val scenes: List<Scene> = emptyList(),
     val devices: List<Device> = emptyList(),
+    val runs: List<SceneRun> = emptyList(),
     val loading: Boolean = true,
     val loadError: String? = null,
 )
@@ -53,7 +57,8 @@ class IntelligenceViewModel(
     private val ruleRepository: RuleRepository,
     private val ruleEventRepository: RuleEventRepository,
     private val sceneRepository: SceneRepository,
-    private val sceneExecutor: SceneExecutor,
+    private val sceneRunRepository: SceneRunRepository,
+    private val sceneRunner: SceneTriggerRunner,
     private val ruleEngine: RuleEngine,
     private val deviceRepository: DeviceRepository,
     private val readingRepository: ReadingRepository,
@@ -75,20 +80,25 @@ class IntelligenceViewModel(
     private var sceneJob: Job? = null
 
     val uiState: StateFlow<IntelligenceUiState> = combine(
-        ruleRepository.observeRules().onEach { _loaded.value = true },
-        ruleEventRepository.observeRecent(EVENT_LIMIT),
-        sceneRepository.observeScenes(),
-        deviceRepository.observeDevices(),
-        _loadError,
-    ) { rules, events, scenes, devices, error ->
-        IntelligenceUiState(
-            rules = rules,
-            events = events,
-            scenes = scenes,
-            devices = devices,
-            loading = !_loaded.value,
-            loadError = error,
-        )
+        combine(
+            ruleRepository.observeRules().onEach { _loaded.value = true },
+            ruleEventRepository.observeRecent(EVENT_LIMIT),
+            sceneRepository.observeScenes(),
+            deviceRepository.observeDevices(),
+            _loadError,
+        ) { rules, events, scenes, devices, error ->
+            IntelligenceUiState(
+                rules = rules,
+                events = events,
+                scenes = scenes,
+                devices = devices,
+                loading = !_loaded.value,
+                loadError = error,
+            )
+        },
+        sceneRunRepository.observeRecent(RUN_LIMIT),
+    ) { state, runs ->
+        state.copy(runs = runs)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
@@ -200,18 +210,54 @@ class IntelligenceViewModel(
         }
     }
 
-    fun saveScene(id: Long?, name: String, actions: List<SceneAction>) {
+    fun saveScene(
+        id: Long?,
+        name: String,
+        actions: List<SceneAction>,
+        trigger: SceneTrigger?,
+        enabled: Boolean,
+    ) {
         viewModelScope.launch {
-            runCatching { sceneRepository.saveScene(id, name, actions) }
-                .onSuccess { _messages.tryEmit(appContext.getString(R.string.intelligence_scene_saved)) }
+            runCatching { sceneRepository.saveScene(id, name, actions, trigger, enabled) }
+                .onSuccess {
+                    // 新规则必须立即进入引擎判定路径，不能等下次扫描才生效。
+                    ruleEngine.refresh()
+                    _messages.tryEmit(appContext.getString(R.string.intelligence_scene_saved))
+                }
                 .onFailure { _messages.tryEmit(it.message ?: appContext.getString(R.string.intelligence_scene_save_failed)) }
+        }
+    }
+
+    fun setSceneEnabled(scene: Scene, enabled: Boolean) {
+        viewModelScope.launch {
+            runCatching { sceneRepository.setEnabled(scene.id, enabled) }
+                .onSuccess {
+                    ruleEngine.refresh()
+                    _messages.tryEmit(
+                        appContext.getString(
+                            if (enabled) R.string.scene_state_enabled else R.string.scene_state_disabled,
+                        ),
+                    )
+                }
+                .onFailure { _messages.tryEmit(it.message ?: appContext.getString(R.string.intelligence_scene_save_failed)) }
+        }
+    }
+
+    fun clearSceneRuns() {
+        viewModelScope.launch {
+            runCatching { sceneRunRepository.clear() }
+                .onSuccess { _messages.tryEmit(appContext.getString(R.string.intelligence_runs_cleared)) }
+                .onFailure { _messages.tryEmit(appContext.getString(R.string.intelligence_runs_clear_failed)) }
         }
     }
 
     fun deleteScene(scene: Scene) {
         viewModelScope.launch {
             runCatching { sceneRepository.deleteScene(scene.id) }
-                .onSuccess { _messages.tryEmit(appContext.getString(R.string.scene_deleted, scene.name)) }
+                .onSuccess {
+                    ruleEngine.refresh()
+                    _messages.tryEmit(appContext.getString(R.string.scene_deleted, scene.name))
+                }
                 .onFailure { _messages.tryEmit(it.message ?: appContext.getString(R.string.intelligence_scene_delete_failed)) }
         }
     }
@@ -221,7 +267,7 @@ class IntelligenceViewModel(
         if (scene.actions.isEmpty()) return
         sceneNames[scene.id] = scene.name
         sceneJob = viewModelScope.launch {
-            val result = sceneExecutor.run(scene) { index, total, action ->
+            val result = sceneRunner.runManually(scene) { index, total, action ->
                 _sceneProgress.value = SceneProgress(scene.id, scene.name, index, total, action)
             }
             _sceneProgress.value = null
@@ -234,6 +280,7 @@ class IntelligenceViewModel(
 
     companion object {
         private const val EVENT_LIMIT = 20
+        private const val RUN_LIMIT = 20
 
         fun factory(app: PKotlinApplication) = viewModelFactory {
             initializer {
@@ -243,7 +290,8 @@ class IntelligenceViewModel(
                     ruleRepository = container.ruleRepository,
                     ruleEventRepository = container.ruleEventRepository,
                     sceneRepository = container.sceneRepository,
-                    sceneExecutor = container.sceneExecutor,
+                    sceneRunRepository = container.sceneRunRepository,
+                    sceneRunner = container.sceneTriggerRunner,
                     ruleEngine = container.ruleEngine,
                     deviceRepository = container.deviceRepository,
                     readingRepository = container.readingRepository,

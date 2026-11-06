@@ -17,13 +17,33 @@
         android:orientation="vertical"
         android:padding="@dimen/card_padding">
 
-        <TextView
-            android:id="@+id/deviceName"
-            style="@style/Widget.App.TextView"
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:textAppearance="@style/TextAppearance.App.Callout"
-            tools:text="温湿度计" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/deviceName"
+                style="@style/Widget.App.TextView"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textAppearance="@style/TextAppearance.App.Callout"
+                tools:text="温湿度计" />
+
+            <TextView
+                android:id="@+id/markedBadge"
+                style="@style/Widget.App.TextView"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/space_8"
+                android:background="@drawable/bg_badge"
+                android:text="@string/home_marked_badge"
+                android:textAppearance="@style/TextAppearance.App.Footnote"
+                android:textColor="@color/primary"
+                android:visibility="gone" />
+        </LinearLayout>
 
         <LinearLayout
             android:layout_width="match_parent"

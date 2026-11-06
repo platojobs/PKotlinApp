@@ -642,6 +642,86 @@
     <string name="intelligence_scene_delete_failed">Failed to delete scene</string>
     <string name="intelligence_scene_status_success">Success</string>
     <string name="intelligence_scene_status_failure">Failed</string>
+
+    <!-- Scene trigger conditions -->
+    <string name="scene_trigger_title">Trigger</string>
+    <string name="scene_trigger_manual">Manual only</string>
+    <string name="scene_trigger_disconnected">Device offline</string>
+    <string name="scene_trigger_low_rssi">RSSI below threshold</string>
+    <string name="scene_trigger_metric">Metric out of range</string>
+    <string name="scene_trigger_schedule">Schedule</string>
+    <string name="scene_trigger_rssi_hint">RSSI threshold (-100 to 0)</string>
+    <string name="scene_trigger_metric_hint">Metric</string>
+    <string name="scene_trigger_consecutive_hint">Consecutive readings (1–5)</string>
+    <string name="scene_trigger_interval">Interval</string>
+    <string name="scene_trigger_interval_option">%1$d min</string>
+    <string name="scene_trigger_invalid">%1$s</string>
+    <string name="scene_trigger_summary_manual">Manual only</string>
+    <string name="scene_trigger_summary_disconnected">Device offline</string>
+    <string name="scene_trigger_summary_low_rssi">RSSI &lt; %1$d dBm</string>
+    <string name="scene_trigger_summary_metric">%1$s %2$s %3$s</string>
+    <string name="scene_trigger_summary_schedule">Every %1$d min</string>
+    <string name="scene_trigger_summary_none">No trigger set</string>
+    <string name="scene_enable_switch">Enable scene</string>
+    <string name="scene_state_enabled">Enabled</string>
+    <string name="scene_state_disabled">Disabled</string>
+    <string name="scene_meta_trigger">%1$s · %2$s</string>
+    <string name="scene_action_notify">Send local notification</string>
+    <string name="scene_action_record_log">Write log</string>
+    <string name="scene_action_mark_device">Mark device</string>
+
+    <!-- Scene run history -->
+    <string name="intelligence_runs_title">Run history</string>
+    <string name="intelligence_runs_hint">Written by the engine or manual runs; can be cleared</string>
+    <string name="intelligence_runs_clear">Clear</string>
+    <string name="intelligence_runs_empty_title">No runs yet</string>
+    <string name="intelligence_runs_empty_hint">Triggered scenes leave the time, trigger value and action results here</string>
+    <string name="intelligence_runs_result_success">%1$d actions succeeded</string>
+    <string name="intelligence_runs_result_partial">Partly succeeded: %1$d succeeded / %2$d failed</string>
+    <string name="intelligence_runs_result_failure">%1$d actions failed</string>
+    <string name="intelligence_runs_failure_reason">Failure reason: %1$s</string>
+    <string name="intelligence_runs_trigger_manual">Manual trigger</string>
+    <string name="intelligence_runs_trigger_rule">%1$s · %2$s</string>
+    <string name="intelligence_runs_cleared">Run history cleared</string>
+    <string name="intelligence_runs_clear_failed">Failed to clear run history</string>
+    <string name="scene_trigger_type_low_rssi">RSSI below threshold</string>
+    <string name="scene_trigger_type_disconnected">Device offline</string>
+    <string name="scene_trigger_type_metric">Metric out of range</string>
+    <string name="scene_trigger_type_schedule">Scheduled</string>
+    <string name="scene_trigger_type_bond_lost">Bond lost</string>
+    <string name="scene_trigger_type_manual">Manual</string>
+
+    <!-- Scene local notifications -->
+    <string name="scene_notification_title">Scene notification</string>
+    <string name="scene_notification_text">%1$s: %2$s</string>
+    <string name="scene_notification_channel_name">Scene notifications</string>
+    <string name="scene_notification_channel_description">Local notifications fired by scene actions</string>
+    <string name="rule_event_scheduled">Scheduled rule triggered (every %1$d min)</string>
+
+    <!-- Home real aggregation -->
+    <string name="home_today_title">Today at a glance</string>
+    <string name="home_today_readings">Readings today</string>
+    <string name="home_today_violations">%1$d out of range</string>
+    <string name="home_today_metrics_empty">No readings today</string>
+    <string name="home_today_metric_row">%1$s %2$d</string>
+    <string name="home_today_hourly_desc">Readings by hour today; peak at %1$d:00 with %2$d</string>
+    <string name="home_device_status_title">Device status</string>
+    <string name="home_status_online">Online</string>
+    <string name="home_status_offline">Offline</string>
+    <string name="home_status_unassigned">No room</string>
+    <string name="home_status_low_battery">Battery below %1$d</string>
+    <string name="home_status_online_hint">Online means seen in the last %1$d minutes</string>
+    <string name="home_status_filter_active">%1$s · %2$d devices</string>
+    <string name="home_status_filter_clear">Clear filter</string>
+    <string name="home_activity_title">Recent activity</string>
+    <string name="home_activity_sync">Last sync: %1$s</string>
+    <string name="home_activity_alert">Latest alert: %1$s</string>
+    <string name="home_activity_scene">Latest scene run: %1$s</string>
+    <string name="home_activity_none">No records</string>
+    <string name="home_activity_no_sync">Not synced yet</string>
+    <string name="home_marked_badge">Marked</string>
+    <string name="home_refresh_failed">Refresh failed, please try again later</string>
+
     <string name="room_title">Room</string>
     <string name="room_unassigned">Unassigned</string>
     <string name="room_manage">Manage rooms</string>

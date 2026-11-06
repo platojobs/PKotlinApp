@@ -1,6 +1,17 @@
 package com.platojobs.pkotlinapp.data.scene
 
+import android.Manifest
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
+import com.platojobs.pkotlinapp.R
 import com.platojobs.pkotlinapp.data.ble.BleConnectionManager
 import com.platojobs.pkotlinapp.data.ble.BleConnectionState
 import com.platojobs.pkotlinapp.data.collection.CollectionLauncher
@@ -64,5 +75,68 @@ class SceneRuntimeImpl(
 
     override fun syncNow() {
         syncScheduler.scheduleNow()
+    }
+
+    override suspend fun notify(sceneName: String, details: String): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            return false
+        }
+        return runCatching {
+            ensureNotificationChannel()
+            val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+            val pendingIntent = launchIntent?.let {
+                PendingIntent.getActivity(
+                    context,
+                    0,
+                    it,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                )
+            }
+            val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_notification_alert)
+                .setContentTitle(context.getString(R.string.scene_notification_title))
+                .setContentText(
+                    context.getString(R.string.scene_notification_text, sceneName, details),
+                )
+                .setStyle(
+                    NotificationCompat.BigTextStyle().bigText(
+                        context.getString(R.string.scene_notification_text, sceneName, details),
+                    ),
+                )
+                .setContentIntent(pendingIntent)
+                .setAutoCancel(true)
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .build()
+            NotificationManagerCompat.from(context)
+                .notify(SCENE_NOTIFICATION_ID, notification)
+            true
+        }.getOrDefault(false)
+    }
+
+    override suspend fun markDevice(mac: String): Boolean {
+        if (devices.getDevice(mac) == null) return false
+        devices.markDevice(mac, System.currentTimeMillis())
+        return true
+    }
+
+    private fun ensureNotificationChannel() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val manager = context.getSystemService(NotificationManager::class.java) ?: return
+        val channel = NotificationChannel(
+            CHANNEL_ID,
+            context.getString(R.string.scene_notification_channel_name),
+            NotificationManager.IMPORTANCE_DEFAULT,
+        ).apply {
+            description = context.getString(R.string.scene_notification_channel_description)
+        }
+        manager.createNotificationChannel(channel)
+    }
+
+    private companion object {
+        const val CHANNEL_ID = "scene_actions"
+        const val SCENE_NOTIFICATION_ID = 3200
     }
 }

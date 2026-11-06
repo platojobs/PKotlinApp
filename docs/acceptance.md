@@ -1,9 +1,9 @@
-# 真机验收清单（v0.17.0）
+# 真机验收清单（v0.18.0）
 
 本清单用于「执行人不在开发现场」时也能照着做完验收。每项都写明**操作步骤、预期现象、失败判定**。
 所有结果请记录到文末的「验收记录表」；未实际执行的项不要填 PASS。
 
-- 适用版本：`versionName = 0.17.0`（`versionCode = 25`）
+- 适用版本：`versionName = 0.18.0`（`versionCode = 26`）
 - 应用包名：`com.platojobs.pkotlinapp`
 - 主界面：`com.platojobs.pkotlinapp.ui.MainActivity`
 - 设备详情：`com.platojobs.pkotlinapp.ui.detail.DeviceDetailActivity`
@@ -523,6 +523,38 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
      ```
 - 预期：`user_version = 15`；旧房间/设备/家庭/读数数据原样保留；旧房间默认 `pendingEdit = 0`、`serverName/serverSortOrder` 为 `NULL`；本地未同步的改名 `pendingEdit = 1`，联网同步成功后回到 0。
 - 失败判定：版本不是 15、既有数据丢失、旧房间被误标 pending、升级后崩溃。
+
+### M13 v15 → v16 场景引擎迁移（v0.18.0 新增）
+
+- 前置：v0.17.0 包（Room v15）已使用过，至少有一条指标规则、一个场景和一台设备。
+- 步骤：
+  1. 覆盖安装 v0.18.0，打开「智能」确认旧规则与旧场景仍显示；
+  2. 导出数据库查询：
+     ```bash
+     sqlite3 /tmp/device_dashboard.db "PRAGMA user_version;"
+     sqlite3 /tmp/device_dashboard.db "SELECT id, type, enabled, sceneId, intervalMinutes FROM rules;"
+     sqlite3 /tmp/device_dashboard.db "SELECT id, name, enabled FROM scenes;"
+     sqlite3 /tmp/device_dashboard.db "SELECT name FROM sqlite_master WHERE name='scene_runs';"
+     ```
+- 预期：`user_version = 16`；旧规则/场景/设备原样保留；旧规则 `sceneId/intervalMinutes` 为 `NULL`，旧场景 `enabled = 1`；`scene_runs` 与 `index_scene_runs_timestamp` 存在。之后新建的场景触发规则 `sceneId` 非空。
+- 失败判定：版本不是 16、旧数据丢失、`scene_runs` 缺失、升级后打开「智能」崩溃。
+
+### 7.9 场景执行闭环与首页聚合验收（v0.18.0 新增）
+
+- 前置：已登录、至少一台设备上报读数、后端可用。
+- 步骤与预期：
+  1. 智能页新建场景，触发条件选「指标越界（temperature 大于 30，连续 1 次）」，动作选「本地通知」+「标记设备」，保存后场景行显示触发摘要且开关为开；
+  2. 用调试入口/模拟数据写入一条 `temperature = 31` 的读数；
+  3. **预期**：只收到 1 条本地通知；执行记录新增 1 条，含场景名、触发值、动作结果；设备卡片出现「已标记」；
+  4. 立即再写入 `temperature = 32`：**预期** 60 秒冷却内不新增执行记录、不再通知；
+  5. 关闭场景开关后重新写入越界读数：**预期** 不再执行；手动点「运行」仍可执行并写一条记录；
+  6. 清空执行记录：**预期** 列表回到空态，数据库 `scene_runs` 行数为 0；
+  7. 首页「今日概览」：读数总量/各指标条数/越界次数与 `readings`、`rule_events` 当日窗口一致（本地 0 点切）；
+  8. 首页「设备状态」四格数字与设备表一致；点击「离线」**预期** 列表只显示离线设备，再点同一格恢复；「低电量」按最新电量 < 20 统计；
+  9. 首页「最近活动」显示最近同步/告警/场景触发时间；当天没有告警或场景触发时显示「暂无」，不出现占位时间；
+  10. 下拉刷新：**预期** 触发一次同步，完成后聚合数字刷新，列表不卡顿。
+- 失败判定：执行记录出现界面伪造的「成功」行、通知重复、冷却无效、停用后仍执行、首页出现硬编码数字、下拉刷新卡死。
+
 
 ### 7.2 离线缓存与分组验收（v0.3.5 新增）
 

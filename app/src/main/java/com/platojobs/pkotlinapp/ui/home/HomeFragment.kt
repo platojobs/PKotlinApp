@@ -79,6 +79,14 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                 }
             },
             onDeviceLongClick = ::showRoomPicker,
+            onStatusClick = { filter ->
+                viewModel.toggleStatusFilter(filter)
+                binding.homeList.post {
+                    if (adapter.itemCount > STATUS_SCROLL_POSITION) {
+                        binding.homeList.smoothScrollToPosition(STATUS_SCROLL_POSITION)
+                    }
+                }
+            },
         )
 
         val columns = if (resources.configuration.fontScale >= LARGE_FONT_SCALE) 1 else 2
@@ -103,6 +111,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             viewModel.setQuery(text?.toString().orEmpty())
         }
         binding.scanAddButton.setOnClickListener { openScanDialog() }
+        binding.homeRefresh.setOnRefreshListener { viewModel.refreshNow() }
 
         buildSortChips()
         (activity as? MainActivity)?.attachHeaderScroll(binding.homeList)
@@ -139,17 +148,24 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                 viewModel.householdMessages.collect { message -> toast(message) }
             }
         }
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.messages.collect { message -> toast(message) }
+            }
+        }
     }
 
     private fun render(state: HomeUiState) {
         renderHouseholdChips(state)
         renderGroupChips(state)
         renderItems(state)
+        binding.homeRefresh.isRefreshing = state.refreshing
         when {
             state.loading -> threeState.showLoading()
 
             // 还没有任何房间：房间是首页主结构，空态先引导建房间，而不是直接扫描。
-            state.devices.isEmpty() && state.rooms.isEmpty() && !state.searching ->
+            state.devices.isEmpty() && state.rooms.isEmpty() && !state.searching &&
+                state.statusFilter == null ->
                 threeState.showEmpty(
                     title = getString(R.string.room_empty_title),
                     hint = getString(R.string.room_empty_hint),
@@ -160,6 +176,9 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                         }
                     },
                 )
+
+            // 状态筛选后没有匹配设备时不替换整页空态，保留聚合与筛选提示。
+            state.devices.isEmpty() && state.statusFilter != null -> threeState.showContent()
 
             // 有房间但无设备：保留房间分区，点空房间标题即引导扫描。
             state.devices.isEmpty() && !state.searching -> threeState.showContent()
@@ -178,10 +197,16 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
 
     private fun renderItems(state: HomeUiState) {
         val items = mutableListOf<HomeItem>()
-        items += HomeItem.Alert(state.alertCountToday)
+        items += HomeItem.TodayOverview(state.overview)
+        items += HomeItem.DeviceStatus(
+            overview = state.overview,
+            filter = state.statusFilter,
+            onlineWindowMinutes = (HomeViewModel.ONLINE_WINDOW_MS / 60_000L).toInt(),
+        )
+        items += HomeItem.RecentActivity(state.overview)
         if (state.devices.isNotEmpty() || state.rooms.isNotEmpty()) {
             items += HomeItem.DevicesHeader(state.devices.size, state.groups.size)
-            if (!state.searching && state.rooms.isEmpty()) {
+            if (!state.searching && state.rooms.isEmpty() && state.statusFilter == null) {
                 items += HomeItem.RoomEmpty
             }
             state.sections.forEach { section ->
@@ -190,7 +215,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                     section.room?.id?.let { it in state.collapsedRooms }
                         ?: (HomeViewModel.UNASSIGNED_ROOM_ID in state.collapsedRooms)
                     )
-                if (!state.searching) {
+                if (!state.searching && state.statusFilter == null) {
                     items += HomeItem.RoomHeader(
                         roomId = section.room?.id,
                         name = section.room?.name ?: getString(R.string.room_unassigned),
@@ -496,6 +521,9 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
     private companion object {
         /** 200% 字号下两列卡片只剩半屏宽，降为单列保证文案不被截断。 */
         const val LARGE_FONT_SCALE = 1.5f
+
+        /** 今日概览 / 设备状态 / 最近活动之后的设备分区标题位置。 */
+        const val STATUS_SCROLL_POSITION = 3
     }
 
     private fun toast(message: String) {

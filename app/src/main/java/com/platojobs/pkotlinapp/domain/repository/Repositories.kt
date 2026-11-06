@@ -3,7 +3,9 @@ package com.platojobs.pkotlinapp.domain.repository
 import com.platojobs.pkotlinapp.domain.model.Device
 import com.platojobs.pkotlinapp.domain.model.DeviceInfo
 import com.platojobs.pkotlinapp.domain.model.DeviceRule
+import com.platojobs.pkotlinapp.domain.model.HourCount
 import com.platojobs.pkotlinapp.domain.model.MarketItem
+import com.platojobs.pkotlinapp.domain.model.MetricCount
 import com.platojobs.pkotlinapp.domain.model.ProductModel
 import com.platojobs.pkotlinapp.domain.model.RuleComparator
 import com.platojobs.pkotlinapp.domain.model.RuleEvent
@@ -16,6 +18,8 @@ import com.platojobs.pkotlinapp.domain.reading.ReadingSample
 import com.platojobs.pkotlinapp.domain.reading.ReadingSummary
 import com.platojobs.pkotlinapp.domain.scene.Scene
 import com.platojobs.pkotlinapp.domain.scene.SceneAction
+import com.platojobs.pkotlinapp.domain.scene.SceneRun
+import com.platojobs.pkotlinapp.domain.scene.SceneTrigger
 import kotlinx.coroutines.flow.Flow
 
 interface DeviceRepository {
@@ -33,6 +37,67 @@ interface DeviceRepository {
 
     /** 把设备移入房间；[roomId] 为 null 时回到「未分配」。 */
     suspend fun assignRoom(mac: String, roomId: Long?)
+
+    /** 场景「标记设备」动作：写入真实标记时间。 */
+    suspend fun markDevice(mac: String, timestamp: Long = System.currentTimeMillis())
+
+    // 首页设备状态聚合：全部走 SQL COUNT，不把全表拉进内存。
+    fun observeOnlineCount(since: Long): Flow<Int>
+
+    fun observeOfflineCount(since: Long): Flow<Int>
+
+    fun observeUnassignedRoomCount(): Flow<Int>
+
+    fun observeActiveCount(): Flow<Int>
+
+    /** 首页下钻：在线/离线设备列表。 */
+    fun observeDevicesByOnlineState(online: Boolean, since: Long): Flow<List<Device>>
+
+    fun observeUnassignedRoomDevices(): Flow<List<Device>>
+
+    fun observeDevicesByMacs(macs: List<String>): Flow<List<Device>>
+}
+
+/** 本地场景仓库：仅本机存储，无远端同步接口。 */
+interface SceneRepository {
+    fun observeScenes(): Flow<List<Scene>>
+
+    suspend fun getScenes(): List<Scene>
+
+    suspend fun getScene(id: Long): Scene?
+
+    /** 按触发规则查找绑定场景（引擎触发时使用）。 */
+    suspend fun findSceneByRuleId(ruleId: Long): Scene?
+
+    /**
+     * [id] 为 null 表示新建；保存时整体替换动作列表与触发规则。
+     * [trigger] 为 null / [com.platojobs.pkotlinapp.domain.scene.SceneTrigger.Manual] 时删除触发规则。
+     */
+    suspend fun saveScene(
+        id: Long?,
+        name: String,
+        actions: List<SceneAction>,
+        trigger: SceneTrigger? = null,
+        enabled: Boolean = true,
+    ): Long
+
+    /** 启停场景；同时同步其触发规则的 enabled，保证引擎立即不再判定。 */
+    suspend fun setEnabled(id: Long, enabled: Boolean)
+
+    suspend fun deleteScene(id: Long)
+}
+
+/** 场景执行记录仓库：只增不伪造，界面只读。 */
+interface SceneRunRepository {
+    fun observeRecent(limit: Int = 20): Flow<List<SceneRun>>
+
+    fun observeLatest(): Flow<SceneRun?>
+
+    suspend fun getRecent(limit: Int): List<SceneRun>
+
+    suspend fun add(run: SceneRun): Long
+
+    suspend fun clear()
 }
 
 /** 本机房间：仅设备归属，不参与云端同步。 */
@@ -77,6 +142,12 @@ interface RuleEventRepository {
     /** 指定时间窗内的真实触发条数（首页今日告警摘要）。 */
     fun observeCountBetween(from: Long, to: Long): Flow<Int>
 
+    /** 时间窗内的指标越界次数（只含带指标证据的事件）。 */
+    fun observeMetricViolationCountBetween(from: Long, to: Long): Flow<Int>
+
+    /** 时间窗内最近一条真实告警；没有则为 null。 */
+    fun observeLatestBetween(from: Long, to: Long): Flow<RuleEvent?>
+
     suspend fun getRecent(limit: Int): List<RuleEvent>
 
     suspend fun add(event: RuleEvent): Long
@@ -111,6 +182,16 @@ interface ReadingRepository {
     /** 每台设备最近一条读数（首页卡片）。 */
     fun observeLatestPerDevice(): Flow<List<Reading>>
 
+    // 首页今日概览：时间窗由调用方按本地 0 点切分，聚合在 SQL 里完成。
+    fun observeCountBetween(from: Long, to: Long): Flow<Int>
+
+    fun observeMetricCountsBetween(from: Long, to: Long): Flow<List<MetricCount>>
+
+    fun observeHourlyCountsBetween(from: Long, to: Long): Flow<List<HourCount>>
+
+    /** 每台设备某个指标的最新读数（首页低电量下钻）。 */
+    fun observeLatestPerDeviceMetric(metric: String): Flow<List<Reading>>
+
     /** 本地 24h 汇总（离线可用）。 */
     suspend fun summary(deviceId: String, metric: String, hours: Int = 24): ReadingSummary
 
@@ -142,16 +223,4 @@ interface ProductRepository {
 
 interface MarketRepository {
     suspend fun fetchMarketItems(): List<MarketItem>
-}
-
-/** 本地场景仓库：仅本机存储，无远端同步接口。 */
-interface SceneRepository {
-    fun observeScenes(): Flow<List<Scene>>
-
-    suspend fun getScenes(): List<Scene>
-
-    /** [id] 为 null 表示新建；保存时整体替换动作列表。 */
-    suspend fun saveScene(id: Long?, name: String, actions: List<SceneAction>): Long
-
-    suspend fun deleteScene(id: Long)
 }

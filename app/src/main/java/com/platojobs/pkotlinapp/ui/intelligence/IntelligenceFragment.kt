@@ -34,10 +34,12 @@ import com.platojobs.pkotlinapp.domain.reading.ReadingMetrics
 import com.platojobs.pkotlinapp.domain.rule.MetricThreshold
 import com.platojobs.pkotlinapp.domain.rule.RuleTemplate
 import com.platojobs.pkotlinapp.domain.scene.SCENE_MUTE_MINUTES
+import com.platojobs.pkotlinapp.domain.scene.SCENE_SCHEDULE_INTERVALS
 import com.platojobs.pkotlinapp.domain.scene.Scene
 import com.platojobs.pkotlinapp.domain.scene.SceneAction
 import com.platojobs.pkotlinapp.domain.scene.SceneActionType
 import com.platojobs.pkotlinapp.domain.scene.SceneRunResult
+import com.platojobs.pkotlinapp.domain.scene.SceneTrigger
 import com.platojobs.pkotlinapp.ui.MainActivity
 import com.platojobs.pkotlinapp.ui.common.EmptyStateView
 import com.platojobs.pkotlinapp.ui.common.NotificationPermission
@@ -62,6 +64,7 @@ class IntelligenceFragment : Fragment(R.layout.fragment_intelligence) {
     private lateinit var ruleAdapter: RuleAdapter
     private lateinit var eventAdapter: RuleEventAdapter
     private lateinit var sceneAdapter: SceneAdapter
+    private lateinit var runAdapter: SceneRunAdapter
 
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -80,7 +83,9 @@ class IntelligenceFragment : Fragment(R.layout.fragment_intelligence) {
             onRun = { scene -> viewModel.runScene(scene) },
             onEdit = ::showSceneDialog,
             onDelete = ::confirmDeleteScene,
+            onEnabledChange = { scene, enabled -> viewModel.setSceneEnabled(scene, enabled) },
         )
+        runAdapter = SceneRunAdapter()
 
         binding.rulesList.layoutManager = LinearLayoutManager(requireContext())
         binding.rulesList.adapter = ruleAdapter
@@ -88,6 +93,8 @@ class IntelligenceFragment : Fragment(R.layout.fragment_intelligence) {
         binding.eventsList.adapter = eventAdapter
         binding.scenesList.layoutManager = LinearLayoutManager(requireContext())
         binding.scenesList.adapter = sceneAdapter
+        binding.runsList.layoutManager = LinearLayoutManager(requireContext())
+        binding.runsList.adapter = runAdapter
 
         binding.skeletonIntelligence.configure(rows = 6, rowHeightPx = dp(72))
         threeState = ThreeStateHost(
@@ -112,10 +119,18 @@ class IntelligenceFragment : Fragment(R.layout.fragment_intelligence) {
                 setAction(getString(R.string.intelligence_scenes_add)) { showSceneDialog(null) }
             }
         }
+        bindSectionEmpty(binding.runsEmptyContainer) {
+            EmptyStateView(requireContext()).apply {
+                setIcon(R.drawable.ic_intelligence)
+                setTitle(getString(R.string.intelligence_runs_empty_title))
+                setHint(getString(R.string.intelligence_runs_empty_hint))
+            }
+        }
 
         binding.addRuleButton.setOnClickListener { showAddRuleDialog() }
         binding.recommendRulesButton.setOnClickListener { showRecommendationsDialog() }
         binding.addSceneButton.setOnClickListener { showSceneDialog(null) }
+        binding.clearRunsButton.setOnClickListener { confirmClearRuns() }
 
         (activity as? MainActivity)?.attachHeaderScroll(binding.intelligenceScroll)
         observe()
@@ -128,12 +143,15 @@ class IntelligenceFragment : Fragment(R.layout.fragment_intelligence) {
                     ruleAdapter.submitList(state.rules)
                     eventAdapter.submitList(state.events)
                     sceneAdapter.submitList(state.scenes)
+                    runAdapter.submitList(state.runs)
                     binding.rulesEmptyContainer.visibility =
                         if (state.rules.isEmpty()) View.VISIBLE else View.GONE
                     binding.eventsEmpty.visibility =
                         if (state.events.isEmpty()) View.VISIBLE else View.GONE
                     binding.scenesEmptyContainer.visibility =
                         if (state.scenes.isEmpty()) View.VISIBLE else View.GONE
+                    binding.runsEmptyContainer.visibility =
+                        if (state.runs.isEmpty()) View.VISIBLE else View.GONE
                     when {
                         state.loading -> threeState.showLoading()
                         state.loadError != null -> threeState.showError(
@@ -231,6 +249,7 @@ class IntelligenceFragment : Fragment(R.layout.fragment_intelligence) {
                     RuleType.DISCONNECTED -> R.string.rule_desc_disconnected
                     RuleType.BOND_LOST -> R.string.rule_desc_bond_lost
                     RuleType.METRIC_THRESHOLD -> R.string.rule_metric_desc
+                    RuleType.SCHEDULE -> R.string.scene_trigger_schedule
                 },
             )
         }
@@ -366,6 +385,14 @@ class IntelligenceFragment : Fragment(R.layout.fragment_intelligence) {
     }
 
     private fun showSceneDialog(scene: Scene?) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            val currentMetric = (scene?.trigger as? SceneTrigger.MetricThreshold)?.metric
+            val metrics = (viewModel.availableMetrics() + listOfNotNull(currentMetric)).distinct()
+            buildSceneDialog(scene, metrics)
+        }
+    }
+
+    private fun buildSceneDialog(scene: Scene?, metrics: List<String>) {
         val dialogBinding = DialogSceneEditBinding.inflate(layoutInflater)
         val actions = scene?.actions?.toMutableList() ?: mutableListOf()
         dialogBinding.sceneNameInput.setText(scene?.name.orEmpty())
@@ -400,6 +427,107 @@ class IntelligenceFragment : Fragment(R.layout.fragment_intelligence) {
             }
         }
 
+        // 触发条件与规则模型共用字段：先选类型，再渲染对应输入。
+        dialogBinding.triggerMetric.visibility =
+            if (metrics.isEmpty()) View.GONE else View.VISIBLE
+        val metricLabels = metrics.map { metric ->
+            metricLabel(metric) + MetricThreshold.displayUnit(metric).let { unit ->
+                if (unit.isBlank()) "" else "（$unit）"
+            }
+        }
+        dialogBinding.triggerMetricSpinner.adapter = ArrayAdapter(
+            requireContext(),
+            android.R.layout.simple_spinner_dropdown_item,
+            metricLabels,
+        )
+        val comparators = listOf(
+            RuleComparator.GREATER,
+            RuleComparator.LESS,
+            RuleComparator.GREATER_OR_EQUAL,
+            RuleComparator.LESS_OR_EQUAL,
+        )
+        dialogBinding.triggerComparatorSpinner.adapter = ArrayAdapter(
+            requireContext(),
+            android.R.layout.simple_spinner_dropdown_item,
+            comparators.map { comparatorLabel(it) },
+        )
+        dialogBinding.triggerIntervalSpinner.adapter = ArrayAdapter(
+            requireContext(),
+            android.R.layout.simple_spinner_dropdown_item,
+            SCENE_SCHEDULE_INTERVALS.map { getString(R.string.scene_trigger_interval_option, it) },
+        )
+
+        fun selectedTrigger(): SceneTrigger = when (dialogBinding.triggerGroup.checkedRadioButtonId) {
+            R.id.triggerDisconnected -> SceneTrigger.Disconnected
+            R.id.triggerLowRssi -> SceneTrigger.LowRssi(
+                dialogBinding.rssiThresholdInput.text?.toString()?.trim()?.toIntOrNull() ?: 0,
+            )
+
+            R.id.triggerMetric -> SceneTrigger.MetricThreshold(
+                metric = metrics.getOrNull(dialogBinding.triggerMetricSpinner.selectedItemPosition)
+                    .orEmpty(),
+                comparator = comparators[
+                    dialogBinding.triggerComparatorSpinner.selectedItemPosition.coerceAtLeast(0),
+                ],
+                thresholdValue = dialogBinding.triggerMetricThresholdInput.text
+                    ?.toString()?.trim()?.toDoubleOrNull() ?: Double.NaN,
+                consecutive = dialogBinding.triggerConsecutiveInput.text
+                    ?.toString()?.trim()?.toIntOrNull() ?: 1,
+            )
+
+            R.id.triggerSchedule -> SceneTrigger.Schedule(
+                SCENE_SCHEDULE_INTERVALS[
+                    dialogBinding.triggerIntervalSpinner.selectedItemPosition.coerceAtLeast(0),
+                ],
+            )
+
+            else -> SceneTrigger.Manual
+        }
+
+        fun renderTrigger() {
+            val type = selectedTrigger()
+            dialogBinding.rssiThresholdLayout.visibility =
+                if (type is SceneTrigger.LowRssi) View.VISIBLE else View.GONE
+            dialogBinding.metricTriggerFields.visibility =
+                if (type is SceneTrigger.MetricThreshold) View.VISIBLE else View.GONE
+            dialogBinding.scheduleTriggerFields.visibility =
+                if (type is SceneTrigger.Schedule) View.VISIBLE else View.GONE
+        }
+
+        // 按已有场景的触发条件回填，编辑不会把条件重置成手动。
+        when (val trigger = scene?.trigger) {
+            is SceneTrigger.Disconnected -> dialogBinding.triggerDisconnected.isChecked = true
+            is SceneTrigger.LowRssi -> {
+                dialogBinding.triggerLowRssi.isChecked = true
+                dialogBinding.rssiThresholdInput.setText(trigger.threshold.toString())
+            }
+
+            is SceneTrigger.MetricThreshold -> {
+                dialogBinding.triggerMetric.isChecked = true
+                dialogBinding.triggerMetricSpinner.setSelection(
+                    metrics.indexOf(trigger.metric).takeIf { it >= 0 } ?: 0,
+                )
+                dialogBinding.triggerComparatorSpinner.setSelection(
+                    comparators.indexOf(trigger.comparator).takeIf { it >= 0 } ?: 0,
+                )
+                dialogBinding.triggerMetricThresholdInput.setText(
+                    MetricThreshold.formatValue(trigger.thresholdValue),
+                )
+                dialogBinding.triggerConsecutiveInput.setText(trigger.consecutive.toString())
+            }
+
+            is SceneTrigger.Schedule -> {
+                dialogBinding.triggerSchedule.isChecked = true
+                dialogBinding.triggerIntervalSpinner.setSelection(
+                    SCENE_SCHEDULE_INTERVALS.indexOf(trigger.intervalMinutes).takeIf { it >= 0 } ?: 0,
+                )
+            }
+
+            else -> dialogBinding.triggerManual.isChecked = true
+        }
+        dialogBinding.triggerGroup.setOnCheckedChangeListener { _, _ -> renderTrigger() }
+        renderTrigger()
+
         val dialog = MaterialAlertDialogBuilder(requireContext())
             .setTitle(
                 if (scene == null) R.string.scene_add_title else R.string.scene_edit_title,
@@ -412,18 +540,41 @@ class IntelligenceFragment : Fragment(R.layout.fragment_intelligence) {
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 val name = dialogBinding.sceneNameInput.text?.toString()?.trim().orEmpty()
-                val candidate = Scene(scene?.id ?: 0L, name, actions)
+                val trigger = selectedTrigger()
+                val candidate = Scene(
+                    id = scene?.id ?: 0L,
+                    name = name,
+                    actions = actions,
+                    enabled = scene?.enabled ?: true,
+                    trigger = trigger,
+                )
                 val reason = candidate.invalidReason()
                 if (reason != null) {
                     dialogBinding.sceneError.text = reason
                     dialogBinding.sceneError.visibility = View.VISIBLE
                     return@setOnClickListener
                 }
-                viewModel.saveScene(scene?.id, name, actions)
+                viewModel.saveScene(
+                    id = scene?.id,
+                    name = name,
+                    actions = actions,
+                    trigger = trigger.takeUnless { it is SceneTrigger.Manual },
+                    enabled = scene?.enabled ?: true,
+                )
                 dialog.dismiss()
+                requestNotificationIfNeeded()
             }
         }
         dialog.show()
+    }
+
+    private fun confirmClearRuns() {
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.intelligence_runs_clear)
+            .setMessage(R.string.intelligence_runs_hint)
+            .setNegativeButton(R.string.action_cancel, null)
+            .setPositiveButton(R.string.action_confirm) { _, _ -> viewModel.clearSceneRuns() }
+            .show()
     }
 
     private fun showActionPicker(onPick: (SceneAction) -> Unit) {
@@ -467,6 +618,9 @@ class IntelligenceFragment : Fragment(R.layout.fragment_intelligence) {
             R.id.typeStopCollection -> SceneActionType.STOP_COLLECTION
             R.id.typeMute -> SceneActionType.MUTE_ALERTS
             R.id.typeSync -> SceneActionType.SYNC_NOW
+            R.id.typeNotify -> SceneActionType.NOTIFY
+            R.id.typeRecordLog -> SceneActionType.RECORD_LOG
+            R.id.typeMarkDevice -> SceneActionType.MARK_DEVICE
             else -> SceneActionType.CONNECT_DEVICE
         }
 
@@ -474,6 +628,7 @@ class IntelligenceFragment : Fragment(R.layout.fragment_intelligence) {
             val needsDevice = selectedType() in setOf(
                 SceneActionType.CONNECT_DEVICE,
                 SceneActionType.DISCONNECT_DEVICE,
+                SceneActionType.MARK_DEVICE,
             )
             dialogBinding.deviceSpinner.visibility =
                 if (needsDevice) View.VISIBLE else View.GONE
@@ -493,6 +648,7 @@ class IntelligenceFragment : Fragment(R.layout.fragment_intelligence) {
                 val action = when (type) {
                     SceneActionType.CONNECT_DEVICE,
                     SceneActionType.DISCONNECT_DEVICE,
+                    SceneActionType.MARK_DEVICE,
                     -> SceneAction(type, deviceMac = pickedDevice)
 
                     SceneActionType.MUTE_ALERTS -> SceneAction(
@@ -554,12 +710,16 @@ class IntelligenceFragment : Fragment(R.layout.fragment_intelligence) {
             SceneActionType.STOP_COLLECTION -> R.string.scene_action_stop_collection
             SceneActionType.MUTE_ALERTS -> R.string.scene_action_mute_alerts
             SceneActionType.SYNC_NOW -> R.string.scene_action_sync_now
+            SceneActionType.NOTIFY -> R.string.scene_action_notify
+            SceneActionType.RECORD_LOG -> R.string.scene_action_record_log
+            SceneActionType.MARK_DEVICE -> R.string.scene_action_mark_device
         },
     )
 
     private fun actionDetail(action: SceneAction): String = when (action.type) {
         SceneActionType.CONNECT_DEVICE,
         SceneActionType.DISCONNECT_DEVICE,
+        SceneActionType.MARK_DEVICE,
         -> deviceName(action.deviceMac)
 
         SceneActionType.MUTE_ALERTS ->
@@ -570,6 +730,8 @@ class IntelligenceFragment : Fragment(R.layout.fragment_intelligence) {
         -> getString(R.string.scene_action_current_device)
 
         SceneActionType.SYNC_NOW -> getString(R.string.scene_action_sync_now)
+        SceneActionType.NOTIFY -> getString(R.string.scene_action_notify)
+        SceneActionType.RECORD_LOG -> getString(R.string.scene_action_record_log)
     }
 
     private fun deviceName(mac: String?): String {
@@ -590,6 +752,7 @@ class IntelligenceFragment : Fragment(R.layout.fragment_intelligence) {
         binding.rulesList.adapter = null
         binding.eventsList.adapter = null
         binding.scenesList.adapter = null
+        binding.runsList.adapter = null
         _binding = null
         super.onDestroyView()
     }

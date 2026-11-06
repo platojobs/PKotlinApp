@@ -15,6 +15,7 @@ import com.platojobs.pkotlinapp.data.ble.BleScanner
 import com.platojobs.pkotlinapp.data.household.HouseholdRepository
 import com.platojobs.pkotlinapp.data.prefs.AppSettings
 import com.platojobs.pkotlinapp.data.prefs.DeviceSortMode
+import com.platojobs.pkotlinapp.data.scene.SceneTriggerRunner
 import com.platojobs.pkotlinapp.data.sync.SyncManager
 import com.platojobs.pkotlinapp.data.sync.SyncScheduler
 import com.platojobs.pkotlinapp.domain.household.Household
@@ -22,24 +23,30 @@ import com.platojobs.pkotlinapp.domain.household.HouseholdErrorKind
 import com.platojobs.pkotlinapp.domain.household.RoomSetMismatchException
 import com.platojobs.pkotlinapp.domain.household.classifyHouseholdError
 import com.platojobs.pkotlinapp.domain.model.Device
+import com.platojobs.pkotlinapp.domain.model.HourCount
+import com.platojobs.pkotlinapp.domain.model.MetricCount
 import com.platojobs.pkotlinapp.domain.model.Room
+import com.platojobs.pkotlinapp.domain.model.RuleEvent
 import com.platojobs.pkotlinapp.domain.model.ScanLog
 import com.platojobs.pkotlinapp.domain.model.ScannedDevice
 import com.platojobs.pkotlinapp.domain.model.displayName
 import com.platojobs.pkotlinapp.domain.reading.Reading
+import com.platojobs.pkotlinapp.domain.reading.ReadingMetrics
 import com.platojobs.pkotlinapp.domain.repository.DeviceRepository
 import com.platojobs.pkotlinapp.domain.repository.ReadingRepository
 import com.platojobs.pkotlinapp.domain.repository.RuleEventRepository
 import com.platojobs.pkotlinapp.domain.repository.RoomRepository
 import com.platojobs.pkotlinapp.domain.repository.ScanLogRepository
 import com.platojobs.pkotlinapp.domain.repository.SceneRepository
+import com.platojobs.pkotlinapp.domain.repository.SceneRunRepository
 import com.platojobs.pkotlinapp.domain.rule.RuleEngine
 import com.platojobs.pkotlinapp.domain.scene.Scene
 import com.platojobs.pkotlinapp.domain.scene.SceneAction
-import com.platojobs.pkotlinapp.domain.scene.SceneExecutor
+import com.platojobs.pkotlinapp.domain.scene.SceneRun
 import com.platojobs.pkotlinapp.domain.scene.SceneRunResult
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -48,6 +55,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -58,6 +66,30 @@ import java.util.Calendar
 data class DeviceSection(
     val room: Room?,
     val devices: List<Device>,
+)
+
+/** 首页设备状态下钻的筛选维度。 */
+enum class HomeStatusFilter {
+    ONLINE,
+    OFFLINE,
+    UNASSIGNED,
+    LOW_BATTERY,
+}
+
+/** 首页聚合：全部来自 readings / rule_events / scene_runs 与设备表的真实数据。 */
+data class HomeOverview(
+    val todayReadings: Int = 0,
+    val metricCounts: List<MetricCount> = emptyList(),
+    val hourlyCounts: List<HourCount> = emptyList(),
+    val violationCount: Int = 0,
+    val onlineCount: Int = 0,
+    val offlineCount: Int = 0,
+    val unassignedCount: Int = 0,
+    val lowBatteryCount: Int = 0,
+    val lowBatteryMacs: Set<String> = emptySet(),
+    val latestSyncAt: Long? = null,
+    val latestAlert: RuleEvent? = null,
+    val latestSceneRun: SceneRun? = null,
 )
 
 data class HomeUiState(
@@ -81,6 +113,14 @@ data class HomeUiState(
     val currentHousehold: Household? = null,
     /** 家庭接口是否同步成功；离线时房间标注「未同步」。 */
     val householdSynced: Boolean = true,
+    /** 今日概览 / 设备状态 / 最近活动；没有数据时保持真实的 0 与空列表。 */
+    val overview: HomeOverview = HomeOverview(),
+    /** 在线阈值（最近 N 毫秒内出现）；与 DAO 计数共用同一口径。 */
+    val onlineSince: Long = 0L,
+    /** 设备状态下钻筛选；null 表示不筛选。 */
+    val statusFilter: HomeStatusFilter? = null,
+    /** 下拉刷新进行中。 */
+    val refreshing: Boolean = false,
 )
 
 /** 首页快捷场景的实时进度（执行中逐条推进）。 */
@@ -97,8 +137,9 @@ class HomeViewModel(
     private val readingRepository: ReadingRepository,
     private val ruleEventRepository: RuleEventRepository,
     private val sceneRepository: SceneRepository,
+    private val sceneRunRepository: SceneRunRepository,
     private val roomRepository: RoomRepository,
-    private val sceneExecutor: SceneExecutor,
+    private val sceneTriggerRunner: SceneTriggerRunner,
     private val scanLogRepository: ScanLogRepository,
     private val bleScanner: BleScanner,
     private val bleConnectionManager: BleConnectionManager,
@@ -144,15 +185,56 @@ class HomeViewModel(
     private val sceneNames = mutableMapOf<Long, String>()
     private var sceneJob: Job? = null
 
-    private val dayWindow = todayWindow()
+    private val _statusFilter = MutableStateFlow<HomeStatusFilter?>(null)
+    private val _refreshing = MutableStateFlow(false)
+    private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 4)
+    val messages: SharedFlow<String> = _messages.asSharedFlow()
+
+    /** 今日窗口按本地 0 点切分；跨零点下拉刷新时会重新计算。 */
+    private val _dayWindow = MutableStateFlow(todayWindow())
+    private val _onlineSince = MutableStateFlow(System.currentTimeMillis() - ONLINE_WINDOW_MS)
+
+    private fun <T> dayFlow(block: suspend (Long, Long) -> Flow<T>): Flow<T> =
+        _dayWindow.flatMapLatest { (from, to) -> block(from, to) }
+
+    /** 今日概览：读数总量、按指标/按小时分布、越界次数与最近一条告警。 */
+    private val todayAggregates = combine(
+        dayFlow { from, to -> readingRepository.observeCountBetween(from, to) },
+        dayFlow { from, to -> readingRepository.observeMetricCountsBetween(from, to) },
+        dayFlow { from, to -> readingRepository.observeHourlyCountsBetween(from, to) },
+        dayFlow { from, to -> ruleEventRepository.observeMetricViolationCountBetween(from, to) },
+        combine(
+            dayFlow { from, to -> ruleEventRepository.observeCountBetween(from, to) },
+            dayFlow { from, to -> ruleEventRepository.observeLatestBetween(from, to) },
+        ) { count, latest -> AlertSummary(count, latest) },
+    ) { readings, metrics, hourly, violations, alerts ->
+        TodayAggregate(readings, metrics, hourly, violations, alerts.count, alerts.latest)
+    }
+
+    /** 设备状态：在线/离线/未分配房间走 SQL 计数，低电量用每设备最新电量读数。 */
+    private val deviceAggregates = combine(
+        _onlineSince.flatMapLatest { deviceRepository.observeOnlineCount(it) },
+        _onlineSince.flatMapLatest { deviceRepository.observeOfflineCount(it) },
+        deviceRepository.observeUnassignedRoomCount(),
+        readingRepository.observeLatestPerDeviceMetric(ReadingMetrics.BATTERY),
+    ) { online, offline, unassigned, batteryReadings ->
+        DeviceAggregate(online, offline, unassigned, batteryReadings)
+    }
+
+    /** 最近活动：最近同步时间与最近一次场景触发均来自真实记录。 */
+    private val activityAggregates = combine(
+        syncManager.status,
+        sceneRunRepository.observeLatest(),
+    ) { status, latestRun ->
+        ActivityAggregate(status.lastSyncAt, latestRun)
+    }
 
     private val homeContent = combine(
         deviceRepository.observeDevices().onEach { _loaded.value = true },
         readingRepository.observeLatestPerDevice(),
-        ruleEventRepository.observeCountBetween(dayWindow.first, dayWindow.second),
         roomRepository.observeRooms(),
-    ) { devices, readings, alerts, rooms ->
-        HomeContent(devices, readings, alerts, rooms)
+    ) { devices, readings, rooms ->
+        HomeContent(devices, readings, rooms)
     }
 
     private val householdContent = combine(
@@ -167,15 +249,22 @@ class HomeViewModel(
         combine(homeContent, householdContent) { content, household ->
             content to household
         },
-        sceneRepository.observeScenes(),
+        combine(todayAggregates, deviceAggregates, activityAggregates) { today, device, activity ->
+            Dashboard(today, device, activity)
+        },
+        combine(sceneRepository.observeScenes(), _statusFilter, _refreshing) { scenes, filter, refreshing ->
+            ScenePack(scenes, filter, refreshing)
+        },
         combine(_query, _sortMode, _selectedGroup, _collapsedRooms) { query, sort, group, collapsed ->
             HomeFilters(query, sort, group, collapsed)
         },
-        bleConnectionManager.state,
-        combine(_loaded, syncManager.status) { loaded, status -> loaded to status.lastError },
-    ) { contentAndHousehold, scenes, filters, connection, status ->
+        combine(bleConnectionManager.state, _loaded, syncManager.status) { connection, loaded, status ->
+            ConnectionPack(connection, loaded, status.lastError)
+        },
+    ) { contentAndHousehold, dashboard, scenePack, filters, connectionPack ->
         val (content, household) = contentAndHousehold
-        val (loaded, syncError) = status
+        val (today, device, activity) = dashboard
+        val (scenes, statusFilter, refreshing) = scenePack
         val newestPerDevice = content.readings.groupBy { it.deviceId }.mapValues { it.value.first() }
         val currentLocalId = household.current?.localId
         val visibleRooms = content.rooms.filter { room ->
@@ -186,25 +275,64 @@ class HomeViewModel(
                 currentLocalId == null ||
                 device.householdId == currentLocalId
         }
+        val visibleMacs = visibleDevices.mapTo(mutableSetOf()) { it.mac }
+        val onlineSince = _onlineSince.value
+        val lowBatteryMacs = device.batteryReadings
+            .filter { it.value < LOW_BATTERY_THRESHOLD && it.deviceId in visibleMacs }
+            .mapTo(mutableSetOf()) { it.deviceId }
+        val statusDevices = when (statusFilter) {
+            HomeStatusFilter.ONLINE -> visibleDevices.filter { it.lastSeenTimestamp >= onlineSince }
+            HomeStatusFilter.OFFLINE -> visibleDevices.filter { it.lastSeenTimestamp < onlineSince }
+            HomeStatusFilter.UNASSIGNED -> visibleDevices.filter { it.roomId == null }
+            HomeStatusFilter.LOW_BATTERY -> visibleDevices.filter { it.mac in lowBatteryMacs }
+            null -> visibleDevices
+        }
+        val sections = if (statusFilter == null) {
+            sectionsOf(visibleDevices, visibleRooms, filters)
+        } else {
+            listOf(
+                DeviceSection(
+                    room = null,
+                    devices = statusDevices.sortedWith(comparatorFor(filters.sort)),
+                ),
+            )
+        }
         HomeUiState(
-            devices = visibleDevices,
-            sections = sectionsOf(visibleDevices, visibleRooms, filters),
+            devices = statusDevices,
+            sections = sections,
             rooms = visibleRooms,
             collapsedRooms = filters.collapsed,
             searching = filters.query.isNotBlank(),
             latestReadings = newestPerDevice,
-            connectedMac = (connection as? BleConnectionState.Connected)?.mac,
-            alertCountToday = content.alerts,
+            connectedMac = (connectionPack.connection as? BleConnectionState.Connected)?.mac,
+            alertCountToday = today.alertCount,
             scenes = scenes,
             groups = visibleDevices.mapNotNull { it.group?.takeIf(String::isNotBlank) }.distinct().sorted(),
             selectedGroup = filters.group,
             query = filters.query,
             sortMode = filters.sort,
-            loading = !loaded,
-            syncError = syncError,
+            loading = !connectionPack.loaded,
+            syncError = connectionPack.syncError,
             households = household.households,
             currentHousehold = household.current,
             householdSynced = household.synced,
+            overview = HomeOverview(
+                todayReadings = today.readings,
+                metricCounts = today.metricCounts,
+                hourlyCounts = today.hourlyCounts,
+                violationCount = today.violations,
+                onlineCount = device.online,
+                offlineCount = device.offline,
+                unassignedCount = device.unassigned,
+                lowBatteryCount = lowBatteryMacs.size,
+                lowBatteryMacs = lowBatteryMacs,
+                latestSyncAt = activity.lastSyncAt,
+                latestAlert = today.latestAlert,
+                latestSceneRun = activity.latestRun,
+            ),
+            onlineSince = onlineSince,
+            statusFilter = statusFilter,
+            refreshing = refreshing,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -308,11 +436,39 @@ class HomeViewModel(
         if (scene.actions.isEmpty()) return
         sceneNames[scene.id] = scene.name
         sceneJob = viewModelScope.launch {
-            val result = sceneExecutor.run(scene) { index, total, action ->
+            val result = sceneTriggerRunner.runManually(scene) { index, total, action ->
                 _sceneProgress.value = SceneProgress(scene.id, scene.name, index, total, action)
             }
             _sceneProgress.value = null
             _sceneResults.tryEmit(result)
+        }
+    }
+
+    /** 设备状态点击下钻；再次点击同一维度时取消筛选。 */
+    fun toggleStatusFilter(filter: HomeStatusFilter) {
+        _statusFilter.update { if (it == filter) null else filter }
+    }
+
+    fun clearStatusFilter() {
+        _statusFilter.value = null
+    }
+
+    /** 下拉刷新：重算今日窗口与在线阈值，触发一次同步，结束后刷新聚合。 */
+    fun refreshNow() {
+        if (_refreshing.value) return
+        _refreshing.value = true
+        _dayWindow.value = todayWindow()
+        _onlineSince.value = System.currentTimeMillis() - ONLINE_WINDOW_MS
+        viewModelScope.launch {
+            try {
+                syncManager.manualSync()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _messages.tryEmit(context.getString(R.string.home_refresh_failed))
+            } finally {
+                _refreshing.value = false
+            }
         }
     }
 
@@ -362,7 +518,6 @@ class HomeViewModel(
     private data class HomeContent(
         val devices: List<Device>,
         val readings: List<Reading>,
-        val alerts: Int,
         val rooms: List<Room>,
     )
 
@@ -370,6 +525,50 @@ class HomeViewModel(
         val households: List<Household>,
         val current: Household?,
         val synced: Boolean,
+    )
+
+    private data class AlertSummary(
+        val count: Int,
+        val latest: RuleEvent?,
+    )
+
+    private data class TodayAggregate(
+        val readings: Int,
+        val metricCounts: List<MetricCount>,
+        val hourlyCounts: List<HourCount>,
+        val violations: Int,
+        val alertCount: Int,
+        val latestAlert: RuleEvent?,
+    )
+
+    private data class DeviceAggregate(
+        val online: Int,
+        val offline: Int,
+        val unassigned: Int,
+        val batteryReadings: List<Reading>,
+    )
+
+    private data class ActivityAggregate(
+        val lastSyncAt: Long?,
+        val latestRun: SceneRun?,
+    )
+
+    private data class Dashboard(
+        val today: TodayAggregate,
+        val device: DeviceAggregate,
+        val activity: ActivityAggregate,
+    )
+
+    private data class ScenePack(
+        val scenes: List<Scene>,
+        val statusFilter: HomeStatusFilter?,
+        val refreshing: Boolean,
+    )
+
+    private data class ConnectionPack(
+        val connection: BleConnectionState,
+        val loaded: Boolean,
+        val syncError: String?,
     )
 
     private data class HomeFilters(
@@ -482,6 +681,12 @@ class HomeViewModel(
         private const val MAX_LIVE_DEVICES = 100
         private const val DATABASE_WRITE_INTERVAL_MS = 2_000L
 
+        /** 最近 15 分钟内出现视为在线；与 DAO 的 lastSeenTimestamp 计数共用。 */
+        const val ONLINE_WINDOW_MS = 15 * 60 * 1000L
+
+        /** 最新电量低于该值计为低电量。 */
+        const val LOW_BATTERY_THRESHOLD = 20.0
+
         /** 未分配分区在折叠集合中的哨兵 id。 */
         const val UNASSIGNED_ROOM_ID = -1L
 
@@ -505,8 +710,9 @@ class HomeViewModel(
                     readingRepository = container.readingRepository,
                     ruleEventRepository = container.ruleEventRepository,
                     sceneRepository = container.sceneRepository,
+                    sceneRunRepository = container.sceneRunRepository,
                     roomRepository = container.roomRepository,
-                    sceneExecutor = container.sceneExecutor,
+                    sceneTriggerRunner = container.sceneTriggerRunner,
                     scanLogRepository = container.scanLogRepository,
                     bleScanner = container.bleScanner,
                     bleConnectionManager = container.bleConnectionManager,

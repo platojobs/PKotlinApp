@@ -9,6 +9,8 @@ enum class RuleType {
     BOND_LOST,
     /** 指标读数阈值规则：指标 + 比较符 + 阈值 + 连续 N 条满足。 */
     METRIC_THRESHOLD,
+    /** 定时规则：按固定间隔触发，由引擎的定时 tick 消费。 */
+    SCHEDULE,
 }
 
 /** 指标阈值比较符；[symbol] 用于展示与存储，[matches] 为纯判定。 */
@@ -85,6 +87,8 @@ data class Device(
     val pendingRoomPatch: Boolean = false,
     val pendingRoomLocalId: Long? = null,
     val pendingHouseholdRemoteId: String? = null,
+    /** 场景「标记设备」动作写入的时间戳；null 表示未标记。 */
+    val markedAt: Long? = null,
 ) {
     /** 共享设备不允许本机修改房间归属（服务端会对非 owner 返回 404）。 */
     val canEditRoom: Boolean get() = !shared
@@ -248,6 +252,10 @@ data class DeviceRule(
     val thresholdValue: Double = 0.0,
     /** 连续满足的读数条数（1–5），用于防抖。 */
     val consecutive: Int = 1,
+    /** 绑定的场景 id：非空表示该规则是场景触发条件，由场景执行器消费动作。 */
+    val sceneId: Long? = null,
+    /** 定时规则的执行间隔（分钟）。 */
+    val intervalMinutes: Int? = null,
 ) {
     val isMetricRule: Boolean get() = type == RuleType.METRIC_THRESHOLD
 }
@@ -271,6 +279,18 @@ data class ScanLog(
     val name: String,
     val rssi: Int,
     val timestamp: Long,
+)
+
+/** 首页今日概览：按指标分组的真实读数条数。 */
+data class MetricCount(
+    val metric: String,
+    val count: Int,
+)
+
+/** 首页今日概览：按小时分组的真实读数条数（小时序号相对本地当天 0 点）。 */
+data class HourCount(
+    val hourIndex: Int,
+    val count: Int,
 )
 
 fun ruleTypeOf(value: String): RuleType =

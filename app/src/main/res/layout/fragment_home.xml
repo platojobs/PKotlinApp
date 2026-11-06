@@ -104,7 +104,8 @@
                 android:orientation="horizontal" />
         </HorizontalScrollView>
 
-        <FrameLayout
+        <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+            android:id="@+id/homeRefresh"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1">
@@ -119,7 +120,7 @@
                 android:paddingEnd="10dp"
                 android:paddingBottom="@dimen/space_24"
                 android:scrollbars="none" />
-        </FrameLayout>
+        </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
     </LinearLayout>
 
     <com.platojobs.pkotlinapp.ui.common.SkeletonView

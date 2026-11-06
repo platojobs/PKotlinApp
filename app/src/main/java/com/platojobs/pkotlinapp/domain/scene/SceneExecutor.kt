@@ -20,6 +20,12 @@ interface SceneRuntime {
     fun muteAlerts(minutes: Int)
 
     fun syncNow()
+
+    /** 投递本地通知；权限缺失或投递失败返回 false，由执行器记录失败原因。 */
+    suspend fun notify(sceneName: String, details: String): Boolean
+
+    /** 把设备写入 markedAt；设备不存在返回 false。 */
+    suspend fun markDevice(mac: String): Boolean
 }
 
 /**
@@ -44,12 +50,12 @@ class SceneExecutor(
         val actions = scene.actions
         actions.forEachIndexed { index, action ->
             onActionStart(index, actions.size, action)
-            outcomes += execute(action)
+            outcomes += execute(action, scene.name)
         }
         return SceneRunResult(sceneId = scene.id, outcomes = outcomes)
     }
 
-    private suspend fun execute(action: SceneAction): SceneActionOutcome {
+    private suspend fun execute(action: SceneAction, sceneName: String): SceneActionOutcome {
         val failure = action.invalidReason()
         if (failure != null) {
             return SceneActionOutcome(action, false, failure)
@@ -101,6 +107,25 @@ class SceneExecutor(
                 SceneActionType.SYNC_NOW -> {
                     runtime.syncNow()
                     ok(action, "已提交同步")
+                }
+
+                SceneActionType.NOTIFY -> {
+                    if (runtime.notify(sceneName, "场景「$sceneName」已触发")) {
+                        ok(action, "已发送本地通知")
+                    } else {
+                        fail(action, "通知未发送：请检查通知权限")
+                    }
+                }
+
+                SceneActionType.RECORD_LOG -> ok(action, "已记录本次触发")
+
+                SceneActionType.MARK_DEVICE -> {
+                    val mac = action.deviceMac.orEmpty()
+                    if (runtime.markDevice(mac)) {
+                        ok(action, "已标记设备 $mac")
+                    } else {
+                        fail(action, "标记失败：设备不存在")
+                    }
                 }
             }
         } catch (e: Exception) {

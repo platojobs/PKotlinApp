@@ -13,7 +13,7 @@
         android:id="@+id/sceneNameLayout"
         style="@style/Widget.App.TextInputLayout"
         android:layout_width="match_parent"
-        android:layout_height="@dimen/input_h"
+        android:layout_height="wrap_content"
         android:hint="@string/scene_name_hint"
         app:boxBackgroundMode="outline">
 
@@ -75,7 +75,7 @@
         android:id="@+id/rssiThresholdLayout"
         style="@style/Widget.App.TextInputLayout"
         android:layout_width="match_parent"
-        android:layout_height="@dimen/input_h"
+        android:layout_height="wrap_content"
         android:hint="@string/scene_trigger_rssi_hint"
         android:visibility="gone"
         app:boxBackgroundMode="outline">
@@ -116,7 +116,7 @@
                 android:id="@+id/triggerMetricThresholdLayout"
                 style="@style/Widget.App.TextInputLayout"
                 android:layout_width="0dp"
-                android:layout_height="@dimen/input_h"
+                android:layout_height="wrap_content"
                 android:layout_marginStart="@dimen/space_8"
                 android:layout_weight="1"
                 android:hint="@string/rule_threshold_hint"
@@ -136,7 +136,7 @@
             android:id="@+id/triggerConsecutiveLayout"
             style="@style/Widget.App.TextInputLayout"
             android:layout_width="match_parent"
-            android:layout_height="@dimen/input_h"
+            android:layout_height="wrap_content"
             android:hint="@string/scene_trigger_consecutive_hint"
             app:boxBackgroundMode="outline">
 

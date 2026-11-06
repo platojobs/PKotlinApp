@@ -1,6 +1,7 @@
 package com.platojobs.pkotlinapp.ui.market
 
 import android.os.Bundle
+import android.text.TextUtils
 import android.view.View
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -130,10 +131,9 @@ class MarketFragment : Fragment(R.layout.fragment_market) {
                 text = profile.displayName
                 isCheckable = true
                 isChecked = profile.deviceTypeKey == data.selectedProfile?.deviceTypeKey
-                // 200% 字号下允许换行，避免类型名被截断。
-                isSingleLine = false
-                maxLines = 2
-                ellipsize = null
+                // Chip 在 Material 里不支持多行（setSingleLine(false) 会抛异常）；
+                // 200% 字号下由 ChipGroup 的横向滚动与省略号兜底。
+                ellipsize = TextUtils.TruncateAt.END
                 minimumHeight = dimen(R.dimen.touch_min)
                 contentDescription = getString(
                     R.string.market_compat_chip_content,

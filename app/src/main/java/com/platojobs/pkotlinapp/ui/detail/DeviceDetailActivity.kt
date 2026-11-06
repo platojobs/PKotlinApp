@@ -11,6 +11,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.text.TextUtils
 import android.view.View
 import android.widget.EditText
 import android.widget.FrameLayout
@@ -538,9 +539,8 @@ class DeviceDetailActivity : AppCompatActivity() {
                     id = View.generateViewId()
                     text = label
                     isCheckable = true
-                    isSingleLine = false
-                    maxLines = 2
-                    ellipsize = null
+                    // Chip 不支持多行（setSingleLine(false) 会抛异常），超长时用省略号。
+                    ellipsize = TextUtils.TruncateAt.END
                     contentDescription = label
                     setOnClickListener { viewModel.selectRange(range) }
                 }
@@ -570,10 +570,8 @@ class DeviceDetailActivity : AppCompatActivity() {
                     id = View.generateViewId()
                     text = label
                     isCheckable = true
-                    // 200% 字号下允许换行，避免指标名被省略号截断。
-                    isSingleLine = false
-                    maxLines = 2
-                    ellipsize = null
+                    // Chip 不支持多行，超长指标名用省略号兜底。
+                    ellipsize = TextUtils.TruncateAt.END
                     contentDescription = label
                     setOnClickListener { viewModel.selectMetric(item.metric) }
                 }

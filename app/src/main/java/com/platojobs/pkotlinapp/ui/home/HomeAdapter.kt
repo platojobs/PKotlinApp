@@ -194,7 +194,7 @@ class HomeAdapter(
             binding.todayMetricsEmpty.visibility =
                 if (overview.metricCounts.isEmpty()) View.VISIBLE else View.GONE
 
-            val peak = overview.hourlyCounts.maxByOrNull { it.count }
+            val peak = overview.hourlyCounts.peakHour()
             binding.todayHourly.visibility = if (peak == null) View.GONE else View.VISIBLE
             if (peak != null) {
                 binding.todayHourly.text = context.getString(

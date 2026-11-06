@@ -17,6 +17,9 @@ object ApiClient {
     fun createSync(baseUrl: String = BuildConfig.API_BASE_URL): SyncApi =
         retrofit(baseUrl).create(SyncApi::class.java)
 
+    fun createScenes(baseUrl: String = BuildConfig.API_BASE_URL): SceneApi =
+        retrofit(baseUrl).create(SceneApi::class.java)
+
     /**
      * 共享 Moshi：先注册 [Reported] 三态 adapter，再交给 Kotlin 反射 adapter。
      * e2e 契约测试复用同一实例，避免测试与生产序列化行为漂移。

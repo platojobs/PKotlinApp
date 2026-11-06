@@ -9,9 +9,12 @@ import com.platojobs.pkotlinapp.domain.rule.MetricThreshold
 import com.platojobs.pkotlinapp.domain.rule.RuleTriggerObserver
 import com.platojobs.pkotlinapp.domain.scene.Scene
 import com.platojobs.pkotlinapp.domain.scene.SceneAction
+import com.platojobs.pkotlinapp.domain.scene.SceneActionOutcome
+import com.platojobs.pkotlinapp.domain.scene.SceneActionType
 import com.platojobs.pkotlinapp.domain.scene.SceneExecutor
 import com.platojobs.pkotlinapp.domain.scene.SceneRun
 import com.platojobs.pkotlinapp.domain.scene.SceneRunResult
+import com.platojobs.pkotlinapp.domain.scene.SceneTriggerContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -44,13 +47,25 @@ class SceneTriggerRunner(
         val sceneId = rule.sceneId ?: return
         mutex.withLock {
             val runAt = now()
-            val last = lastRunAt[sceneId]
-            if (last != null && runAt - last < SCENE_COOLDOWN_MS) return
             val scene = sceneRepository.getScene(sceneId) ?: return
             // 停用场景时引擎规则也不会加载；这里再兜底一次，避免直接调用路径绕过启停。
             if (!scene.enabled) return
+            // 冷却按场景自身配置（服务端可配），默认 60 秒。
+            val last = lastRunAt[sceneId]
+            if (last != null && runAt - last < scene.cooldownSeconds.coerceAtLeast(1) * 1000L) return
             lastRunAt[sceneId] = runAt
-            val result = executor.run(scene)
+            val context = SceneTriggerContext(
+                deviceMac = mac.takeIf { it.isNotBlank() },
+                deviceName = displayName,
+                metric = metric,
+                value = value,
+                unit = unit.orEmpty(),
+            )
+            val result = if (scene.deviceMissing) {
+                skippedResult(scene)
+            } else {
+                executor.run(scene, context = context)
+            }
             sceneRunRepository.add(
                 buildRun(
                     scene = scene,
@@ -68,7 +83,11 @@ class SceneTriggerRunner(
         scene: Scene,
         onActionStart: (index: Int, total: Int, action: SceneAction) -> Unit = { _, _, _ -> },
     ): SceneRunResult {
-        val result = executor.run(scene, onActionStart)
+        val result = if (scene.deviceMissing) {
+            skippedResult(scene)
+        } else {
+            executor.run(scene, onActionStart = onActionStart)
+        }
         sceneRunRepository.add(
             buildRun(
                 scene = scene,
@@ -107,6 +126,25 @@ class SceneTriggerRunner(
         )
     }
 
+    /**
+     * 触发设备已被移除：不执行任何动作，但写一条明确的失败记录，
+     * 让「设备已移除」在历史里可见，而不是场景静默失效。
+     */
+    private fun skippedResult(scene: Scene): SceneRunResult {
+        val action = scene.actions.firstOrNull()
+            ?: SceneAction(type = SceneActionType.NOTIFY)
+        return SceneRunResult(
+            sceneId = scene.id,
+            outcomes = listOf(
+                SceneActionOutcome(
+                    action = action,
+                    success = false,
+                    message = "触发设备已移除，已跳过执行",
+                ),
+            ),
+        )
+    }
+
     private fun triggerValueOf(
         rule: DeviceRule,
         mac: String,
@@ -128,13 +166,17 @@ class SceneTriggerRunner(
             "RSSI $actual ${RuleComparator.LESS.symbol} ${rule.threshold}"
         }
 
-        RuleType.SCHEDULE -> "${rule.intervalMinutes ?: 0} min"
+        RuleType.SCHEDULE ->
+            rule.timeOfDay?.takeIf { it.isNotBlank() }
+                ?.let { "$it ${rule.timezone.orEmpty()}".trim() }
+                ?: "${rule.intervalMinutes ?: 0} min"
+
+        RuleType.DEVICE_OFFLINE -> "${rule.offlineSeconds}s $mac".trim()
 
         RuleType.DISCONNECTED, RuleType.BOND_LOST -> mac
     }
 
     private companion object {
-        const val SCENE_COOLDOWN_MS = 60_000L
         const val MANUAL_TRIGGER = "MANUAL"
         const val MANUAL_VALUE = "-"
     }

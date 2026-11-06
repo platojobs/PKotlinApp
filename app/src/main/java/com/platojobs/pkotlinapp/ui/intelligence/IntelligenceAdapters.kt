@@ -20,6 +20,7 @@ import com.platojobs.pkotlinapp.domain.reading.ReadingMetrics
 import com.platojobs.pkotlinapp.domain.rule.MetricThreshold
 import com.platojobs.pkotlinapp.domain.scene.Scene
 import com.platojobs.pkotlinapp.domain.scene.SceneRun
+import com.platojobs.pkotlinapp.domain.scene.SceneSyncState
 import com.platojobs.pkotlinapp.domain.scene.SceneTrigger
 import com.platojobs.pkotlinapp.ui.common.TimeFormat
 import com.platojobs.pkotlinapp.ui.home.SceneProgress
@@ -71,7 +72,9 @@ class RuleAdapter(
             )
             binding.ruleTitle.text = when (rule.type) {
                 RuleType.LOW_RSSI -> context.getString(R.string.rule_low_rssi)
-                RuleType.DISCONNECTED -> context.getString(R.string.rule_disconnected)
+                RuleType.DISCONNECTED,
+                RuleType.DEVICE_OFFLINE,
+                -> context.getString(R.string.rule_disconnected)
                 RuleType.BOND_LOST -> context.getString(R.string.rule_bond_lost)
                 RuleType.METRIC_THRESHOLD -> context.getString(
                     R.string.rule_metric_title,
@@ -226,6 +229,19 @@ class SceneAdapter(
         fun bind(scene: Scene, progress: SceneProgress?) {
             val context = binding.root.context
             binding.sceneName.text = scene.name
+            // 设备被删不会级联删场景：列表明确标注，执行侧再跳过并记失败日志。
+            binding.sceneLocalBadge.text = when {
+                scene.deviceMissing -> context.getString(R.string.scene_device_missing_badge)
+                scene.syncState != SceneSyncState.SYNCED ->
+                    context.getString(R.string.scene_local_badge)
+                else -> null
+            }
+            binding.sceneLocalBadge.visibility =
+                if (scene.deviceMissing || scene.syncState != SceneSyncState.SYNCED) {
+                    android.view.View.VISIBLE
+                } else {
+                    android.view.View.GONE
+                }
             val running = progress?.takeIf { it.sceneId == scene.id }
             val actionsCount = context.resources.getQuantityString(
                 R.plurals.home_scene_actions_count,
@@ -362,6 +378,8 @@ fun sceneTriggerLabel(context: Context, scene: Scene): String {
     return when (trigger) {
         SceneTrigger.Manual -> context.getString(R.string.scene_trigger_summary_manual)
         SceneTrigger.Disconnected -> context.getString(R.string.scene_trigger_summary_disconnected)
+        is SceneTrigger.DeviceOffline ->
+            context.getString(R.string.scene_trigger_summary_device_offline, trigger.offlineSeconds)
         is SceneTrigger.LowRssi ->
             context.getString(R.string.scene_trigger_summary_low_rssi, trigger.threshold)
 
@@ -376,7 +394,15 @@ fun sceneTriggerLabel(context: Context, scene: Scene): String {
         }
 
         is SceneTrigger.Schedule ->
-            context.getString(R.string.scene_trigger_summary_schedule, trigger.intervalMinutes)
+            if (trigger.timeOfDay != null) {
+                context.getString(
+                    R.string.scene_trigger_summary_schedule_at,
+                    trigger.timeOfDay,
+                    trigger.timezone,
+                )
+            } else {
+                context.getString(R.string.scene_trigger_summary_schedule, trigger.intervalMinutes)
+            }
     }
 }
 
@@ -387,6 +413,7 @@ fun sceneTriggerTypeLabel(context: Context, triggerType: String): String = when 
     RuleType.DISCONNECTED.name -> context.getString(R.string.scene_trigger_type_disconnected)
     RuleType.METRIC_THRESHOLD.name -> context.getString(R.string.scene_trigger_type_metric)
     RuleType.SCHEDULE.name -> context.getString(R.string.scene_trigger_type_schedule)
+    RuleType.DEVICE_OFFLINE.name -> context.getString(R.string.scene_trigger_type_device_offline)
     RuleType.BOND_LOST.name -> context.getString(R.string.scene_trigger_type_bond_lost)
     else -> triggerType
 }

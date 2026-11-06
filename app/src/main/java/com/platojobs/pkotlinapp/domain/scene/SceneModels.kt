@@ -29,7 +29,13 @@ val SCENE_SCHEDULE_INTERVALS = listOf(15, 30, 60, 120)
 
 /**
  * 场景触发条件：复用 rules 表的字段，最终由 RuleEngine 判定，场景只消费触发结果。
- * [MANUAL] 表示仅手动运行（历史场景没有触发规则）。
+ * [Manual] 表示仅手动运行（历史场景没有触发规则）。
+ *
+ * 服务端条件与本地判定的映射：
+ * - device_offline -> [DeviceOffline]（按 lastSeen 与 offlineSeconds 的定时离线检查）
+ * - rssi_below -> [LowRssi]（可绑定 deviceMac）
+ * - metric_threshold -> [MetricThreshold]（可绑定 deviceMac，连续条数 1–30）
+ * - schedule -> [Schedule]（timeOfDay + timezone + daysOfWeek 的本地调度）
  */
 sealed interface SceneTrigger {
     val ruleType: RuleType
@@ -38,11 +44,23 @@ sealed interface SceneTrigger {
         override val ruleType: RuleType = RuleType.DISCONNECTED
     }
 
+    /** 旧的本机事件触发：任一台设备断开时执行，不绑定具体设备。 */
     data object Disconnected : SceneTrigger {
         override val ruleType: RuleType = RuleType.DISCONNECTED
     }
 
-    data class LowRssi(val threshold: Int = -85) : SceneTrigger {
+    /** 服务端 device_offline：指定设备超过 [offlineSeconds] 未出现即触发。 */
+    data class DeviceOffline(
+        val deviceMac: String,
+        val offlineSeconds: Int = 300,
+    ) : SceneTrigger {
+        override val ruleType: RuleType = RuleType.DEVICE_OFFLINE
+    }
+
+    data class LowRssi(
+        val threshold: Int = -85,
+        val deviceMac: String? = null,
+    ) : SceneTrigger {
         override val ruleType: RuleType = RuleType.LOW_RSSI
     }
 
@@ -51,11 +69,24 @@ sealed interface SceneTrigger {
         val comparator: RuleComparator = RuleComparator.GREATER,
         val thresholdValue: Double = 0.0,
         val consecutive: Int = 1,
+        val deviceMac: String? = null,
+        /** 服务端目录校验用的型号键；本机判定不需要，但 PUT 时需要原样回传。 */
+        val deviceType: String? = null,
     ) : SceneTrigger {
         override val ruleType: RuleType = RuleType.METRIC_THRESHOLD
     }
 
-    data class Schedule(val intervalMinutes: Int = 30) : SceneTrigger {
+    /**
+     * 定时：本地旧场景用 [intervalMinutes]；服务端场景用 [timeOfDay]+[timezone]+[daysOfWeek]。
+     * 两者互斥，[timeOfDay] 非空时按本地时刻调度。
+     */
+    data class Schedule(
+        val intervalMinutes: Int = 30,
+        val timeOfDay: String? = null,
+        val timezone: String = "UTC",
+        /** ISO 星期，1=周一；空集表示每天。 */
+        val daysOfWeek: Set<Int> = emptySet(),
+    ) : SceneTrigger {
         override val ruleType: RuleType = RuleType.SCHEDULE
     }
 
@@ -65,18 +96,31 @@ sealed interface SceneTrigger {
         SceneTrigger.Disconnected,
         -> null
 
+        is SceneTrigger.DeviceOffline -> when {
+            deviceMac.isBlank() -> "请选择要监控的设备"
+            offlineSeconds !in 60..86400 -> "离线秒数需在 60 到 86400 之间"
+            else -> null
+        }
+
         is SceneTrigger.LowRssi ->
             if (threshold in -100..0) null else "RSSI 阈值需在 -100 到 0 之间"
 
         is SceneTrigger.MetricThreshold -> when {
             metric.isBlank() -> "请选择要监控的指标"
             !thresholdValue.isFinite() -> "阈值必须是有效数字"
-            consecutive !in 1..5 -> "连续读数需在 1 到 5 条之间"
+            consecutive !in 1..30 -> "连续读数需在 1 到 30 条之间"
             else -> null
         }
 
-        is SceneTrigger.Schedule ->
+        is SceneTrigger.Schedule -> if (timeOfDay != null) {
+            if (SceneSchedule.isValid(timeOfDay, timezone, daysOfWeek)) {
+                null
+            } else {
+                "定时条件需为 HH:MM、有效 IANA 时区与 1–7 的星期"
+            }
+        } else {
             if (intervalMinutes in SCENE_SCHEDULE_INTERVALS) null else "定时间隔只支持 15/30/60/120 分钟"
+        }
     }
 }
 
@@ -85,6 +129,14 @@ data class SceneAction(
     val type: SceneActionType,
     val deviceMac: String? = null,
     val muteMinutes: Int? = null,
+    /** 服务端 notify 模板。 */
+    val title: String? = null,
+    val body: String? = null,
+    /** 服务端 log 模板与级别（info / warn）。 */
+    val message: String? = null,
+    val level: String? = null,
+    /** 服务端 mark_device 的标记名。 */
+    val mark: String? = null,
 ) {
     /** 存储/展示前的最终校验；不合法时返回原因，避免把假动作写进 Room。 */
     fun invalidReason(): String? = when (type) {
@@ -103,6 +155,34 @@ data class SceneAction(
         SceneActionType.RECORD_LOG,
         -> null
     }
+
+    /** 服务端可表达的三种动作；其余动作只能留在本机。 */
+    val serverKind: String?
+        get() = when (type) {
+            SceneActionType.NOTIFY -> "notify"
+            SceneActionType.RECORD_LOG -> "log"
+            SceneActionType.MARK_DEVICE -> "mark_device"
+            else -> null
+        }
+}
+
+/** 服务端同步状态；`LOCAL_ONLY` 表示服务端模型无法表达但已被明确保留。 */
+enum class SceneSyncState {
+    PENDING,
+    SYNCED,
+    LOCAL_ONLY,
+    ;
+
+    /**
+     * Room 列值统一小写：迁移默认值与 DAO 里的 `'pending'` / `'synced'` 字面量
+     * 必须完全一致，否则 SQLite 大小写敏感比较会让新场景进不了上传队列。
+     */
+    val storage: String get() = name.lowercase()
+
+    companion object {
+        fun parse(raw: String?): SceneSyncState =
+            entries.firstOrNull { it.name.equals(raw, ignoreCase = true) } ?: PENDING
+    }
 }
 
 data class Scene(
@@ -113,6 +193,11 @@ data class Scene(
     val enabled: Boolean = true,
     /** 触发条件；null 表示仅手动运行。 */
     val trigger: SceneTrigger? = null,
+    val remoteId: String? = null,
+    val syncState: SceneSyncState = SceneSyncState.PENDING,
+    /** 触发条件绑定的设备已不存在；列表标注「设备已移除」，执行时跳过。 */
+    val deviceMissing: Boolean = false,
+    val cooldownSeconds: Int = 300,
 ) {
     fun invalidReason(): String? {
         if (name.isBlank()) return "场景名称不能为空"

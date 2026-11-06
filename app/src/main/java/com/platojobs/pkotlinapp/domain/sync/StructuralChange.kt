@@ -29,4 +29,7 @@ sealed interface StructuralChange {
         val sortOrder: Int,
         val deleted: Boolean,
     ) : StructuralChange
+
+    /** `entity=scene`：场景全量快照或软删除；未知字段在解析层已忽略。 */
+    data class Scene(val scene: com.platojobs.pkotlinapp.domain.scene.RemoteScene) : StructuralChange
 }

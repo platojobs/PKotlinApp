@@ -9,7 +9,8 @@ import java.math.RoundingMode
  * 单位遵循产品口径：温度 `℃`、百分比 `%`、心率 `bpm`；未知指标沿用上报单位。
  */
 object MetricThreshold {
-    const val MAX_CONSECUTIVE = 5
+    /** 服务端契约允许 1–30；本机旧 UI 的建议值仍是 1–5，但不再截断合法的大值。 */
+    const val MAX_CONSECUTIVE = 30
 
     fun sanitizeConsecutive(value: Int): Int = value.coerceIn(1, MAX_CONSECUTIVE)
 

@@ -77,7 +77,7 @@ class SceneRuntimeImpl(
         syncScheduler.scheduleNow()
     }
 
-    override suspend fun notify(sceneName: String, details: String): Boolean {
+    override suspend fun notify(title: String, body: String): Boolean {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
             PackageManager.PERMISSION_GRANTED
@@ -97,15 +97,9 @@ class SceneRuntimeImpl(
             }
             val notification = NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_notification_alert)
-                .setContentTitle(context.getString(R.string.scene_notification_title))
-                .setContentText(
-                    context.getString(R.string.scene_notification_text, sceneName, details),
-                )
-                .setStyle(
-                    NotificationCompat.BigTextStyle().bigText(
-                        context.getString(R.string.scene_notification_text, sceneName, details),
-                    ),
-                )
+                .setContentTitle(title)
+                .setContentText(body)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(body))
                 .setContentIntent(pendingIntent)
                 .setAutoCancel(true)
                 .setPriority(NotificationCompat.PRIORITY_DEFAULT)

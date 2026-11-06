@@ -21,6 +21,12 @@ class SceneScheduleWorker(
             // 规则可能刚被编辑，先刷新缓存再判定。
             app.container.ruleEngine.refresh()
             app.container.ruleEngine.onScheduleTick()
+            // 服务端 device_offline 条件：用设备最近出现时间做定时离线判定。
+            val devices = app.container.deviceRepository.getDevices()
+            app.container.ruleEngine.onOfflineCheck(
+                lastSeenByMac = devices.associate { it.mac.uppercase() to it.lastSeenTimestamp },
+                displayNameOf = { mac -> devices.firstOrNull { it.mac.equals(mac, true) }?.name.orEmpty() },
+            )
             Result.success()
         }.getOrElse { Result.retry() }
     }

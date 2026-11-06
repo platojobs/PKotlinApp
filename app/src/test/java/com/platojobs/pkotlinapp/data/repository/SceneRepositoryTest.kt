@@ -255,6 +255,128 @@ class SceneRepositoryTest {
             rules.removeAll { it.sceneId == sceneId }
         }
 
+        override suspend fun getAllIncludingDeleted(): List<SceneWithActions> = snapshot()
+
+        override suspend fun findRow(id: Long): SceneWithActions? = snapshot().firstOrNull { it.scene.id == id }
+
+        override suspend fun findByRemoteId(remoteId: String): SceneEntity? =
+            scenes.values.firstOrNull { it.remoteId == remoteId }
+
+        override suspend fun linkRemote(
+            id: Long,
+            remoteId: String,
+            version: Long,
+            serverUpdatedAt: Long,
+        ) {
+            scenes[id]?.let {
+                scenes[id] = it.copy(
+                    remoteId = remoteId,
+                    version = version,
+                    syncState = "pending",
+                    syncError = null,
+                    serverUpdatedAt = serverUpdatedAt,
+                )
+            }
+        }
+
+        override suspend fun pendingUploads(): List<SceneEntity> =
+            scenes.values.filter { it.syncState == "pending" && it.remoteId == null }
+
+        override suspend fun pendingUpdates(): List<SceneEntity> =
+            scenes.values.filter { it.syncState == "pending" && it.remoteId != null }
+
+        override suspend fun pendingDeletes(): List<SceneEntity> =
+            scenes.values.filter { it.syncState == "pending" && it.deletedAt != null }
+
+        override suspend fun markUploaded(
+            id: Long,
+            remoteId: String,
+            version: Long,
+            serverUpdatedAt: Long,
+        ) {
+            scenes[id]?.let {
+                scenes[id] = it.copy(
+                    remoteId = remoteId,
+                    version = version,
+                    syncState = "synced",
+                    serverUpdatedAt = serverUpdatedAt,
+                    nameUpdatedAt = serverUpdatedAt,
+                    enabledUpdatedAt = serverUpdatedAt,
+                    cooldownUpdatedAt = serverUpdatedAt,
+                    triggerUpdatedAt = serverUpdatedAt,
+                    actionsUpdatedAt = serverUpdatedAt,
+                )
+            }
+        }
+
+        override suspend fun markSyncState(id: Long, syncState: String, reason: String?) {
+            scenes[id]?.let { scenes[id] = it.copy(syncState = syncState, syncError = reason) }
+        }
+
+        override suspend fun mergeServerSnapshot(
+            id: Long,
+            keepName: Boolean,
+            keepEnabled: Boolean,
+            keepCooldown: Boolean,
+            keepTrigger: Boolean,
+            keepActions: Boolean,
+            name: String,
+            enabled: Boolean,
+            cooldown: Int,
+            triggerJson: String,
+            actionsJson: String,
+            version: Long,
+            serverUpdatedAt: Long,
+        ) {
+            scenes[id]?.let {
+                scenes[id] = it.copy(
+                    name = if (keepName) it.name else name,
+                    enabled = if (keepEnabled) it.enabled else enabled,
+                    cooldownSeconds = if (keepCooldown) it.cooldownSeconds else cooldown,
+                    triggerJson = if (keepTrigger) it.triggerJson else triggerJson,
+                    actionsJson = if (keepActions) it.actionsJson else actionsJson,
+                    version = version,
+                    serverUpdatedAt = serverUpdatedAt,
+                )
+            }
+        }
+
+        override suspend fun finishMerge(id: Long, serverUpdatedAt: Long) {
+            scenes[id]?.let { scenes[id] = it.copy(syncState = "synced", serverUpdatedAt = serverUpdatedAt) }
+        }
+
+        override suspend fun tombstone(id: Long, timestamp: Long) {
+            scenes[id]?.let { scenes[id] = it.copy(deletedAt = timestamp, syncState = "pending") }
+        }
+
+        override suspend fun markServerDeleted(id: Long, timestamp: Long) {
+            scenes[id]?.let { scenes[id] = it.copy(deletedAt = timestamp, syncState = "synced") }
+        }
+
+        override suspend fun reviveFromServer(id: Long) {
+            scenes[id]?.let { scenes[id] = it.copy(deletedAt = null) }
+        }
+
+        override suspend fun updateNameForSync(id: Long, name: String, updatedAt: Long) {
+            scenes[id]?.let { scenes[id] = it.copy(name = name, nameUpdatedAt = updatedAt, syncState = "pending") }
+        }
+
+        override suspend fun updateEnabledForSync(id: Long, enabled: Boolean, updatedAt: Long) {
+            scenes[id]?.let { scenes[id] = it.copy(enabled = enabled, enabledUpdatedAt = updatedAt, syncState = "pending") }
+        }
+
+        override suspend fun updateCooldownForSync(id: Long, cooldown: Int, updatedAt: Long) {
+            scenes[id]?.let { scenes[id] = it.copy(cooldownSeconds = cooldown, cooldownUpdatedAt = updatedAt, syncState = "pending") }
+        }
+
+        override suspend fun updateTriggerForSync(id: Long, json: String, updatedAt: Long) {
+            scenes[id]?.let { scenes[id] = it.copy(triggerJson = json, triggerUpdatedAt = updatedAt, syncState = "pending") }
+        }
+
+        override suspend fun updateActionsForSync(id: Long, json: String, updatedAt: Long) {
+            scenes[id]?.let { scenes[id] = it.copy(actionsJson = json, actionsUpdatedAt = updatedAt, syncState = "pending") }
+        }
+
         private fun snapshot(): List<SceneWithActions> = scenes.values
             .sortedBy { it.createdAt }
             .map { scene ->

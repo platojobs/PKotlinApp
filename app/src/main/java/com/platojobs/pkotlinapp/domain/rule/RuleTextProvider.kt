@@ -14,6 +14,10 @@ interface RuleTextProvider {
 
     fun scheduled(intervalMinutes: Int): String
 
+    /** 服务端定时条件的提示文案；默认实现供测试与旧实现使用。 */
+    fun scheduledAt(timeOfDay: String, timezone: String): String =
+        "定时 $timeOfDay $timezone".trim()
+
     /** 指标阈值命中文案，数值与单位都由调用方给出（domain 不依赖 Android 资源）。 */
     fun metricThreshold(
         deviceName: String,

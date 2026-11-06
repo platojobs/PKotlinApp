@@ -8,6 +8,7 @@ import com.platojobs.pkotlinapp.domain.reading.ReadingMetrics
 import com.platojobs.pkotlinapp.domain.reading.ReadingSample
 import com.platojobs.pkotlinapp.domain.repository.RuleEventRepository
 import com.platojobs.pkotlinapp.domain.repository.RuleRepository
+import com.platojobs.pkotlinapp.domain.scene.SceneSchedule
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -48,7 +49,10 @@ class RuleEngine(
 
     suspend fun onScan(device: ScannedDevice, displayName: String): List<RuleEvent> = mutex.withLock {
         if (!loaded) loadRules()
-        val lowRssiRules = cachedRules.filter { it.type == RuleType.LOW_RSSI }
+        // 服务端 rssi_below 绑定具体设备；旧规则 deviceMac 为空仍对全部设备生效。
+        val lowRssiRules = cachedRules.filter {
+            it.type == RuleType.LOW_RSSI && it.matchesDevice(device.mac)
+        }
         lowRssiRules.mapNotNull { rule ->
             if (device.rssi < rule.threshold) {
                 trigger(rule, device.mac, displayName, device.rssi, textProvider.lowRssi(displayName, device.rssi, rule.threshold))
@@ -69,7 +73,9 @@ class RuleEngine(
         val metric = ReadingMetrics.normalize(sample.metric)
         if (metric == ReadingMetrics.OTHER) return@withLock emptyList()
         val matched = cachedRules.filter {
-            it.type == RuleType.METRIC_THRESHOLD && it.metric == metric
+            it.type == RuleType.METRIC_THRESHOLD &&
+                it.metric == metric &&
+                it.matchesDevice(mac)
         }
         if (matched.isEmpty()) return@withLock emptyList()
 
@@ -110,7 +116,9 @@ class RuleEngine(
 
     suspend fun onDisconnected(mac: String, displayName: String): List<RuleEvent> = mutex.withLock {
         if (!loaded) loadRules()
-        val matched = cachedRules.filter { it.type == RuleType.DISCONNECTED }
+        val matched = cachedRules.filter {
+            it.type == RuleType.DISCONNECTED && it.matchesDevice(mac)
+        }
         matched.mapNotNull { rule ->
             trigger(rule, mac, displayName, null, textProvider.disconnected(displayName))
         }
@@ -133,19 +141,58 @@ class RuleEngine(
         val scheduled = cachedRules.filter { it.type == RuleType.SCHEDULE }
         val current = now()
         scheduled.mapNotNull { rule ->
-            val interval = rule.intervalMinutes ?: return@mapNotNull null
-            if (interval <= 0) return@mapNotNull null
             val key = keyOf(rule, SCHEDULE_MAC)
             val last = lastTriggeredAt[key] ?: rule.lastTriggeredTimestamp
-            if (current - last < interval * 60_000L) return@mapNotNull null
+            val due = if (rule.timeOfDay.isNullOrBlank()) {
+                val interval = rule.intervalMinutes ?: return@mapNotNull null
+                if (interval <= 0) return@mapNotNull null
+                if (current - last < interval * 60_000L) return@mapNotNull null
+                textProvider.scheduled(interval)
+            } else {
+                // 服务端定时条件：按 timezone + daysOfWeek 计算最近一次已到达的时刻。
+                val occurrence = SceneSchedule.latestOccurrence(
+                    nowMillis = current,
+                    timeOfDay = rule.timeOfDay.orEmpty(),
+                    timezone = rule.timezone?.takeIf { it.isNotBlank() } ?: "UTC",
+                    daysOfWeek = parseDays(rule.daysOfWeek),
+                ) ?: return@mapNotNull null
+                if (last >= occurrence) return@mapNotNull null
+                textProvider.scheduledAt(rule.timeOfDay.orEmpty(), rule.timezone.orEmpty())
+            }
             trigger(
                 rule = rule,
                 mac = SCHEDULE_MAC,
                 displayName = "",
                 rssi = null,
-                message = textProvider.scheduled(interval),
+                message = due,
             )
         }
+    }
+
+    /**
+     * 服务端 `device_offline` 判定：设备最后一次出现已超过 offlineSeconds 才触发；
+     * 设备重新出现时恢复。从未出现过的设备不触发，避免新增设备立刻误报。
+     */
+    suspend fun onOfflineCheck(
+        lastSeenByMac: Map<String, Long>,
+        displayNameOf: (String) -> String = { it },
+    ): List<RuleEvent> = mutex.withLock {
+        if (!loaded) loadRules()
+        val current = now()
+        val offlineRules = cachedRules.filter { it.type == RuleType.DEVICE_OFFLINE }
+        val events = mutableListOf<RuleEvent>()
+        offlineRules.forEach { rule ->
+            val mac = rule.deviceMac?.takeIf { it.isNotBlank() } ?: return@forEach
+            val lastSeen = lastSeenByMac[mac] ?: return@forEach
+            val name = displayNameOf(mac)
+            val offlineMillis = rule.offlineSeconds.coerceIn(60, 86400) * 1000L
+            if (current - lastSeen >= offlineMillis) {
+                trigger(rule, mac, name, null, textProvider.disconnected(name))?.let(events::add)
+            } else {
+                recover(rule, mac, name, 0)
+            }
+        }
+        events
     }
 
     private suspend fun trigger(
@@ -227,6 +274,20 @@ class RuleEngine(
     }
 
     private fun keyOf(rule: DeviceRule, mac: String) = "${rule.id}:$mac"
+
+    /** 设备绑定比较：MAC 统一大写；空绑定表示对所有设备生效。 */
+    private fun DeviceRule.matchesDevice(mac: String): Boolean {
+        val bound = deviceMac?.takeIf { it.isNotBlank() } ?: return true
+        return bound.equals(mac, ignoreCase = true)
+    }
+
+    /** "1,3,5" -> {1,3,5}；非法项忽略，空集表示每天。 */
+    private fun parseDays(raw: String?): Set<Int> =
+        raw.orEmpty()
+            .split(',')
+            .mapNotNull { it.trim().toIntOrNull() }
+            .filter { it in 1..7 }
+            .toSet()
 
     private companion object {
         const val COOLDOWN_MS = 60_000L

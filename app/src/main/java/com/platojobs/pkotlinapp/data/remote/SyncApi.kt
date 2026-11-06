@@ -89,6 +89,14 @@ data class SyncDeviceDto(
     val memberCount: Int? = null,
     val sortOrder: Int? = null,
     val deleted: Boolean? = null,
+    // openapi 0.16.0 scene change payload 的复用字段；设备 payload 不使用。
+    val enabled: Boolean? = null,
+    val cooldownSeconds: Int? = null,
+    val trigger: SceneTriggerDto? = null,
+    val actions: List<SceneActionDto>? = null,
+    val version: Long? = null,
+    val deviceMissing: Boolean? = null,
+    val createdAt: String? = null,
 )
 
 /** GET /my/devices 的返回：本人设备 + 家庭成员共享设备。 */
@@ -690,4 +698,40 @@ interface SyncApi {
         @Query("cursor") cursor: String?,
         @Query("limit") limit: Int,
     ): FeedbackPageResponse
+}
+
+/** 场景接口独立于 SyncApi，避免设备同步的测试假实现被场景端点绑架。 */
+interface SceneApi {
+
+    /** 一次返回本人全部未删除场景（无分页）。 */
+    @GET("api/v1/scenes")
+    suspend fun listScenes(
+        @Header("Authorization") authorization: String,
+    ): SceneListResponse
+
+    @POST("api/v1/scenes")
+    suspend fun createScene(
+        @Header("Authorization") authorization: String,
+        @Body body: SceneInputDto,
+    ): SceneDto
+
+    @GET("api/v1/scenes/{sceneId}")
+    suspend fun getScene(
+        @Header("Authorization") authorization: String,
+        @Path("sceneId") sceneId: String,
+    ): SceneDto
+
+    @PUT("api/v1/scenes/{sceneId}")
+    suspend fun updateScene(
+        @Header("Authorization") authorization: String,
+        @Path("sceneId") sceneId: String,
+        @Body body: ScenePatchDto,
+    ): SceneDto
+
+    /** 204 软删除；跨用户与已删除统一 404。 */
+    @DELETE("api/v1/scenes/{sceneId}")
+    suspend fun deleteScene(
+        @Header("Authorization") authorization: String,
+        @Path("sceneId") sceneId: String,
+    )
 }

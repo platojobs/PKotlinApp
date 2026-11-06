@@ -246,7 +246,9 @@ class IntelligenceFragment : Fragment(R.layout.fragment_intelligence) {
             dialogBinding.typeDescription.setText(
                 when (type) {
                     RuleType.LOW_RSSI -> R.string.rule_desc_low_rssi
-                    RuleType.DISCONNECTED -> R.string.rule_desc_disconnected
+                    RuleType.DISCONNECTED,
+                    RuleType.DEVICE_OFFLINE,
+                    -> R.string.rule_desc_disconnected
                     RuleType.BOND_LOST -> R.string.rule_desc_bond_lost
                     RuleType.METRIC_THRESHOLD -> R.string.rule_metric_desc
                     RuleType.SCHEDULE -> R.string.scene_trigger_schedule

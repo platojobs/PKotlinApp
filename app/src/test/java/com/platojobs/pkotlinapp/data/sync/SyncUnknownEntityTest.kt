@@ -29,10 +29,13 @@ class SyncUnknownEntityTest {
         val structural = entries.filterIsInstance<SyncChangeEntry.Structure>().map { it.change }
 
         assertEquals(1, devices.size)
-        assertEquals(3, structural.size)
+        assertEquals(4, structural.size)
         assertTrue(structural[0] is StructuralChange.Household)
         assertTrue(structural[1] is StructuralChange.Room)
-        assertTrue((structural[2] as StructuralChange.Room).deleted)
+        // scene 走现有同步管线，未知 entity 紧随其后仍不阻塞。
+        assertTrue(structural[2] is StructuralChange.Scene)
+        assertEquals("scene-1", (structural[2] as StructuralChange.Scene).scene.remoteId)
+        assertTrue((structural[3] as StructuralChange.Room).deleted)
 
         val cursor = InMemoryCursor()
         val engine = SyncEngine(
@@ -51,7 +54,7 @@ class SyncUnknownEntityTest {
 
         assertEquals(1, pulled)
         assertEquals("9", cursor.cursor)
-        assertEquals(3, engine.lastStructuralChanges.size)
+        assertEquals(4, engine.lastStructuralChanges.size)
         // 未知 entity 不会进入任何业务集合。
         assertTrue(engine.lastStructuralChanges.none { it is StructuralChange.Room && it.roomRemoteId == "x-1" })
     }
@@ -133,6 +136,32 @@ class SyncUnknownEntityTest {
                 },
                 {
                   "seq": 7,
+                  "entity": "scene",
+                  "entityId": "scene-1",
+                  "op": "upsert",
+                  "payload": {
+                    "id": "scene-1",
+                    "name": "云端定时场景",
+                    "enabled": true,
+                    "cooldownSeconds": 300,
+                    "trigger": {
+                      "kind": "schedule",
+                      "timeOfDay": "08:00",
+                      "timezone": "Asia/Shanghai",
+                      "daysOfWeek": [1, 2, 3, 4, 5]
+                    },
+                    "actions": [
+                      {"kind": "notify", "title": "早安", "body": "{device} 提醒"}
+                    ],
+                    "version": 3,
+                    "deviceMissing": false,
+                    "createdAt": "2026-11-01T00:00:00Z",
+                    "updatedAt": "2026-11-01T00:00:02Z"
+                  },
+                  "serverTs": "2026-11-01T00:00:02Z"
+                },
+                {
+                  "seq": 8,
                   "entity": "automation_rule",
                   "entityId": "x-1",
                   "op": "upsert",
@@ -145,7 +174,7 @@ class SyncUnknownEntityTest {
                   "serverTs": "2026-11-01T00:00:03Z"
                 },
                 {
-                  "seq": 8,
+                  "seq": 9,
                   "entity": "room",
                   "entityId": "r-2",
                   "op": "delete",

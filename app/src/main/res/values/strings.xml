@@ -705,6 +705,10 @@
     <string name="scene_trigger_summary_low_rssi">RSSI &lt; %1$d dBm</string>
     <string name="scene_trigger_summary_metric">%1$s %2$s %3$s</string>
     <string name="scene_trigger_summary_schedule">每 %1$d 分钟</string>
+    <string name="scene_trigger_summary_schedule_at">每天 %1$s（%2$s）</string>
+    <string name="scene_trigger_summary_device_offline">设备离线超过 %1$d 秒</string>
+    <string name="scene_trigger_type_device_offline">设备离线</string>
+    <string name="scene_device_missing_badge">设备已移除</string>
     <string name="scene_trigger_summary_none">未设置触发条件</string>
     <string name="scene_enable_switch">启用场景</string>
     <string name="scene_state_enabled">已启用</string>

@@ -6,6 +6,23 @@
 
 ---
 
+## v0.22.0
+
+**主题：自动化场景接服务端，配置跨设备可用**
+
+- 接后端 v0.20.0 / 契约 0.16.0：新增 `SceneApi`（`GET /scenes`、`POST /scenes` 201、`GET/PUT/DELETE /scenes/{id}`，DELETE 为 204 软删），跨用户与已软删统一 404。
+- **一套真值 + 一套投影**：`scenes.triggerJson` / `actionsJson` 保存服务端单行模型（条件与动作组合），是同步唯一真值；`rules` / `scene_actions` 只是执行投影，永远由 JSON 重建，不再反向回写。旧场景没有 JSON 时先由本地 `rules` + `scene_actions` 编码生成，再上传。服务端无法表达的动作（连接、采集、静音、立即同步）显式标记为「仅本机」（`syncState = local_only`）并写明原因，**不静默删除、不上传**。
+- Room v20（`MIGRATION_19_20`）：`scenes` 增加 `remoteId`、`version`、`syncState`、`deletedAt`、`serverUpdatedAt`、五个字段各自的更新时间戳（`nameUpdatedAt` / `enabledUpdatedAt` / `cooldownUpdatedAt` / `triggerUpdatedAt` / `actionsUpdatedAt`）、`triggerJson`、`actionsJson`、`syncError` 与 `remoteId` 唯一索引；`scene_actions` 增加 `title` / `body` / `message` / `level` / `mark`；`rules` 增加 `deviceMac` / `offlineSeconds` / `timeOfDay` / `timezone` / `daysOfWeek`；旧场景默认全部标为待上传，内容与执行能力保留。
+- **首次上传顺序**：`GET /scenes` 基线 → 字段级合并 → 处理本地删除 → 未绑定 `remoteId` 的场景按「名称 + 规范化触发 JSON + 动作 JSON」签名与基线去重（命中只回写 `remoteId`）→ 逐条 `POST` → 写回 `remoteId` / `version` / 五字段时间戳。服务端没有客户端 ID 字段，因此「按本地 ID 去重」以内容签名实现；本地服务端同内容共存的场景会在基线合并阶段直接认领，不会插副本再撞唯一索引。
+- **字段级 LWW**：PUT 每次带五个字段各自的时间戳；本地以 `serverUpdatedAt` 为基线，字段时间戳大于基线才视为「本地未上传修改」，拉取时保留，PUT 时提交。两端改不同字段时各自保留（如本机改名 + 另一端停用）。
+- **离线编辑**：断网时新建、改名、启停只落本地并标 `pending`，记录真实错误；网络恢复后按 `remoteId` 有无选择 `PUT` 或 `POST` 补传，成功后按响应再做一次 LWW 合并。删除同样先本地 tombstone，204 或 404 都视为完成。
+- **引擎真正执行**：服务端条件映射到现有判定——`device_offline`（60–86400 秒）、`rssi_below`、`metric_threshold`（`lt/lte/gt/gte` + 连续 1–30，且目录类型必须声明该指标）、`schedule`。定时用本地 `Calendar` + IANA 时区按 `timeOfDay` / `daysOfWeek`（1 = 周一）计算；跨 DST 春季缺口顺延、秋季重复时刻同日只触发一次。冷却改用场景自身 `cooldownSeconds`。
+- **占位符**：`notify` 的 `title` / `body` 与 `log` 的 `message` 支持 `{device}`（设备显示名，缺失回落 MAC）、`{metric}`、`{value}`（整数不带小数，其余保留 1 位）；未知占位符原样保留，空模板回落到旧默认文案。
+- **deviceMissing**：读取时按本地设备目录（MAC / externalId）实时计算并返回，列表标注「设备已移除」；设备被删不级联删场景。执行（含手动运行）跳过并写一条失败执行记录「触发设备已移除，已跳过执行」，不静默失效。
+- **change_log**：`scene` entity 接入现有结构增量同步；未知 entity 继续忽略且游标照常推进（`SyncUnknownEntityTest` 固定 JSON 同时验证两者）。
+- 测试：`SceneSyncerTest`（真实 Room + 内存假远端）覆盖首次上传写回、基线签名去重、LWW 两端不同字段、离线新建/改名补传、本地与服务端软删、`deviceMissing` 跳过与失败日志、旧场景按设备类型上传、不可表达场景仅本机保留，以及 change_log 场景经 `RuleEngine` 真正执行并渲染占位符；`SceneScheduleTest`（含春季 02:30→03:30 与秋季重复小时）、`ScenePlaceholdersTest`、`SceneCanonicalTest`、`SceneSyncMigrationTest`（真实 SQLite v19→v20 验证旧场景/动作/规则保留）。
+- 验证：`testDebugUnitTest` 全绿、`lintDebug` 0 error、`assembleDebug` 通过、fixture e2e 全绿；tag `v0.22.0`（`versionCode = 30`）。
+
 ## v0.21.0
 
 **主题：可自动化验证的产品质量（启动与主线程、列表与图表性能、无障碍与对比度）**

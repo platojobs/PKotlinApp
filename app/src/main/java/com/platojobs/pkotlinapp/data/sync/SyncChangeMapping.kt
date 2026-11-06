@@ -1,7 +1,11 @@
 package com.platojobs.pkotlinapp.data.sync
 
+import com.platojobs.pkotlinapp.data.remote.SceneDto
+import com.platojobs.pkotlinapp.data.remote.SceneTimestamps
 import com.platojobs.pkotlinapp.data.remote.SyncChangeDto
+import com.platojobs.pkotlinapp.data.scene.SceneCanonical
 import com.platojobs.pkotlinapp.domain.household.HouseholdRole
+import com.platojobs.pkotlinapp.domain.scene.RemoteScene
 import com.platojobs.pkotlinapp.domain.sync.StructuralChange
 import com.platojobs.pkotlinapp.domain.sync.SyncRecord
 
@@ -18,6 +22,7 @@ internal sealed interface SyncChangeEntry {
 internal const val ENTITY_DEVICE = "user_device"
 internal const val ENTITY_HOUSEHOLD = "household"
 internal const val ENTITY_ROOM = "room"
+internal const val ENTITY_SCENE = "scene"
 
 /**
  * 按 entity 显式分派，而不是「能解析成设备就当设备」：
@@ -56,6 +61,56 @@ internal fun SyncChangeDto.toSyncChangeEntry(): SyncChangeEntry? = when (entity?
         )
     }
 
+    ENTITY_SCENE -> payload?.let { body ->
+        val id = entityId?.takeIf { it.isNotBlank() } ?: body.id?.takeIf { it.isNotBlank() }
+            ?: return null
+        val trigger = body.trigger ?: return null
+        val triggerJson = SceneCanonical.triggerJson(trigger) ?: return null
+        val actionsJson = SceneCanonical.actionsJson(body.actions.orEmpty()) ?: return null
+        val parsedTrigger = SceneCanonical.triggerFrom(trigger)
+        SyncChangeEntry.Structure(
+            StructuralChange.Scene(
+                RemoteScene(
+                    remoteId = id,
+                    name = body.name.orEmpty(),
+                    enabled = body.enabled ?: true,
+                    cooldownSeconds = (body.cooldownSeconds ?: 300).coerceAtLeast(0),
+                    version = body.version ?: 0,
+                    createdAt = SceneTimestamps.parse(body.createdAt) ?: 0,
+                    updatedAt = SceneTimestamps.parse(body.updatedAt) ?: 0,
+                    deleted = body.deleted == true || op == "delete",
+                    triggerJson = triggerJson,
+                    actionsJson = actionsJson,
+                    trigger = parsedTrigger,
+                    actions = SceneCanonical.actionsFrom(body.actions, parsedTrigger),
+                ),
+            ),
+        )
+    }
+
     // 未知 entity：忽略并继续推进游标（硬约束）。
     else -> null
 }
+
+/** 场景 DTO 原样序列化，供 syncer 存入 scenes.triggerJson。 */
+internal fun SceneDto.toRemoteScene(): RemoteScene? =
+    SceneTimestamps.parse(updatedAt)?.let { updated ->
+        val trigger = trigger ?: return null
+        val triggerJson = SceneCanonical.triggerJson(trigger) ?: return null
+        val actionsJson = SceneCanonical.actionsJson(actions.orEmpty()) ?: return null
+        val parsedTrigger = SceneCanonical.triggerFrom(trigger)
+        RemoteScene(
+            remoteId = id?.takeIf { it.isNotBlank() } ?: return null,
+            name = name.orEmpty(),
+            enabled = enabled ?: true,
+            cooldownSeconds = (cooldownSeconds ?: 300).coerceAtLeast(0),
+            version = version ?: 0,
+            createdAt = SceneTimestamps.parse(createdAt) ?: updated,
+            updatedAt = updated,
+            deleted = deletedAt != null,
+            triggerJson = triggerJson,
+            actionsJson = actionsJson,
+            trigger = parsedTrigger,
+            actions = SceneCanonical.actionsFrom(actions, parsedTrigger),
+        )
+    }

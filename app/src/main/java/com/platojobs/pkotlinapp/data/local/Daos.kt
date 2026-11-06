@@ -555,15 +555,163 @@ data class SceneWithActions(
 interface SceneDao {
 
     @Transaction
-    @Query("SELECT * FROM scenes ORDER BY createdAt ASC")
+    @Query("SELECT * FROM scenes WHERE deletedAt IS NULL ORDER BY createdAt ASC")
     fun observeAll(): Flow<List<SceneWithActions>>
 
     @Transaction
-    @Query("SELECT * FROM scenes ORDER BY createdAt ASC")
+    @Query("SELECT * FROM scenes WHERE deletedAt IS NULL ORDER BY createdAt ASC")
     suspend fun getAll(): List<SceneWithActions>
+
+    /** 同步去重/冲突合并需要看到 tombstone；界面查询仍过滤 deletedAt。 */
+    @Transaction
+    @Query("SELECT * FROM scenes ORDER BY createdAt ASC")
+    suspend fun getAllIncludingDeleted(): List<SceneWithActions>
 
     @Query("SELECT * FROM scenes WHERE id = :id LIMIT 1")
     suspend fun find(id: Long): SceneEntity?
+
+    @Transaction
+    @Query("SELECT * FROM scenes WHERE id = :id LIMIT 1")
+    suspend fun findRow(id: Long): SceneWithActions?
+
+    @Query("SELECT * FROM scenes WHERE remoteId = :remoteId LIMIT 1")
+    suspend fun findByRemoteId(remoteId: String): SceneEntity?
+
+    @Query(
+        "SELECT * FROM scenes WHERE syncState = 'pending' AND remoteId IS NULL " +
+            "ORDER BY createdAt ASC",
+    )
+    suspend fun pendingUploads(): List<SceneEntity>
+
+    @Query(
+        "SELECT * FROM scenes WHERE syncState = 'pending' AND remoteId IS NOT NULL " +
+            "ORDER BY createdAt ASC",
+    )
+    suspend fun pendingUpdates(): List<SceneEntity>
+
+    @Query("SELECT * FROM scenes WHERE syncState = 'pending' AND deletedAt IS NOT NULL")
+    suspend fun pendingDeletes(): List<SceneEntity>
+
+    /** 首次上传写回服务端身份与版本；所有字段时间戳对齐服务端快照。 */
+    @Query(
+        "UPDATE scenes SET remoteId = :remoteId, version = :version, syncState = 'synced', " +
+            "syncError = NULL, serverUpdatedAt = :serverUpdatedAt, " +
+            "nameUpdatedAt = :serverUpdatedAt, enabledUpdatedAt = :serverUpdatedAt, " +
+            "cooldownUpdatedAt = :serverUpdatedAt, triggerUpdatedAt = :serverUpdatedAt, " +
+            "actionsUpdatedAt = :serverUpdatedAt WHERE id = :id",
+    )
+    suspend fun markUploaded(
+        id: Long,
+        remoteId: String,
+        version: Long,
+        serverUpdatedAt: Long,
+    )
+
+    @Query(
+        "UPDATE scenes SET remoteId = :remoteId, version = :version, syncState = 'pending', " +
+            "syncError = NULL, serverUpdatedAt = :serverUpdatedAt WHERE id = :id",
+    )
+    suspend fun linkRemote(id: Long, remoteId: String, version: Long, serverUpdatedAt: Long)
+
+    @Query(
+        "UPDATE scenes SET syncState = :syncState, syncError = :reason WHERE id = :id",
+    )
+    suspend fun markSyncState(id: Long, syncState: String, reason: String?)
+
+    /** 服务端快照合并：只覆盖本地没有更新的字段（字段级 LWW 的本地侧）。 */
+    @Query(
+        "UPDATE scenes SET name = CASE WHEN :keepName = 1 THEN name ELSE :name END, " +
+            "enabled = CASE WHEN :keepEnabled = 1 THEN enabled ELSE :enabled END, " +
+            "cooldownSeconds = CASE WHEN :keepCooldown = 1 THEN cooldownSeconds ELSE :cooldown END, " +
+            "triggerJson = CASE WHEN :keepTrigger = 1 THEN triggerJson ELSE :triggerJson END, " +
+            "actionsJson = CASE WHEN :keepActions = 1 THEN actionsJson ELSE :actionsJson END, " +
+            "nameUpdatedAt = CASE WHEN :keepName = 1 THEN nameUpdatedAt ELSE :serverUpdatedAt END, " +
+            "enabledUpdatedAt = CASE WHEN :keepEnabled = 1 THEN enabledUpdatedAt ELSE :serverUpdatedAt END, " +
+            "cooldownUpdatedAt = CASE WHEN :keepCooldown = 1 THEN cooldownUpdatedAt ELSE :serverUpdatedAt END, " +
+            "triggerUpdatedAt = CASE WHEN :keepTrigger = 1 THEN triggerUpdatedAt ELSE :serverUpdatedAt END, " +
+            "actionsUpdatedAt = CASE WHEN :keepActions = 1 THEN actionsUpdatedAt ELSE :serverUpdatedAt END, " +
+            "version = :version, serverUpdatedAt = :serverUpdatedAt WHERE id = :id",
+    )
+    suspend fun mergeServerSnapshot(
+        id: Long,
+        keepName: Boolean,
+        keepEnabled: Boolean,
+        keepCooldown: Boolean,
+        keepTrigger: Boolean,
+        keepActions: Boolean,
+        name: String,
+        enabled: Boolean,
+        cooldown: Int,
+        triggerJson: String,
+        actionsJson: String,
+        version: Long,
+        serverUpdatedAt: Long,
+    )
+
+    @Query(
+        "UPDATE scenes SET syncState = 'synced', syncError = NULL, serverUpdatedAt = :serverUpdatedAt " +
+            "WHERE id = :id",
+    )
+    suspend fun finishMerge(id: Long, serverUpdatedAt: Long)
+
+    @Query("UPDATE scenes SET deletedAt = :timestamp, syncState = 'pending', syncError = NULL WHERE id = :id")
+    suspend fun tombstone(id: Long, timestamp: Long)
+
+    @Query("UPDATE scenes SET deletedAt = :timestamp, syncState = 'synced', syncError = NULL WHERE id = :id")
+    suspend fun markServerDeleted(id: Long, timestamp: Long)
+
+    /** 服务端快照重新出现：撤销本地 tombstone（仅当本地没有更新的 pending 删除时调用）。 */
+    @Query("UPDATE scenes SET deletedAt = NULL WHERE id = :id")
+    suspend fun reviveFromServer(id: Long)
+
+    // --- 本机编辑：更新字段值、字段时间戳与 pending 状态 ---
+
+    @Query(
+        "UPDATE scenes SET name = :name, nameUpdatedAt = :updatedAt, syncState = 'pending', " +
+            "syncError = NULL WHERE id = :id",
+    )
+    suspend fun updateNameForSync(id: Long, name: String, updatedAt: Long)
+
+    @Query(
+        "UPDATE scenes SET enabled = :enabled, enabledUpdatedAt = :updatedAt, " +
+            "syncState = 'pending', syncError = NULL WHERE id = :id",
+    )
+    suspend fun updateEnabledForSync(id: Long, enabled: Boolean, updatedAt: Long)
+
+    @Query(
+        "UPDATE scenes SET cooldownSeconds = :cooldown, cooldownUpdatedAt = :updatedAt, " +
+            "syncState = 'pending', syncError = NULL WHERE id = :id",
+    )
+    suspend fun updateCooldownForSync(id: Long, cooldown: Int, updatedAt: Long)
+
+    @Query(
+        "UPDATE scenes SET triggerJson = :json, triggerUpdatedAt = :updatedAt, " +
+            "syncState = 'pending', syncError = NULL WHERE id = :id",
+    )
+    suspend fun updateTriggerForSync(id: Long, json: String, updatedAt: Long)
+
+    @Query(
+        "UPDATE scenes SET actionsJson = :json, actionsUpdatedAt = :updatedAt, " +
+            "syncState = 'pending', syncError = NULL WHERE id = :id",
+    )
+    suspend fun updateActionsForSync(id: Long, json: String, updatedAt: Long)
+
+    /** 用规范化 JSON 重建执行投影；外部只读 scenes 的 JSON，不直接改投影。 */
+    @Transaction
+    suspend fun replaceProjections(sceneId: Long, rule: RuleEntity?, actions: List<SceneActionEntity>) {
+        deleteActions(sceneId)
+        insertActions(actions.map { it.copy(sceneId = sceneId) })
+        val previous = findRuleForScene(sceneId)
+        deleteRules(sceneId)
+        if (rule != null) {
+            insertRule(
+                rule.copy(
+                    sceneId = sceneId,
+                    lastTriggeredTimestamp = previous?.lastTriggeredTimestamp ?: 0,
+                ),
+            )
+        }
+    }
 
     @Insert
     suspend fun insertScene(scene: SceneEntity): Long

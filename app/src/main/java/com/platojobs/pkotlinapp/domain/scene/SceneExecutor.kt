@@ -21,8 +21,8 @@ interface SceneRuntime {
 
     fun syncNow()
 
-    /** 投递本地通知；权限缺失或投递失败返回 false，由执行器记录失败原因。 */
-    suspend fun notify(sceneName: String, details: String): Boolean
+    /** 投递本地通知；title/body 已由执行器完成占位符渲染。 */
+    suspend fun notify(title: String, body: String): Boolean
 
     /** 把设备写入 markedAt；设备不存在返回 false。 */
     suspend fun markDevice(mac: String): Boolean
@@ -44,18 +44,23 @@ class SceneExecutor(
      */
     suspend fun run(
         scene: Scene,
+        context: SceneTriggerContext = SceneTriggerContext(),
         onActionStart: (index: Int, total: Int, action: SceneAction) -> Unit = { _, _, _ -> },
     ): SceneRunResult {
         val outcomes = mutableListOf<SceneActionOutcome>()
         val actions = scene.actions
         actions.forEachIndexed { index, action ->
             onActionStart(index, actions.size, action)
-            outcomes += execute(action, scene.name)
+            outcomes += execute(action, scene.name, context)
         }
         return SceneRunResult(sceneId = scene.id, outcomes = outcomes)
     }
 
-    private suspend fun execute(action: SceneAction, sceneName: String): SceneActionOutcome {
+    private suspend fun execute(
+        action: SceneAction,
+        sceneName: String,
+        context: SceneTriggerContext,
+    ): SceneActionOutcome {
         val failure = action.invalidReason()
         if (failure != null) {
             return SceneActionOutcome(action, false, failure)
@@ -110,14 +115,23 @@ class SceneExecutor(
                 }
 
                 SceneActionType.NOTIFY -> {
-                    if (runtime.notify(sceneName, "场景「$sceneName」已触发")) {
-                        ok(action, "已发送本地通知")
+                    // 服务端模板优先；旧本机动作没有模板时保持原有默认文案。
+                    val title = ScenePlaceholders.render(action.title, context)
+                        .ifBlank { "场景「$sceneName」" }
+                    val body = ScenePlaceholders.render(action.body, context)
+                        .ifBlank { "场景「$sceneName」已触发" }
+                    if (runtime.notify(title, body)) {
+                        ok(action, "已发送本地通知：$title")
                     } else {
                         fail(action, "通知未发送：请检查通知权限")
                     }
                 }
 
-                SceneActionType.RECORD_LOG -> ok(action, "已记录本次触发")
+                SceneActionType.RECORD_LOG -> {
+                    val message = ScenePlaceholders.render(action.message, context)
+                    val level = action.level?.takeIf { it.equals("warn", true) } ?: "info"
+                    ok(action, if (message.isBlank()) "已记录本次触发" else "[$level] $message")
+                }
 
                 SceneActionType.MARK_DEVICE -> {
                     val mac = action.deviceMac.orEmpty()

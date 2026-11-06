@@ -268,6 +268,48 @@ internal object HomeAggregationIndexSql {
     )
 }
 
+/**
+ * v19 -> v20：场景接入服务端模型。
+ *
+ * scenes 增加同步身份（remoteId/version/syncState/deletedAt/serverUpdatedAt）、
+ * 五个字段级 LWW 时间戳与规范化 trigger/actions JSON（对应服务端单行 JSONB）；
+ * scene_actions 增加 notify/log/mark_device 的模板字段；rules 增加设备绑定、
+ * 离线秒数与定时时刻/时区/星期。旧场景原样保留，首次同步时逐条上传或明确标为仅本机。
+ */
+internal object SceneSyncMigrationSql {
+    val V19_TO_V20 = listOf(
+        "ALTER TABLE scenes ADD COLUMN cooldownSeconds INTEGER NOT NULL DEFAULT 300",
+        "ALTER TABLE scenes ADD COLUMN remoteId TEXT",
+        "ALTER TABLE scenes ADD COLUMN version INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE scenes ADD COLUMN syncState TEXT NOT NULL DEFAULT 'pending'",
+        "ALTER TABLE scenes ADD COLUMN deletedAt INTEGER",
+        "ALTER TABLE scenes ADD COLUMN serverUpdatedAt INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE scenes ADD COLUMN nameUpdatedAt INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE scenes ADD COLUMN enabledUpdatedAt INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE scenes ADD COLUMN cooldownUpdatedAt INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE scenes ADD COLUMN triggerUpdatedAt INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE scenes ADD COLUMN actionsUpdatedAt INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE scenes ADD COLUMN triggerJson TEXT",
+        "ALTER TABLE scenes ADD COLUMN actionsJson TEXT",
+        "ALTER TABLE scenes ADD COLUMN syncError TEXT",
+        // 旧场景没有字段级编辑时间：用创建时间兜底，避免首次 PUT 用 0 时间戳输给服务端。
+        "UPDATE scenes SET nameUpdatedAt = createdAt, enabledUpdatedAt = createdAt, " +
+            "cooldownUpdatedAt = createdAt, triggerUpdatedAt = createdAt, " +
+            "actionsUpdatedAt = createdAt",
+        "CREATE UNIQUE INDEX IF NOT EXISTS `index_scenes_remoteId` ON `scenes` (`remoteId`)",
+        "ALTER TABLE scene_actions ADD COLUMN title TEXT",
+        "ALTER TABLE scene_actions ADD COLUMN body TEXT",
+        "ALTER TABLE scene_actions ADD COLUMN message TEXT",
+        "ALTER TABLE scene_actions ADD COLUMN level TEXT",
+        "ALTER TABLE scene_actions ADD COLUMN mark TEXT",
+        "ALTER TABLE rules ADD COLUMN deviceMac TEXT",
+        "ALTER TABLE rules ADD COLUMN offlineSeconds INTEGER NOT NULL DEFAULT 300",
+        "ALTER TABLE rules ADD COLUMN timeOfDay TEXT",
+        "ALTER TABLE rules ADD COLUMN timezone TEXT",
+        "ALTER TABLE rules ADD COLUMN daysOfWeek TEXT",
+    )
+}
+
 @Database(
     entities = [
         DeviceEntity::class,
@@ -284,7 +326,7 @@ internal object HomeAggregationIndexSql {
         CatalogItemEntity::class,
         CatalogSyncEntity::class,
     ],
-    version = 19,
+    version = 20,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -487,6 +529,12 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_19_20 = object : Migration(19, 20) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                SceneSyncMigrationSql.V19_TO_V20.forEach(db::execSQL)
+            }
+        }
+
         @Volatile
         private var instance: AppDatabase? = null
 
@@ -515,6 +563,7 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_16_17,
                     MIGRATION_17_18,
                     MIGRATION_18_19,
+                    MIGRATION_19_20,
                 )
                     .build()
                     .also { instance = it }

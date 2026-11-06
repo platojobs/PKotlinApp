@@ -38,7 +38,9 @@ class AndroidAlertContentBuilder(
                 time,
             )
 
-            RuleType.DISCONNECTED -> context.getString(
+            RuleType.DISCONNECTED,
+            RuleType.DEVICE_OFFLINE,
+            -> context.getString(
                 R.string.alert_notify_triggered_disconnected,
                 name,
                 time,

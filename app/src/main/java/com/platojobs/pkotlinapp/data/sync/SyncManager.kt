@@ -32,6 +32,8 @@ class SyncManager(
     private val readingSyncer: ReadingSyncer,
     /** 家庭同步（可选）；失败只记录家庭状态，不阻塞设备/读数同步。 */
     private val householdSyncer: HouseholdSyncer? = null,
+    /** 场景同步（可选）；失败保留本地 pending，不阻塞设备/读数同步。 */
+    private val sceneSyncer: com.platojobs.pkotlinapp.data.scene.SceneSyncer? = null,
     scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
 ) {
 
@@ -60,6 +62,7 @@ class SyncManager(
                 runCatching { readingSyncer.syncPending() }
             }
             syncHouseholdSafely()
+            syncScenesSafely()
             statusStore.recordSuccess(lastSyncAt = System.currentTimeMillis(), conflicts = 0)
             true
         } catch (e: AuthExpiredException) {
@@ -80,6 +83,7 @@ class SyncManager(
             // 设备先落服务端，再补传读数；同一 push 契约、独立 200/批的幂等批次。
             readingSyncer.syncPending()
             syncHouseholdSafely()
+            syncScenesSafely()
             statusStore.recordSuccess(
                 lastSyncAt = System.currentTimeMillis(),
                 conflicts = outcome.conflicts.size,
@@ -119,6 +123,7 @@ class SyncManager(
             applyStructuralSafely()
             readingSyncer.syncPending()
             syncHouseholdSafely()
+            syncScenesSafely()
             statusStore.recordSuccess(
                 lastSyncAt = System.currentTimeMillis(),
                 conflicts = outcome.conflicts.size,
@@ -146,8 +151,19 @@ class SyncManager(
         if (changes.isEmpty()) return
         try {
             householdSyncer?.applyStructural(changes)
+            // scene entity 与家庭/房间共用 change_log 管线；未知 entity 仍由解析层忽略。
+            sceneSyncer?.applyChanges(changes.filterIsInstance<com.platojobs.pkotlinapp.domain.sync.StructuralChange.Scene>().map { it.scene })
         } catch (_: Exception) {
             // 与家庭同步一致的降级策略：保留本机数据，不阻断主同步链路。
+        }
+    }
+
+    /** 场景同步失败不影响设备/读数；pending 保留到下次重试。 */
+    private suspend fun syncScenesSafely() {
+        try {
+            sceneSyncer?.sync()
+        } catch (_: Exception) {
+            // 离线或后端不可用时场景保持 pending。
         }
     }
 

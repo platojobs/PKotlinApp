@@ -303,7 +303,7 @@ class SceneEngineLoopTest {
 
         override fun syncNow() = Unit
 
-        override suspend fun notify(sceneName: String, details: String): Boolean {
+        override suspend fun notify(title: String, body: String): Boolean {
             notifications += 1
             return true
         }

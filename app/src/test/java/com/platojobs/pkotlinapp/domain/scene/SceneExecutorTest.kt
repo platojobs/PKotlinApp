@@ -130,7 +130,7 @@ class SceneExecutorTest {
 
         assertEquals(3, result.successCount)
         assertEquals(1, runtime.calls.count { it.startsWith("notify:") })
-        assertTrue(runtime.calls.first().startsWith("notify:回家:"))
+        assertTrue(runtime.calls.first().startsWith("notify:场景「回家」:"))
         assertTrue(runtime.calls.last() == "mark:$mac")
         assertEquals(SceneActionType.NOTIFY, result.outcomes.first().action.type)
         assertTrue(result.allSucceeded)
@@ -215,8 +215,8 @@ class SceneExecutorTest {
             calls += "sync"
         }
 
-        override suspend fun notify(sceneName: String, details: String): Boolean {
-            calls += "notify:$sceneName:$details"
+        override suspend fun notify(title: String, body: String): Boolean {
+            calls += "notify:$title:$body"
             return true
         }
 

@@ -40,9 +40,13 @@ import com.platojobs.pkotlinapp.domain.repository.SceneRunRepository
 import com.platojobs.pkotlinapp.domain.scene.SceneActionType
 import com.platojobs.pkotlinapp.domain.scene.SceneRun
 import com.platojobs.pkotlinapp.domain.scene.SceneTrigger
+import com.platojobs.pkotlinapp.data.scene.SceneCanonical
+import com.platojobs.pkotlinapp.domain.scene.SceneSyncState
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import java.util.Locale
 import java.util.UUID
 
 class DeviceRepositoryImpl(
@@ -224,19 +228,24 @@ class ScanLogRepositoryImpl(
 
 class SceneRepositoryImpl(
     private val dao: SceneDao,
+    private val deviceLookup: SceneDeviceLookup = SceneDeviceLookup.Empty,
+    private val now: () -> Long = System::currentTimeMillis,
 ) : SceneRepository {
 
     override fun observeScenes(): Flow<List<Scene>> =
-        dao.observeAll().map { rows -> rows.map { it.toDomain() } }
+        combine(dao.observeAll(), deviceLookup.observeKnown()) { rows, known ->
+            rows.map { it.toDomain(known) }
+        }
 
     override suspend fun getScenes(): List<Scene> =
-        dao.getAll().map { it.toDomain() }
+        dao.getAll().map { it.toDomain(knownMacs()) }
 
     override suspend fun getScene(id: Long): Scene? =
-        dao.getAll().firstOrNull { it.scene.id == id }?.toDomain()
+        dao.getAll().firstOrNull { it.scene.id == id }?.toDomain(knownMacs())
 
     override suspend fun findSceneByRuleId(ruleId: Long): Scene? =
-        dao.getAll().firstOrNull { row -> row.rules.any { it.id == ruleId } }?.toDomain()
+        dao.getAll().firstOrNull { row -> row.rules.any { it.id == ruleId } }
+            ?.toDomain(knownMacs())
 
     override suspend fun saveScene(
         id: Long?,
@@ -245,45 +254,114 @@ class SceneRepositoryImpl(
         trigger: SceneTrigger?,
         enabled: Boolean,
     ): Long {
-        val entities = actions.mapIndexed { index, action ->
-            SceneActionEntity(
-                sceneId = 0,
-                position = index,
-                type = action.type.name,
-                deviceMac = action.deviceMac,
-                muteMinutes = action.muteMinutes,
-            )
-        }
-        val rule = trigger?.takeIf { it != SceneTrigger.Manual }?.toRuleEntity(enabled)
-        return if (id == null) {
-            dao.createSceneWithRule(
+        val timestamp = now()
+        val preparedTrigger = trigger?.let { resolveDeviceType(it) }
+        val encoded = preparedTrigger?.takeIf { it != SceneTrigger.Manual }
+            ?.let { SceneCanonical.encode(it, actions) }
+        val rule = trigger?.takeIf { it != SceneTrigger.Manual }
+            ?.let { SceneCanonical.ruleEntity(it, enabled) }
+        val actionEntities = SceneCanonical.actionEntities(actions)
+        if (id == null) {
+            val syncState = if (encoded != null) SceneSyncState.PENDING else SceneSyncState.LOCAL_ONLY
+            return dao.createSceneWithRule(
                 scene = SceneEntity(
                     name = name,
-                    createdAt = System.currentTimeMillis(),
+                    createdAt = timestamp,
                     enabled = enabled,
+                    syncState = syncState.storage,
+                    syncError = unsupportedReason(trigger, actions, encoded != null),
+                    nameUpdatedAt = timestamp,
+                    enabledUpdatedAt = timestamp,
+                    cooldownUpdatedAt = timestamp,
+                    triggerUpdatedAt = timestamp,
+                    actionsUpdatedAt = timestamp,
+                    triggerJson = encoded?.triggerJson,
+                    actionsJson = encoded?.actionsJson,
                 ),
                 rule = rule,
-                actions = entities,
+                actions = actionEntities,
             )
-        } else {
-            dao.updateSceneWithRule(
-                sceneId = id,
-                name = name,
-                enabled = enabled,
-                rule = rule,
-                actions = entities,
-            )
-            id
         }
+
+        val existing = dao.find(id) ?: return id
+        dao.updateSceneWithRule(
+            sceneId = id,
+            name = name,
+            enabled = enabled,
+            rule = rule,
+            actions = actionEntities,
+        )
+        // 只更新真正变化的字段，保留服务端字段级 LWW 的粒度。
+        if (existing.name != name) dao.updateNameForSync(id, name, timestamp)
+        if (existing.enabled != enabled) dao.updateEnabledForSync(id, enabled, timestamp)
+        val triggerChanged = existing.triggerJson != encoded?.triggerJson
+        val actionsChanged = existing.actionsJson != encoded?.actionsJson
+        if (encoded != null) {
+            if (triggerChanged) dao.updateTriggerForSync(id, encoded.triggerJson, timestamp)
+            if (actionsChanged) dao.updateActionsForSync(id, encoded.actionsJson, timestamp)
+            if (existing.syncState != SceneSyncState.SYNCED.storage) {
+                dao.markSyncState(id, SceneSyncState.PENDING.storage, null)
+            }
+        } else if (existing.remoteId == null) {
+            dao.markSyncState(
+                id,
+                SceneSyncState.LOCAL_ONLY.storage,
+                unsupportedReason(trigger, actions, false),
+            )
+        }
+        return id
     }
 
     override suspend fun setEnabled(id: Long, enabled: Boolean) {
         dao.setEnabled(id, enabled)
         dao.setRulesEnabled(id, enabled)
+        dao.updateEnabledForSync(id, enabled, now())
     }
 
+    /** 已上传场景走软删 tombstone，等同步层 DELETE 成功后再物理删除；仅本机场景直接删。 */
     override suspend fun deleteScene(id: Long) {
-        dao.deleteSceneWithRule(id)
+        val entity = dao.find(id)
+        if (entity?.remoteId == null) {
+            dao.deleteSceneWithRule(id)
+        } else {
+            dao.tombstone(id, now())
+            dao.setRulesEnabled(id, false)
+        }
+    }
+
+    private suspend fun knownMacs(): Set<String> = deviceLookup.known()
+
+    private suspend fun deviceTypeOf(mac: String): String? = deviceLookup.deviceType(mac)
+
+    /** metric_threshold 上传时必须带目录型号；本机旧场景通常没存，这里按设备补齐。 */
+    private suspend fun resolveDeviceType(trigger: SceneTrigger): SceneTrigger =
+        if (trigger is SceneTrigger.MetricThreshold && trigger.deviceType.isNullOrBlank()) {
+            trigger.copy(deviceType = trigger.deviceMac?.let { deviceTypeOf(it) })
+        } else {
+            trigger
+        }
+
+    private fun unsupportedReason(
+        trigger: SceneTrigger?,
+        actions: List<SceneAction>,
+        representable: Boolean,
+    ): String? = when {
+        representable -> null
+        trigger == null || trigger == SceneTrigger.Manual ->
+            "手动场景无需上传；若需跨设备使用请配置受支持的触发条件"
+        actions.any { it.serverKind == null } ->
+            "动作包含设备连接/采集等仅本机能力，服务端无法执行"
+        trigger is SceneTrigger.Disconnected ->
+            "全局断开触发未绑定设备，服务端无法表达"
+        trigger is SceneTrigger.LowRssi && trigger.deviceMac.isNullOrBlank() ->
+            "RSSI 触发未绑定设备"
+        trigger is SceneTrigger.MetricThreshold && trigger.deviceMac.isNullOrBlank() ->
+            "指标触发未绑定设备"
+        trigger is SceneTrigger.MetricThreshold && trigger.deviceType == null ->
+            "指标触发缺少设备型号（未在目录中注册）"
+        trigger is SceneTrigger.Schedule && trigger.timeOfDay == null ->
+            "本机间隔定时服务端不支持，需改为每天固定时刻"
+        else -> "服务端模型不支持该场景"
     }
 }
 
@@ -306,68 +384,76 @@ class SceneRunRepositoryImpl(
     override suspend fun clear() = dao.clear()
 }
 
-private fun SceneTrigger.toRuleEntity(enabled: Boolean): RuleEntity = when (this) {
-    SceneTrigger.Manual -> error("手动场景不应创建触发规则")
-    SceneTrigger.Disconnected -> RuleEntity(
-        type = RuleType.DISCONNECTED.name,
-        threshold = 0,
-        enabled = enabled,
-        createdAt = 0L,
-        lastTriggeredTimestamp = 0L,
-    )
+/** 场景需要的设备信息：已知设备集合（判断 deviceMissing）与型号（上传 metric 条件）。 */
+interface SceneDeviceLookup {
+    fun observeKnown(): Flow<Set<String>>
+    suspend fun known(): Set<String>
+    suspend fun deviceType(mac: String): String?
 
-    is SceneTrigger.LowRssi -> RuleEntity(
-        type = RuleType.LOW_RSSI.name,
-        threshold = threshold,
-        enabled = enabled,
-        createdAt = 0L,
-        lastTriggeredTimestamp = 0L,
-        comparator = RuleComparator.LESS.name,
-        thresholdValue = threshold.toDouble(),
-    )
-
-    is SceneTrigger.MetricThreshold -> RuleEntity(
-        type = RuleType.METRIC_THRESHOLD.name,
-        threshold = 0,
-        enabled = enabled,
-        createdAt = 0L,
-        lastTriggeredTimestamp = 0L,
-        metric = metric,
-        comparator = comparator.name,
-        thresholdValue = thresholdValue,
-        consecutive = MetricThreshold.sanitizeConsecutive(consecutive),
-    )
-
-    is SceneTrigger.Schedule -> RuleEntity(
-        type = RuleType.SCHEDULE.name,
-        threshold = 0,
-        enabled = enabled,
-        createdAt = 0L,
-        lastTriggeredTimestamp = 0L,
-        intervalMinutes = intervalMinutes,
-    )
+    /** 测试/离线兜底：没有设备信息时不标 deviceMissing，也不补型号。 */
+    object Empty : SceneDeviceLookup {
+        override fun observeKnown(): Flow<Set<String>> = flowOf(emptySet())
+        override suspend fun known(): Set<String> = emptySet()
+        override suspend fun deviceType(mac: String): String? = null
+    }
 }
 
-private fun SceneWithActions.toDomain(): Scene = Scene(
-    id = scene.id,
-    name = scene.name,
-    createdAt = scene.createdAt,
-    enabled = scene.enabled,
-    trigger = rules.firstOrNull()?.let { rule ->
+/** Room 实现：MAC 与 externalId 都视为设备身份，统一大写比较。 */
+class RoomSceneDeviceLookup(private val deviceDao: DeviceDao) : SceneDeviceLookup {
+    override fun observeKnown(): Flow<Set<String>> =
+        deviceDao.observeDevices().map { devices -> devices.toKnownSet() }
+
+    override suspend fun known(): Set<String> = deviceDao.getAllDevices().toKnownSet()
+
+    override suspend fun deviceType(mac: String): String? = deviceDao.find(mac)?.deviceType
+
+    private fun List<com.platojobs.pkotlinapp.data.local.DeviceEntity>.toKnownSet(): Set<String> =
+        flatMap { listOf(it.mac, it.externalId) }
+            .map { it.uppercase(Locale.US) }
+            .toSet()
+}
+
+/**
+ * 场景映射：有规范化 JSON 时以 JSON 为唯一真值（服务端场景），
+ * 否则回落到 rules/scene_actions 投影（本机旧场景）。
+ */
+private fun SceneWithActions.toDomain(knownMacs: Set<String>): Scene {
+    val canonicalTrigger = SceneCanonical.triggerFrom(SceneCanonical.triggerDto(scene.triggerJson))
+    val trigger = canonicalTrigger ?: rules.firstOrNull()?.let { rule ->
         when (ruleTypeOf(rule.type)) {
             RuleType.METRIC_THRESHOLD -> SceneTrigger.MetricThreshold(
                 metric = rule.metric.orEmpty(),
                 comparator = RuleComparator.parse(rule.comparator),
                 thresholdValue = rule.thresholdValue,
                 consecutive = MetricThreshold.sanitizeConsecutive(rule.consecutive),
+                deviceMac = rule.deviceMac,
             )
 
-            RuleType.LOW_RSSI -> SceneTrigger.LowRssi(rule.threshold)
-            RuleType.SCHEDULE -> SceneTrigger.Schedule(rule.intervalMinutes ?: 30)
+            RuleType.LOW_RSSI -> SceneTrigger.LowRssi(rule.threshold, rule.deviceMac)
+
+            RuleType.DEVICE_OFFLINE -> rule.deviceMac?.let {
+                SceneTrigger.DeviceOffline(it, rule.offlineSeconds)
+            }
+
+            RuleType.SCHEDULE -> SceneTrigger.Schedule(
+                intervalMinutes = rule.intervalMinutes ?: 30,
+                timeOfDay = rule.timeOfDay,
+                timezone = rule.timezone ?: "UTC",
+                daysOfWeek = rule.daysOfWeek.orEmpty()
+                    .split(',')
+                    .mapNotNull { it.trim().toIntOrNull() }
+                    .filter { it in 1..7 }
+                    .toSet(),
+            )
+
             RuleType.DISCONNECTED, RuleType.BOND_LOST -> SceneTrigger.Disconnected
         }
-    },
-    actions = actions
+    }
+    val canonicalActions = SceneCanonical.actionsFrom(
+        SceneCanonical.actionDtos(scene.actionsJson),
+        trigger,
+    ).takeIf { scene.actionsJson != null }
+    val actions = canonicalActions ?: actions
         .sortedBy { it.position }
         .mapNotNull { entity ->
             val type = runCatching { SceneActionType.valueOf(entity.type) }.getOrNull()
@@ -376,9 +462,32 @@ private fun SceneWithActions.toDomain(): Scene = Scene(
                 type = type,
                 deviceMac = entity.deviceMac,
                 muteMinutes = entity.muteMinutes,
+                title = entity.title,
+                body = entity.body,
+                message = entity.message,
+                level = entity.level,
+                mark = entity.mark,
             )
-        },
-)
+        }
+    val referencedMac = when (trigger) {
+        is SceneTrigger.DeviceOffline -> trigger.deviceMac
+        is SceneTrigger.LowRssi -> trigger.deviceMac
+        is SceneTrigger.MetricThreshold -> trigger.deviceMac
+        else -> null
+    }?.uppercase(Locale.US)
+    return Scene(
+        id = scene.id,
+        name = scene.name,
+        createdAt = scene.createdAt,
+        enabled = scene.enabled,
+        trigger = trigger,
+        actions = actions,
+        remoteId = scene.remoteId,
+        syncState = SceneSyncState.parse(scene.syncState),
+        deviceMissing = referencedMac != null && referencedMac !in knownMacs,
+        cooldownSeconds = scene.cooldownSeconds,
+    )
+}
 
 private fun SceneRunEntity.toDomain() = SceneRun(
     id = id,
@@ -476,6 +585,11 @@ private fun RuleEntity.toDomain() = DeviceRule(
     consecutive = MetricThreshold.sanitizeConsecutive(consecutive),
     sceneId = sceneId,
     intervalMinutes = intervalMinutes,
+    deviceMac = deviceMac,
+    offlineSeconds = offlineSeconds,
+    timeOfDay = timeOfDay,
+    timezone = timezone,
+    daysOfWeek = daysOfWeek,
 )
 
 private fun RuleEventEntity.toDomain() = RuleEvent(

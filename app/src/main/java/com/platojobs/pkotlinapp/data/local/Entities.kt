@@ -147,6 +147,14 @@ data class RuleEntity(
     val sceneId: Long? = null,
     // 定时规则的执行间隔（分钟）；仅 SCHEDULE 规则使用。
     val intervalMinutes: Int? = null,
+    // 服务端条件映射：设备级触发绑定；null 表示旧规则对所有设备生效。
+    val deviceMac: String? = null,
+    // device_offline：设备离线判定秒数。
+    @ColumnInfo(defaultValue = "300") val offlineSeconds: Int = 300,
+    // schedule：本地时刻（HH:MM）+ IANA 时区 + ISO 星期（1=周一，CSV）；空表示按间隔执行。
+    val timeOfDay: String? = null,
+    val timezone: String? = null,
+    val daysOfWeek: String? = null,
 )
 
 @Entity(
@@ -168,15 +176,45 @@ data class RuleEventEntity(
 )
 
 /**
- * 本地场景：有序动作组合，仅保存在本机，不参与云端同步。
+ * 本地场景：身份/展示字段 + 服务端规范化载荷（triggerJson/actionsJson）。
+ *
+ * 双向映射方案：
+ * - [triggerJson]/[actionsJson] 是同步的**唯一真值**（对应服务端单行 JSONB 的 trigger/actions）；
+ * - `scene_actions` 与 `rules` 是执行投影，只由这两个 JSON 重新生成，界面不直接改投影；
+ * - 五个字段各自的 [nameUpdatedAt] 等是字段级 LWW 的本地时间戳；
+ * - 无法用服务端模型表达的历史场景保留投影，标为 `localOnly`，不会因同步失败被删除。
  */
-@Entity(tableName = "scenes")
+@Entity(tableName = "scenes", indices = [Index(value = ["remoteId"], unique = true)])
 data class SceneEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val name: String,
     val createdAt: Long,
     // 停用后自动触发不再执行；手动运行仍可用。
     @ColumnInfo(defaultValue = "1") val enabled: Boolean = true,
+    /** 服务端冷却（秒），默认 300；本地旧场景迁移后同样使用该值。 */
+    @ColumnInfo(defaultValue = "300") val cooldownSeconds: Int = 300,
+    /** 服务端场景 UUID；null 表示本机新建或尚未上传成功。 */
+    val remoteId: String? = null,
+    /** 服务端版本号，仅在至少一个字段被应用时自增。 */
+    @ColumnInfo(defaultValue = "0") val version: Long = 0,
+    /** pending / synced / localOnly。localOnly 表示服务端模型无法表达，明确保留在本机。 */
+    @ColumnInfo(defaultValue = "'pending'") val syncState: String = "pending",
+    /** 软删除时间；界面按 deletedAt IS NULL 过滤，tombstone 等同步完成后再物理删除。 */
+    val deletedAt: Long? = null,
+    /** 最近一次应用服务端快照的 updatedAt；用于判断哪些字段本地改得更晚。 */
+    @ColumnInfo(defaultValue = "0") val serverUpdatedAt: Long = 0,
+    // 五个字段各自的最后修改时间（毫秒）；PUT 时逐字段上报。
+    @ColumnInfo(defaultValue = "0") val nameUpdatedAt: Long = 0,
+    @ColumnInfo(defaultValue = "0") val enabledUpdatedAt: Long = 0,
+    @ColumnInfo(defaultValue = "0") val cooldownUpdatedAt: Long = 0,
+    @ColumnInfo(defaultValue = "0") val triggerUpdatedAt: Long = 0,
+    @ColumnInfo(defaultValue = "0") val actionsUpdatedAt: Long = 0,
+    /** 规范化 trigger JSON；null 表示尚未物化（旧场景首次上传时生成）。 */
+    val triggerJson: String? = null,
+    /** 规范化 actions JSON（1–4 个服务端动作）。 */
+    val actionsJson: String? = null,
+    /** 无法同步/上次同步失败的可读原因，界面用于解释「仅本机」。 */
+    val syncError: String? = null,
 )
 
 /**
@@ -224,6 +262,12 @@ data class SceneActionEntity(
     val deviceMac: String? = null,
     /** 静音告警的分钟数（10/30/60）。 */
     val muteMinutes: Int? = null,
+    // 服务端动作模板：notify(title/body)、log(message/level)、mark_device(mark)。
+    val title: String? = null,
+    val body: String? = null,
+    val message: String? = null,
+    val level: String? = null,
+    val mark: String? = null,
 )
 
 /**

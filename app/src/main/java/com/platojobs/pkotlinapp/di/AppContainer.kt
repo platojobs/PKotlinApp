@@ -136,9 +136,29 @@ class AppContainer(context: Context) {
         }
     }
 
-    /** 本地场景仓库：仅本机，不参与云端同步。 */
+    /** 场景仓库：本地执行投影 + 服务端规范化 JSON 的双向映射。 */
     val sceneRepository: SceneRepository by lazy {
-        SceneRepositoryImpl(database.sceneDao())
+        SceneRepositoryImpl(
+            database.sceneDao(),
+            com.platojobs.pkotlinapp.data.repository.RoomSceneDeviceLookup(database.deviceDao()),
+        )
+    }
+
+    private val remoteSceneDataSource by lazy {
+        com.platojobs.pkotlinapp.data.scene.RemoteSceneDataSource(
+            com.platojobs.pkotlinapp.data.remote.ApiClient.createScenes(),
+            secureTokenStore,
+        )
+    }
+
+    /** 场景同步：GET /scenes 基线 + change_log scene + 离线补传。 */
+    private val sceneSyncer by lazy {
+        com.platojobs.pkotlinapp.data.scene.SceneSyncer(
+            dao = database.sceneDao(),
+            deviceDao = database.deviceDao(),
+            remote = remoteSceneDataSource,
+            onScenesChanged = { ruleEngine.refresh() },
+        )
     }
 
     /** 场景执行记录：由引擎真实写入，界面只读。 */
@@ -267,6 +287,7 @@ class AppContainer(context: Context) {
                 repository = readingRepository,
             ),
             householdSyncer = householdRepository,
+            sceneSyncer = sceneSyncer,
         )
     }
 

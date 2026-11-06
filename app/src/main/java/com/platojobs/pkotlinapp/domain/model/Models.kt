@@ -8,6 +8,8 @@ enum class RuleType {
     METRIC_THRESHOLD,
     /** 定时规则：按固定间隔触发，由引擎的定时 tick 消费。 */
     SCHEDULE,
+    /** 服务端 device_offline：指定设备超过 offlineSeconds 未出现；由定时 tick 判定。 */
+    DEVICE_OFFLINE,
 }
 
 /** 指标阈值比较符；[symbol] 用于展示与存储，[matches] 为纯判定。 */
@@ -237,6 +239,14 @@ data class DeviceRule(
     val sceneId: Long? = null,
     /** 定时规则的执行间隔（分钟）。 */
     val intervalMinutes: Int? = null,
+    /** 服务端条件的设备绑定；null 表示旧规则对所有设备生效。 */
+    val deviceMac: String? = null,
+    /** device_offline 的离线判定秒数。 */
+    val offlineSeconds: Int = 300,
+    /** schedule 的本地时刻（HH:MM）/ IANA 时区 / ISO 星期（1=周一）；interval 规则为空。 */
+    val timeOfDay: String? = null,
+    val timezone: String? = null,
+    val daysOfWeek: String? = null,
 ) {
     val isMetricRule: Boolean get() = type == RuleType.METRIC_THRESHOLD
 }

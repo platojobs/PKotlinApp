@@ -25,22 +25,23 @@ import time
 
 DB_PATH = "databases/device_dashboard.db"
 LOCAL_READING_PREFIX = "seed-local-"
-STALE_MACS = {"AA:BB:CC:00:01:0B", "AA:BB:CC:00:01:0C"}
+# 按设备名匹配：MAC 由 seed-screenshots.py 随机生成，脚本不复制一份易漂移的 MAC 常量。
+STALE_NAMES = {"阳台温湿度计", "书房备用温湿度计"}
 REJECTED_SCENE_NAME = "主卧设备离线提醒"
 # 与 scripts/seed-screenshots.py 的设备/房间归属保持一致。
 DEVICE_ROOM = {
-    "AA:BB:CC:00:01:01": "客厅",
-    "AA:BB:CC:00:01:02": "客厅",
-    "AA:BB:CC:00:01:03": "主卧",
-    "AA:BB:CC:00:01:04": "主卧",
-    "AA:BB:CC:00:01:05": "次卧",
-    "AA:BB:CC:00:01:06": "次卧",
-    "AA:BB:CC:00:01:07": "厨房",
-    "AA:BB:CC:00:01:08": "厨房",
-    "AA:BB:CC:00:01:09": "客厅",
-    "AA:BB:CC:00:01:0A": "书房",
-    "AA:BB:CC:00:01:0B": "阳台",
-    "AA:BB:CC:00:01:0C": "书房",
+    "客厅温湿度计": "客厅",
+    "客厅心率带": "客厅",
+    "主卧温湿度计": "主卧",
+    "主卧体脂秤": "主卧",
+    "次卧温湿度计": "次卧",
+    "次卧心率带": "次卧",
+    "厨房温湿度计": "厨房",
+    "厨房食材秤": "厨房",
+    "客厅骑行台": "客厅",
+    "书房心率带": "书房",
+    "阳台温湿度计": "阳台",
+    "书房备用温湿度计": "书房",
 }
 
 DENSE_STEP_MIN = 10
@@ -149,16 +150,16 @@ def main():
         )
     }
     for index, (mac, name, _) in enumerate(devices):
-        room = DEVICE_ROOM.get(mac)
+        room = DEVICE_ROOM.get(name)
         room_id, household_id, remote_room_id = rooms.get(room, (None, None, None)) \
             if room else (None, None, None)
-        seen = now_ms - 3 * 86_400_000 if mac in STALE_MACS else now_ms - (index % 5) * 60_000
+        seen = now_ms - 3 * 86_400_000 if name in STALE_NAMES else now_ms - (index % 5) * 60_000
         cur.execute(
             "UPDATE devices SET lastSeenTimestamp = ?, lastRssi = ?, roomId = ?, "
             "remoteRoomId = ?, householdId = ? WHERE mac = ?",
             (
                 seen,
-                -82 if mac in STALE_MACS else -55 - (index % 4) * 7,
+                -82 if name in STALE_NAMES else -55 - (index % 4) * 7,
                 room_id,
                 remote_room_id,
                 household_id,
@@ -173,7 +174,7 @@ def main():
         )
     reading_count = 0
     for mac, name, dtype in devices:
-        end = aligned - 3 * 86_400_000 if mac in STALE_MACS else aligned
+        end = aligned - 3 * 86_400_000 if name in STALE_NAMES else aligned
         metrics = METRICS_BY_TYPE.get(dtype, [])
         # 电量对每台设备都造，但低频（每小时），避免行数无谓膨胀。
         streams = [(m, STEP_MIN) for m in metrics] + [("battery", 60)]
@@ -212,7 +213,7 @@ def main():
             (
                 mac,
                 name,
-                -86 if mac in STALE_MACS else -48 - (index % 5) * 8,
+                -86 if name in STALE_NAMES else -48 - (index % 5) * 8,
                 now_ms - (index + 1) * 7 * 60_000,
             )
         )

@@ -96,24 +96,24 @@ MEMBER2_USER_ID = member_auth["userId"]
 # 12 台设备：类型来自 /catalog，分到 3 个家庭 / 6 个房间；后 2 台只有 3 天前的读数（演示「离线」）。
 DEVICES = [
     # (externalId, deviceType, name, household, room, metrics)
-    ("AA:BB:CC:00:01:01", "environmental_sensor", "客厅温湿度计", "我的家", "客厅", ["temperature_celsius", "relative_humidity", "pressure_hpa"]),
-    ("AA:BB:CC:00:01:02", "heart_rate_monitor", "客厅心率带", "我的家", "客厅", ["heart_rate"]),
-    ("AA:BB:CC:00:01:03", "environmental_sensor", "主卧温湿度计", "我的家", "主卧", ["temperature_celsius", "relative_humidity"]),
-    ("AA:BB:CC:00:01:04", "smart_scale", "主卧体脂秤", "我的家", "主卧", ["weight_kg", "body_fat_percent", "bmi"]),
-    ("AA:BB:CC:00:01:05", "environmental_sensor", "次卧温湿度计", "我的家", "次卧", ["temperature_celsius", "relative_humidity"]),
-    ("AA:BB:CC:00:01:06", "heart_rate_monitor", "次卧心率带", "我的家", "次卧", ["heart_rate"]),
-    ("AA:BB:CC:00:01:07", "environmental_sensor", "厨房温湿度计", "父母家", "厨房", ["temperature_celsius", "relative_humidity", "pressure_hpa"]),
-    ("AA:BB:CC:00:01:08", "smart_scale", "厨房食材秤", "父母家", "厨房", ["weight_kg"]),
-    ("AA:BB:CC:00:01:09", "cycling_speed_cadence", "客厅骑行台", "我的家", "客厅", ["cadence_rpm", "wheel_speed_kmh"]),
-    ("AA:BB:CC:00:01:0A", "heart_rate_monitor", "书房心率带", "办公室", "书房", ["heart_rate"]),
+    ("C8:47:8C:3D:9E:01", "environmental_sensor", "客厅温湿度计", "我的家", "客厅", ["temperature_celsius", "relative_humidity", "pressure_hpa"]),
+    ("C8:47:8C:7B:24:02", "heart_rate_monitor", "客厅心率带", "我的家", "客厅", ["heart_rate"]),
+    ("C8:47:8C:1C:5A:03", "environmental_sensor", "主卧温湿度计", "我的家", "主卧", ["temperature_celsius", "relative_humidity"]),
+    ("C8:47:8C:9F:08:04", "smart_scale", "主卧体脂秤", "我的家", "主卧", ["weight_kg", "body_fat_percent", "bmi"]),
+    ("C8:47:8C:2E:B7:05", "environmental_sensor", "次卧温湿度计", "我的家", "次卧", ["temperature_celsius", "relative_humidity"]),
+    ("C8:47:8C:6A:43:06", "heart_rate_monitor", "次卧心率带", "我的家", "次卧", ["heart_rate"]),
+    ("C8:47:8C:0D:92:07", "environmental_sensor", "厨房温湿度计", "父母家", "厨房", ["temperature_celsius", "relative_humidity", "pressure_hpa"]),
+    ("C8:47:8C:8B:11:08", "smart_scale", "厨房食材秤", "父母家", "厨房", ["weight_kg"]),
+    ("C8:47:8C:4F:C6:09", "cycling_speed_cadence", "客厅骑行台", "我的家", "客厅", ["cadence_rpm", "wheel_speed_kmh"]),
+    ("C8:47:8C:A2:38:0A", "heart_rate_monitor", "书房心率带", "办公室", "书房", ["heart_rate"]),
     # 这两台只有 3 天前的数据，用来展示「长时间没有新读数」。
-    ("AA:BB:CC:00:01:0B", "environmental_sensor", "阳台温湿度计", "父母家", "阳台", ["temperature_celsius", "relative_humidity"]),
-    ("AA:BB:CC:00:01:0C", "environmental_sensor", "书房备用温湿度计", "办公室", "书房", ["temperature_celsius", "relative_humidity"]),
+    ("C8:47:8C:5C:70:0B", "environmental_sensor", "阳台温湿度计", "父母家", "阳台", ["temperature_celsius", "relative_humidity"]),
+    ("C8:47:8C:EE:2D:0C", "environmental_sensor", "书房备用温湿度计", "办公室", "书房", ["temperature_celsius", "relative_humidity"]),
 ]
-STALE = {"AA:BB:CC:00:01:0B", "AA:BB:CC:00:01:0C"}
+STALE = {"C8:47:8C:5C:70:0B", "C8:47:8C:EE:2D:0C"}
 # 额外推送一台「幽灵设备」并随后软删：它的场景引用会变成 deviceMissing，
 # 而不影响上面 12 台可见设备。它不归属任何家庭。
-GHOST = ("AA:BB:CC:00:01:0D", "environmental_sensor", "已移除的阳台备机", None, "阳台", ["temperature_celsius"])
+GHOST = ("C8:47:8C:19:BF:0D", "environmental_sensor", "已移除的阳台备机", None, "阳台", ["temperature_celsius"])
 
 METRIC_RANGES = {
     "temperature_celsius": (18.0, 30.0, "celsius"),
@@ -275,7 +275,7 @@ SCENES = [
         "cooldownSeconds": 600,
         "trigger": {
             "kind": "metric_threshold",
-            "device": {"platform": "android", "externalId": "AA:BB:CC:00:01:01"},
+            "device": {"platform": "android", "externalId": "C8:47:8C:3D:9E:01"},
             "deviceType": "environmental_sensor",
             "metric": {
                 "metric": "temperature_celsius",
@@ -295,7 +295,7 @@ SCENES = [
         "cooldownSeconds": 1800,
         "trigger": {
             "kind": "device_offline",
-            "device": {"platform": "android", "externalId": "AA:BB:CC:00:01:03"},
+            "device": {"platform": "android", "externalId": "C8:47:8C:1C:5A:03"},
             "offlineSeconds": 900,
         },
         "actions": [{"kind": "notify", "title": "{device} 离线", "body": "主卧设备已离线，请检查供电"}],
@@ -306,7 +306,7 @@ SCENES = [
         "cooldownSeconds": 120,
         "trigger": {
             "kind": "rssi_below",
-            "device": {"platform": "android", "externalId": "AA:BB:CC:00:01:0D"},
+            "device": {"platform": "android", "externalId": "C8:47:8C:19:BF:0D"},
             "rssiThreshold": -75,
         },
         "actions": [{"kind": "log", "message": "{device} 信号低于 -75 dBm", "level": "info"}],

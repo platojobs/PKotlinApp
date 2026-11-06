@@ -1,4 +1,4 @@
-# Google Play Data safety 对照（v0.9.0）
+# Google Play Data safety 对照（v0.30.0）
 
 按 Play Console「Data safety」表单逐项对照本项目**实际实现**。每一行都给出代码/接口证据；未实现的能力不申报。
 
@@ -15,6 +15,7 @@
 | Financial info | 无 | 否 | 否 | — | — | — | — | 市场页无购物车/订单/支付 |
 | Messages / Contacts / Calendar / Photos / Videos / Audio / Files / Web browsing | 无 | 否 | 否 | — | — | — | — | Manifest 无对应权限；无相关 API 调用 |
 | Advertising ID | 无 | 否 | 否 | — | — | — | — | 依赖列表无广告 SDK；无 `AdvertisingIdClient` |
+| Push notification token | 推送令牌（Room v22 预留 `push_devices`） | 否（本版本未接入 FCM，不产生 token） | 否 | — | — | — | — | `data/push/UnavailablePushTokenProvider.kt` |
 
 **共享结论**：数据只发送到本项目自建后端，用于匿名账号同步与恢复；无第三方广告、分析、推送或社交接收方。用户主动导出并分享文件时，接收方由用户在系统分享面板中选择，属于用户主动行为。
 
@@ -38,6 +39,7 @@
 5. **未同步读数**：本机清理只删除 `syncState = synced` 且超过 7 天的读数；未同步读数会保留到同步成功，属于防止数据丢失的实现细节，隐私政策已如实说明。
 6. **位置数据**：应用不调用定位 API，不读取经纬度，不上传位置；Android 11 及以下的 `ACCESS_FINE_LOCATION` 仅用于满足系统 BLE 扫描限制。
 7. **崩溃数据**：无崩溃上报 SDK；`lastError` 与 Logcat 仅在本机，不上传，因此 Data safety 的 Crash logs / Diagnostics 填「不收集」。
+8. **推送令牌**：Room v22 新增本机 `push_devices` 表并接入注册流程，但工程没有 `google-services.json`，默认 `UnavailablePushTokenProvider` 始终返回「未配置」、不产生 token，也不会向服务端注册。只有未来接入 FCM 并拿到真实 token 后才可能上报推送令牌；当前版本 Data safety 填「不收集」。
 
 ## 4. 表单填写速查
 
@@ -45,7 +47,7 @@
 - **Is all of the user data collected by your app encrypted in transit?** 是（生产 HTTPS）。
 - **Do you provide a way for users to request that their data is deleted?** 是（应用内注销账号；另可移除设备/清空日志）。
 - **Data types**：Health info（心率）、Device or other IDs（MAC/安装 UUID/匿名账号 ID）、App activity → Other actions（传感器读数与 RSSI 记录）。
-- **Data not collected**：位置、个人身份信息、财务信息、消息、通讯录、日历、照片/视频、音频、文件、网页浏览、广告 ID、崩溃日志、诊断数据。
+- **Data not collected**：位置、个人身份信息、财务信息、消息、通讯录、日历、照片/视频、音频、文件、网页浏览、广告 ID、崩溃日志、诊断数据、推送令牌（未接入 FCM）。
 - **Data shared with third parties**：无。
 - **Data collection optional**：同步需要匿名账号；不联网时应用以纯本地模式运行（设备与读数仍可在本机查看）。
 - **Ads / IAP**：均无。
@@ -65,4 +67,5 @@
 | 注销流程 | `domain/account/AccountService.kt` |
 | 导出字段与分享 | `domain/export/ReadingCsv.kt`、`domain/account/AccountExportJson.kt`、`ui/common/FileSharing.kt` |
 | 无广告/崩溃/分析 SDK | `app/build.gradle.kts`、`gradle/libs.versions.toml` |
+| 推送注册（未配置 FCM，不产生 token） | `data/push/UnavailablePushTokenProvider.kt`、`domain/push/PushRegistration.kt` |
 | Release 禁止明文 | `app/src/main/AndroidManifest.xml`（无 `usesCleartextTraffic`）；`app/src/debug/AndroidManifest.xml`（仅 Debug 放开） |

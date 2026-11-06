@@ -716,27 +716,27 @@ Debug 包路径：`app/build/outputs/apk/debug/app-debug.apk`
 
 `app/build.gradle.kts` 从**仓库根目录的 `keystore.properties`** 读取签名信息；该文件与密钥库均被 `.gitignore` 覆盖，不会提交。
 
-`keystore.properties` 示例（放在仓库根目录，**不要提交**）：
-
-```properties
-storeFile=../.pkotlinapp-secrets/pkotlinapp-release.jks
-storePassword=<你的密码>
-keyAlias=pkotlinapp
-keyPassword=<你的密码>
-```
-
-`storeFile` 相对仓库根目录解析；密钥库放在仓库外（如 `../.pkotlinapp-secrets/`）。
-
-生成密钥库：
+推荐用脚本生成（自动写入 `keystore.properties`，密码通过 `-storepass:env` 传给 keytool，不进命令行参数、不打印）：
 
 ```bash
-mkdir -p ../.pkotlinapp-secrets
-keytool -genkeypair -v \
-  -keystore ../.pkotlinapp-secrets/pkotlinapp-release.jks \
-  -alias pkotlinapp -keyalg RSA -keysize 2048 -validity 9125
+./scripts/make-upload-keystore.sh            # 交互：别名、密码
+# 或 CI 非交互：
+KEY_ALIAS=ci-selfsigned KEYSTORE_PASSWORD="$(openssl rand -hex 16)" \
+  ./scripts/make-upload-keystore.sh --non-interactive
 ```
 
-若 `keystore.properties` 不存在（例如 CI 环境），`signingConfig` 不会被创建，`assembleRelease` 仍可产出未签名 APK，适合做编译验证。
+生成的文件（均已忽略）：
+
+```properties
+storeFile=upload-keystore.jks
+storePassword=<本地随机密码>
+keyAlias=<你的别名>
+keyPassword=<同 keystore 密码>
+```
+
+`storeFile` 相对仓库根目录解析；也可用 `KEYSTORE_PATH` 指向仓库外的密钥库。
+`keystore.properties` 缺失、四个字段不全或密钥文件不存在时，`preReleaseBuild` 会直接失败并提示运行脚本，
+不再静默产出未签名的 `app-release-unsigned.apk`。
 
 ### Release 三件套
 
@@ -783,7 +783,7 @@ release {
 - **verify job**（push main / pull_request）：JDK 21（Temurin）、`./gradlew assembleDebug lintDebug testDebugUnitTest`，要求 lint 0 error / 0 warning；上传 Lint 与单测报告。
 - **e2e-contract job**（与 verify 并行）：checkout 本仓库与 `platojobs/PJGoIoT`，启动 `STORE=fixture` 的 Go 后端，跑 `:app:e2eContract`；失败上传测试报告与 Go 服务日志。
 - **e2e-postgres job**（与 fixture e2e 并行，不阻塞主流程）：Docker 起真 Postgres + API，跑 `scripts/e2e-postgres.sh`（含 410 分支），失败上传 Postgres 服务日志，见 §15。
-- **release job**（仅 `v*` tag 或手动 `workflow_dispatch`）：执行 `assembleRelease`，**不注入签名密钥**，产出未签名 APK 作为构建验证；如需正式签名请在 GitHub Secrets 配置后自行补充注入步骤，仓库内不写任何密码。
+- **release job**（仅 `v*` tag 或手动 `workflow_dispatch`）：runner 上用 `openssl rand` 现场生成一次性自签名密钥并执行 `assembleRelease bundleRelease`，随后校验 `apksigner verify`、`mapping.txt` 存在与 `application-debuggable` 缺失，上传已签名 APK/AAB/mapping。密码不写入仓库、不上传 artifacts；该证书只用于验证签名链路，**不能用于 Play 上传**。详见 `docs/release-build.md`。
 
 ### 9.1 排障：没有 `workflow` scope 时如何推送 workflow 变更
 
@@ -1018,7 +1018,7 @@ cursor=0 changes=4 nextCursor=59 entities=['household', 'room', 'user_device']
 CI：GitHub Actions 的 `e2e-postgres` job 与该次运行同一脚本，日志与测试报告见
 <https://github.com/platojobs/PKotlinApp/actions/workflows/android.yml>。
 
-## 16. 界面截图（v0.28.1）
+## 16. 界面截图（v0.30.0）
 
 以下截图全部来自 **Android 模拟器（Pixel_10a，Android 37）+ 本机 PJGoIoT v0.22.0 后端（真 Postgres）+ `scripts/seed-screenshots.py` 造的演示数据**，不是设计稿、拼图或真机生产环境。
 
@@ -1043,7 +1043,9 @@ CI：GitHub Actions 的 `e2e-postgres` job 与该次运行同一脚本，日志�
 
 数据口径：3 个家庭（12 台设备按 7/3/2 分布）、6 个房间（按家庭分别建 3/2/1 个，设备归属各自家庭）、12 台设备（5 种 `deviceType`，2 台离线，MAC 为 `C8:47:8C:` 开头的假地址）、4 个场景（1 个 `rejected`、1 个定时、1 个引用已删除设备的 `deviceMissing`）、3 条服务端反馈（1 条已关闭）、12 条本地扫描日志。家庭设备是服务端共享关系，seed 脚本按家庭分别创建房间并通过 `PATCH /my/devices` 写归属，可重复执行（每次新建匿名账号）。读数在服务端保留 7 天，`seed-screenshots.py` 每 10 分钟写一条原始读数（正弦 + 噪声 + 偶发尖峰，电量每小时），24 小时视图由客户端拉原始读数后聚合成 30 分钟桶（48 个），7 天视图走服务端 `1h` 分桶（168 个），每桶内 3/6 个样本足以画出折线与 min–max 区间带；首页与详情离线兜底读本地 Room，`seed-local-db.py` 按同一表结构写入 7 天读数、12 条扫描日志与设备在线状态/房间归属。`rejected` 场景是本地 `syncState` 的展示态（服务端不会持久化被拒状态），截图时让本地字段更新时间晚于服务端快照，避免启动同步把它拉回 `synced`；这属于演示数据构造，不是产品行为。
 
-本版（v0.28.1）只补两张图的构图，不改功能。**首页回到滚动顶部**：`home.png` 原停点从「客厅温湿度计」卡开始，把「今日概览」（2400 条读数）与「设备状态」（10 在线 / 2 离线）整块滚没了；重截为 scroll 0，从「首页」标题开始，两张卡完整可见，底部切点落在「设备状态」卡底 2060 与「最近活动」卡顶 2081 之间的卡片间隙（裁剪到 2073），不切字。**家庭区止于「加入家庭」**：原图底部露出「迁移到新设备」描述半句「在旧设备生成 8 位配对码，10 分钟内在新设备输入该」；停点保持「家庭」卡顶部，裁剪到卡片底边后的留白（裁剪到 2020），「加入家庭」按钮是最后一个完整元素，下一张卡完全不出现。两张图都通过 `scripts/check-screenshot-top.py`：`home.png` 输出「首个可见文字『今日概览』卡片 top=1014，视口 top=993（间隙 21px）」；`profile_household.png` 输出「『家庭』卡片 top=394，视口 top=394（间隙 0px）」，均 PASS。
+本版（v0.30.0）新增 Google Play 商店截图：`docs/screenshots/play/` 下 6 张 1080×1920，由 `scripts/make-store-screenshots.py` 基于上面的真实截图排版（只加标题与卡片背景，不改界面内容、不合并功能），对应 `home` / `device_detail` / `scenes` / `products` / `profile_household` / `profile_scan_logs`。上架文案与 Data safety 答案见 `docs/store-listing.md`。
+
+v0.28.1 只补两张图的构图，不改功能。**首页回到滚动顶部**：`home.png` 原停点从「客厅温湿度计」卡开始，把「今日概览」（2400 条读数）与「设备状态」（10 在线 / 2 离线）整块滚没了；重截为 scroll 0，从「首页」标题开始，两张卡完整可见，底部切点落在「设备状态」卡底 2060 与「最近活动」卡顶 2081 之间的卡片间隙（裁剪到 2073），不切字。**家庭区止于「加入家庭」**：原图底部露出「迁移到新设备」描述半句「在旧设备生成 8 位配对码，10 分钟内在新设备输入该」；停点保持「家庭」卡顶部，裁剪到卡片底边后的留白（裁剪到 2020），「加入家庭」按钮是最后一个完整元素，下一张卡完全不出现。两张图都通过 `scripts/check-screenshot-top.py`：`home.png` 输出「首个可见文字『今日概览』卡片 top=1014，视口 top=993（间隙 21px）」；`profile_household.png` 输出「『家庭』卡片 top=394，视口 top=394（间隙 0px）」，均 PASS。
 
 v0.28.0 修了两个问题。**截图停点残留上一张卡的尾巴**——首页原停点让「今日概览」只剩「今日读数按小时分布…」一行露在筛选 chip 下，家庭区原停点让「后台采集」只剩「断开自动停止。」一句露在「我的」标题下。现在停点统一落在整卡顶部或区块标题：首页停在「客厅温湿度计」卡顶部（上方不再有半截卡），家庭区停在「家庭」卡顶部。停点由 `scripts/check-screenshot-top.py` 自动断言，不靠肉眼：脚本用 `adb shell uiautomator dump` 解析节点树，取视口内**第一个带 `text` 的节点**（不取 `contentDescription`，它会覆盖整卡而排在标题前），要求它的文字等于 `--expect-top` 指定的完整卡片标题/区块标题，且其所属 `CardView` 的 top 不高于视口 top（容差 2dp）。`home.png` 断言输出「首个可见文字『客厅温湿度计』卡片 top=1024，视口 top=993（间隙 31px）」，`profile_household.png` 输出「『家庭』卡片 top=394，视口 top=394（间隙 0px）」。**峰值小时口径**——「今日读数按小时分布，峰值 0 点 100 条」不是零点真峰值：本地今日 0–22 点每小时恰好 100 条、23 点 25 条，旧实现 `maxByOrNull` 并列时取首个（即 0 点）。新增 `List<HourCount>.peakHour()`，并列时取最晚出现的小时（今日实际显示「峰值 22 点 100 条」），`HourlyPeakTest` 覆盖并列、单峰、无数据三种情况。
 
@@ -1051,6 +1053,7 @@ v0.27.0 截图走查修复了四个问题：**导出按钮遮挡正文**——�
 
 ## 17. 版本记录
 
+- `v0.30.0`：签名构建与发布产物验收。新增 `scripts/make-upload-keystore.sh`：keytool 生成 PKCS12 自签名 keystore（别名/密码走环境变量或交互，密码用 `-storepass:env` 传递，不硬编码、不打印），写出被忽略的 `keystore.properties`；`.gitignore` 显式排除 `keystore.properties`、`upload-keystore.jks`、`*.jks/*.keystore/*.p12`。`app/build.gradle.kts` 仅在四字段齐全且密钥文件存在时创建 release signingConfig，缺失时 `preReleaseBuild` 直接失败并提示运行脚本，不再静默产出 `app-release-unsigned.apk`。CI release job 改为 runner 现场生成一次性自签名密钥（`openssl rand`），构建后校验 `apksigner verify`、`mapping.txt` 存在与 `application-debuggable` 缺失，上传 APK/AAB/mapping。实测同版本对照：debug `11,830,090 B` / 18 dex / 15,048 类 / 135,283 方法 → release `4,203,892 B` / 1 dex / 5,812 类 / 39,565 方法（dex −75.5%、类 −61.4%），资源条目 7,198 → 6,018；`mapping.txt` 314,861 行、含 1,000 行 `com.platojobs.pkotlinapp` 类映射；release dex 中 `StartupDiagnostics`/`cold-start.log` 均为 0（debug 为 21/2），`apkanalyzer manifest debuggable` 为 false，badging 无 `application-debuggable`；`apksigner` v2 通过，证书 SHA-256 `0C:9B:1E:5C:…:15:20`；AAB `6,531,839 B`，bundletool 1.18.2 生成 APKS 且 `splits/base-master.apk`（3,491,927 B）签名校验通过。商店材料：`scripts/make-store-screenshots.py` 基于真实截图生成 6 张 1080×1920 截图到 `docs/screenshots/play/`，`docs/store-listing.md` 补齐标题/短描述（31 字符）/完整说明/分类/内容分级/Data safety 逐项答案，`docs/data-safety.md` 同步推送令牌「不收集」。自签名证书仅用于本机/CI 验证，**不能用于 Play 上传**；未上传、未审核、未真机安装。单测 406 全绿、`lintDebug` 0 error，tag `v0.30.0`（`versionCode = 39`）。
 - `v0.29.0`：接入后端 v0.23.0（契约 0.18.0）的推送令牌注册。新增 `PushTokenProvider` + `PushRegistrationRepository`：会话就绪/配对码领取后注册、token 变化重注册并注销旧 token、启动补齐未注册项、登出与删号前先 DELETE 再清本地。Room v22（`MIGRATION_21_22`）新增 `push_devices`（token 唯一、status/lastError/retryCount/nextRetryAt），`PushDeviceMigrationTest` 用真实 SQLite 验证旧数据保留。网络/5xx 指数退避（30s 起、6h 封顶）并保留 pending；400 终态记录可读原因不重试；401/403 等重新登录后由会话就绪再注册；注销 404 视为已不存在。Android 13+ 通知权限与注册完全解耦：拒绝权限仍完成注册，界面如实提示「未授权通知，告警与推送都不会展示」。工程无 `google-services.json`，默认 `UnavailablePushTokenProvider` 不虚构 token，界面显示「未配置推送服务，告警目前只在本机提醒」，接入点集中在 `AppContainer.createPushTokenProvider()`。预留 `PushMessageHandler`/`PushIntentRouter`：解析 `alertId/kind/mac`，设备类跳详情、场景类跳场景页。单测 406 全绿、`lintDebug` 0 error、fixture 与真 Postgres e2e（注册/幂等/跨用户 404/注销/400）全绿，tag `v0.29.0`（`versionCode = 38`）。
 - `v0.28.1`：截图构图收口（不改功能）。**首页** `home.png` 重截为 scroll 0，从「首页」标题开始，今日概览（2400 条读数、峰值 23 点 100 条）与设备状态（10 在线 / 2 离线 / 0 未分配房间 / 0 低电量）完整可见；底部裁剪到 2073，切点落在「设备状态」卡底 2060 与「最近活动」卡顶 2081 之间。**家庭区** `profile_household.png` 停点保持「家庭」卡顶部（top=394），裁剪到 2020，最后完整元素为「加入家庭」按钮，卡片底边下保留留白，不再露出「迁移到新设备」的半句。两张图断言：`home.png`「今日概览」卡 top=1014 / 视口 top=993（间隙 21px），`profile_household.png`「家庭」卡 top=394 / 视口 top=394（间隙 0px），均 PASS。单测 385 全绿、`lintDebug` 0 error、fixture e2e 与真 Postgres e2e 全绿，tag `v0.28.1`（`versionCode = 37`）。
 - `v0.28.0`：截图层收口。**停点**：首页原停点让「今日概览」只剩「今日读数按小时分布…」一行、家庭区原停点让「后台采集」只剩「断开自动停止。」一句；改为整卡顶部/区块标题（首页「客厅温湿度计」卡、家庭区「家庭」卡），并新增 `scripts/check-screenshot-top.py` 用 uiautomator 节点树自动断言（首个可见 `text` 节点须以 `--expect-top` 开头，其 `CardView` top 不高于视口 top，容差 2dp），不靠肉眼。**峰值口径**：`maxByOrNull` 并列取首个导致均匀数据下「峰值 0 点」；新增 `List<HourCount>.peakHour()` 并列取最晚小时，今日显示「峰值 22 点 100 条」，补 `HourlyPeakTest`（并列/单峰/无数据）。重截 `home.png`、`profile_household.png`。单测 385 全绿、`lintDebug` 0 error、fixture e2e 与真 Postgres e2e 全绿，tag `v0.28.0`（`versionCode = 36`）。

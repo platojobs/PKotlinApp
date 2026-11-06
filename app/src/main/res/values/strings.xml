@@ -842,7 +842,7 @@
     <string name="household_current">当前家庭：%1$s（%2$s）</string>
     <string name="household_none">尚未同步家庭，当前显示本机数据</string>
     <string name="household_role_owner">所有者</string>
-    <string name="household_role_member">成员</string>
+    <string name="household_role_member">普通成员</string>
     <string name="household_members_title">家庭成员</string>
     <string name="household_members_empty">暂无成员信息（未同步）</string>
     <string name="household_member_row">%1$s · %2$s%3$s</string>

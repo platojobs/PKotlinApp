@@ -1,4 +1,4 @@
-# Google Play 商店上架材料（v0.30.0）
+# Google Play 商店上架材料（v0.31.0）
 
 > 状态：**材料已补齐，但尚未上传 Play Console、尚未提交审核、未上架**。
 > 本仓库的 release 签名使用**本地自签名测试证书**（`scripts/make-upload-keystore.sh` 生成），
@@ -13,7 +13,7 @@
 | --- | --- |
 | 应用名称 | `BLE 设备数据面板`（9 个字符，Play 上限 30） |
 | 包名 | `com.platojobs.pkotlinapp` |
-| 版本 | `versionCode = 39`、`versionName = 0.30.0` |
+| 版本 | `versionCode = 40`、`versionName = 0.31.0` |
 | 默认语言 | 中文（简体），另含英文 `values-en` |
 | 分类 | 工具（Tools）；次要分类建议「健康与健身」，因部分设备上报心率 |
 | 联系方式 | https://github.com/platojobs/PKotlinApp/issues |
@@ -105,12 +105,28 @@ PY
 
 | 文件 | 源截图 | 文案 |
 | --- | --- | --- |
-| `01-home.png` | `home.png` | 首页 · 设备卡片与实时读数 |
-| `02-device-detail.png` | `device_detail.png` | 设备详情 · 历史曲线与阈值告警 |
+| `01-home.png` | `home.png` | 首页 · 今日概览与设备状态 |
+| `02-device-detail.png` | `device_detail.png` | 设备详情 · 历史曲线与 24 小时汇总 |
 | `03-scenes.png` | `scenes.png` | 智能 · 本机场景一键执行 |
-| `04-products.png` | `products.png` | 产品 · 型号与 GATT 服务 |
-| `05-household.png` | `profile_household.png` | 我的 · 家庭与房间 |
+| `04-products.png` | `products.png` | 产品 · 设备类型目录 |
+| `05-household.png` | `profile_household.png` | 我的 · 家庭与成员 |
 | `06-scan-logs.png` | `profile_scan_logs.png` | 我的 · 扫描日志 |
+
+标题只写图中真实可见的元素：`home.png` 没有设备卡片，故不写「设备卡片」；`device_detail.png`
+没有阈值告警，故不写「阈值告警」；`products.png` 只有设备类型目录，没有 GATT 服务表；
+`profile_household.png` 只有家庭与成员行，没有房间行。
+
+### Feature Graphic
+
+`docs/screenshots/play/feature-graphic.png`，**1024×500**，用于 Play 商店列表页顶部的
+Feature Graphic 位（必填素材，展示在截图上方）。
+
+- 文案：应用名「BLE 设备数据面板」+ 真实卖点「扫描连接 BLE 设备 / 实时读数与本地告警」+
+  「无需账号密码 · 数据保存在本机」。
+- 视觉：只使用 `app/src/main/res/values/colors.xml` 的设计令牌（`primary #175CD3`、
+  `chart_band #E8EFFB`、`chart_line_2 #7A5AF8`、`text_primary #101828` 等），右侧为抽象信号柱，
+  **不含任何界面截图或虚构 UI**。
+- 格式：PNG（Play 接受 PNG/JPEG，1024×500，无透明）。
 
 重新生成：
 
@@ -118,8 +134,7 @@ PY
 python3 scripts/make-store-screenshots.py
 ```
 
-**未生成**：1024×500 Feature Graphic、平板截图、宣传视频。Play 列表至少需要一张
-Feature Graphic，提交前必须补齐；这部分不在本次本机验证范围内。
+**未生成**：平板截图、宣传视频。平板截图可选，宣传视频可选。
 
 ## 4. 分类与标签
 
@@ -186,5 +201,5 @@ Feature Graphic，提交前必须补齐；这部分不在本次本机验证范�
 - **真机安装/运行**：本轮产物只在模拟器与 JVM/CI 中验证，未在真机安装 release APK。
 - **Play Console 上传**：未上传，未做内部测试轨道验证。
 - **Play 审核**：未提交，未经过 Google 审核。
-- **Feature Graphic（1024×500）**：未生成。
+- **Feature Graphic（1024×500）**：已生成并随文档入库，但未随应用实际提交到 Play Console。
 - **隐私政策公网 URL**：`docs/privacy-policy.md` 尚未发布为公网可访问地址。

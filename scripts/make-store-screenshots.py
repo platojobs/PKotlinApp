@@ -21,13 +21,15 @@ OUT = SRC / "play"
 W, H = 1080, 1920
 CAPTION_FONT = "/System/Library/Fonts/Supplemental/Arial Unicode.ttf"
 
-# (源截图, 输出文件名, 文案)。文案只对应截图中实际可见的界面。
+# (源截图, 输出文件名, 文案)。文案只写该截图里实际可见的元素：
+# home 只有今日概览与设备状态（无设备卡片）；device_detail 只有曲线与汇总（无阈值告警）；
+# products 只有设备类型目录（无 GATT 服务表）；profile_household 只有家庭与成员行（无房间行）。
 SHOTS = [
-    ("home.png", "01-home.png", "首页 · 设备卡片与实时读数"),
-    ("device_detail.png", "02-device-detail.png", "设备详情 · 历史曲线与阈值告警"),
+    ("home.png", "01-home.png", "首页 · 今日概览与设备状态"),
+    ("device_detail.png", "02-device-detail.png", "设备详情 · 历史曲线与 24 小时汇总"),
     ("scenes.png", "03-scenes.png", "智能 · 本机场景一键执行"),
-    ("products.png", "04-products.png", "产品 · 型号与 GATT 服务"),
-    ("profile_household.png", "05-household.png", "我的 · 家庭与房间"),
+    ("products.png", "04-products.png", "产品 · 设备类型目录"),
+    ("profile_household.png", "05-household.png", "我的 · 家庭与成员"),
     ("profile_scan_logs.png", "06-scan-logs.png", "我的 · 扫描日志"),
 ]
 
@@ -102,6 +104,67 @@ def compose(src: Path, caption: str) -> Image.Image:
     return canvas.convert("RGB")
 
 
+def fit_font(text: str, max_width: int, start: int) -> ImageFont.FreeTypeFont:
+    size = start
+    while size > 12:
+        candidate = font(size)
+        bbox = ImageDraw.Draw(Image.new("RGB", (1, 1))).textbbox((0, 0), text, font=candidate)
+        if bbox[2] - bbox[0] <= max_width:
+            return candidate
+        size -= 1
+    return font(size)
+
+
+def make_feature_graphic() -> Image.Image:
+    """Google Play Feature Graphic：1024×500，只含应用名、真实卖点与设计令牌配色。"""
+    width, height = 1024, 500
+    # 设计令牌（app/src/main/res/values/colors.xml）
+    surface = (255, 255, 255)
+    chart_band = (232, 239, 251)
+    primary = (23, 92, 211)
+    line_2 = (122, 90, 248)
+    text_primary = (16, 24, 40)
+    text_secondary = (71, 84, 103)
+    text_tertiary = (95, 106, 125)
+
+    canvas = Image.new("RGB", (width, height), surface)
+    draw = ImageDraw.Draw(canvas)
+    for y in range(height):
+        ratio = y / (height - 1)
+        draw.line(
+            [(0, y), (width, y)],
+            fill=tuple(round(a + (b - a) * ratio) for a, b in zip(surface, chart_band)),
+        )
+
+    # 右侧：抽象信号柱 + 弧线（不使用任何界面截图，避免虚构 UI）
+    layer = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    d = ImageDraw.Draw(layer)
+    for radius in (150, 196, 242):
+        d.arc([724 - radius, 352 - radius, 724 + radius, 352 + radius], 270, 360,
+              fill=primary + (46,), width=3)
+    baseline = 352
+    for index, bar_h in enumerate((66, 98, 130, 162, 196)):
+        x = 724 + index * 58
+        color = line_2 if index == 4 else primary
+        d.rounded_rectangle([x, baseline - bar_h, x + 34, baseline], 12, fill=color + (255,))
+    canvas = Image.alpha_composite(canvas.convert("RGBA"), layer).convert("RGB")
+    draw = ImageDraw.Draw(canvas)
+
+    # 左侧：标签、应用名、真实卖点
+    draw.rounded_rectangle([72, 74, 320, 124], 24, fill=chart_band)
+    draw.text((92, 84), "BLE · 本机优先", font=font(23), fill=primary)
+    draw.text((72, 158), "BLE 设备数据面板",
+              font=fit_font("BLE 设备数据面板", 640, 60), fill=text_primary)
+    draw.text((72, 252), "扫描连接 BLE 设备",
+              font=fit_font("扫描连接 BLE 设备", 640, 33), fill=text_secondary)
+    draw.text((72, 298), "实时读数与本地告警",
+              font=fit_font("实时读数与本地告警", 640, 33), fill=text_secondary)
+    draw.line([(72, 380), (676, 380)], fill=(208, 213, 221), width=2)
+    draw.text((72, 402), "无需账号密码 · 数据保存在本机",
+              font=fit_font("无需账号密码 · 数据保存在本机", 640, 24), fill=text_tertiary)
+    return canvas
+
+
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     for src_name, out_name, caption in SHOTS:
@@ -112,7 +175,11 @@ def main() -> None:
         target = OUT / out_name
         image.save(target, "PNG", optimize=True)
         print(f"{target.relative_to(ROOT)} {image.width}x{image.height}")
-    print(f"完成：{len(SHOTS)} 张 {W}x{H} 商店截图")
+    graphic = make_feature_graphic()
+    graphic_target = OUT / "feature-graphic.png"
+    graphic.save(graphic_target, "PNG", optimize=True)
+    print(f"{graphic_target.relative_to(ROOT)} {graphic.width}x{graphic.height}")
+    print(f"完成：{len(SHOTS)} 张 {W}x{H} 商店截图 + 1 张 1024x500 Feature Graphic")
 
 
 if __name__ == "__main__":

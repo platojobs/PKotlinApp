@@ -23,7 +23,8 @@
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:clipToPadding="false">
+        android:clipToPadding="false"
+        android:paddingBottom="48dp">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -66,6 +67,7 @@
                         android:textColor="@color/text_secondary" />
 
                     <LinearLayout
+                        android:id="@+id/rssiRow"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
@@ -598,14 +600,12 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal"
+                        android:orientation="vertical"
                         android:visibility="gone">
 
                         <TextView
-                            android:layout_width="0dp"
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_weight="1"
                             android:text="@string/detail_export_desc"
                             android:textAppearance="@style/TextAppearance.App.Caption"
                             android:textColor="@color/text_secondary" />
@@ -615,7 +615,8 @@
                             style="?attr/materialButtonOutlinedStyle"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:layout_marginStart="8dp"
+                            android:layout_gravity="end"
+                            android:layout_marginTop="8dp"
                             android:text="@string/detail_export_button" />
 
                     </LinearLayout>

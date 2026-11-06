@@ -8,7 +8,10 @@
 会新建一个匿名账号，并造出：
 - 3 个家庭（我的家 / 父母家 / 办公室），6 个房间跨家庭分布（3 / 2 / 1）；
 - 12 台设备按 7 / 3 / 2 分到三个家庭（5 种 deviceType，其中 2 台只有 3 天前的读数）；
-- 每台设备近 7 天的读数（覆盖心率/环境/体重等指标）；
+- 每台设备近 7 天的读数：温度/湿度/气压/心率每 10 分钟一条原始读数
+  （正弦 + 噪声 + 偶发尖峰；聚合成 30 分钟桶后 24h 视图 48 桶、7d 视图 168 桶，
+  每个桶内仍有 min–max 波动，折线与区间带都有形状），体重/体脂/骑行等低频指标每 3 小时一个点；
+- 第二个家庭成员（匿名账号 B 领取家庭邀请码），成员行展示「成员 2」而不是原始 ID；
 - 4 个场景（指标阈值、离线、低 RSSI、定时），其中 1 个稍后由截图流程标成 rejected；
 - 3 条反馈（其中 1 条已关闭）。
 最后打印配对码，供 App「用配对码恢复原账号」接管这个账号。
@@ -16,6 +19,7 @@
 脚本每次运行都会新建一个匿名账号，可重复执行；不修改任何已有账号的数据。
 """
 import json
+import math
 import random
 import sys
 import time
@@ -77,6 +81,18 @@ for household, rooms in HOUSEHOLD_ROOMS.items():
         _, room = call("POST", f"/households/{HOUSEHOLD_IDS[household]}/rooms", TOKEN, {"name": name})
         ROOM_IDS[household][name] = room["id"]
 
+# 第二个成员：匿名账号 B 领取「我的家」邀请码。
+# 服务端成员没有昵称字段，App 成员行应显示「成员 2 · 成员」，而不是用户 ID。
+_, invitation = call("POST", f"/households/{own}/invitations", TOKEN, {})
+_, member_auth = call("POST", "/auth/anonymous", body={})
+call(
+    "POST",
+    "/households/invitations/claim",
+    member_auth["token"],
+    {"code": invitation["code"]},
+)
+MEMBER2_USER_ID = member_auth["userId"]
+
 # 12 台设备：类型来自 /catalog，分到 3 个家庭 / 6 个房间；后 2 台只有 3 天前的读数（演示「离线」）。
 DEVICES = [
     # (externalId, deviceType, name, household, room, metrics)
@@ -104,12 +120,81 @@ METRIC_RANGES = {
     "relative_humidity": (35.0, 65.0, "%"),
     "pressure_hpa": (995.0, 1020.0, "hectopascal"),
     "heart_rate": (58.0, 92.0, "bpm"),
+    "battery_percent": (20.0, 100.0, "%"),
     "weight_kg": (58.0, 72.0, "kg"),
     "body_fat_percent": (16.0, 26.0, "%"),
     "bmi": (19.0, 25.0, "kg/m2"),
     "cadence_rpm": (60.0, 95.0, "rpm"),
     "wheel_speed_kmh": (12.0, 28.0, "km/h"),
 }
+
+# 高频指标的原始读数间隔：10 分钟，聚合到 30 分钟 / 1 小时桶后仍有 min–max 区间带。
+# 低频指标每 3 小时一个点，避免无意义的数据膨胀。
+DENSE_METRICS = {
+    "temperature_celsius",
+    "relative_humidity",
+    "pressure_hpa",
+    "heart_rate",
+}
+DENSE_STEP_MIN = 10
+SPARSE_STEP_MIN = 180
+INTEGER_METRICS = {
+    "heart_rate",
+    "cadence_rpm",
+    "body_fat_percent",
+    "pressure_hpa",
+    "bmi",
+}
+
+
+def waveform(metric, ts, seed_offset):
+    """正弦 + 噪声 + 偶发尖峰；电量是缓慢衰减，不参与正弦。"""
+    day_phase = 2 * math.pi * (ts.timestamp() / 86400.0) + seed_offset
+    spike = 1.0 if random.random() < 0.02 else 0.0
+    noise = random.gauss(0.0, 1.0)
+    low, high, _ = METRIC_RANGES[metric]
+    span = high - low
+
+    if metric == "temperature_celsius":
+        value = 24.0 + 5.0 * math.sin(day_phase) + 0.35 * noise + spike * 2.2
+    elif metric == "relative_humidity":
+        value = 52.0 + 10.0 * math.sin(day_phase + 0.8) + 1.0 * noise + spike * 4.5
+    elif metric == "pressure_hpa":
+        value = 1008.0 + 3.0 * math.sin(day_phase / 3.0) + 0.5 * noise + spike * 1.5
+    elif metric == "heart_rate":
+        value = 74.0 + 7.0 * math.sin(day_phase) + 2.0 * noise + spike * 18.0
+    elif metric == "battery_percent":
+        days_ago = max(0.0, (now - ts).total_seconds() / 86400.0)
+        value = 96.0 - 0.9 * days_ago + 0.25 * noise
+    elif metric == "weight_kg":
+        value = 66.0 + 0.4 * math.sin(day_phase / 7.0) + 0.3 * noise
+    elif metric == "body_fat_percent":
+        value = 20.5 + 1.0 * math.sin(day_phase / 7.0) + 0.4 * noise
+    elif metric == "bmi":
+        value = 21.8 + 0.3 * math.sin(day_phase / 7.0) + 0.15 * noise
+    elif metric == "cadence_rpm":
+        value = 78.0 + 8.0 * math.sin(day_phase) + 2.5 * noise + spike * 10.0
+    elif metric == "wheel_speed_kmh":
+        value = 20.0 + 4.0 * math.sin(day_phase) + 1.2 * noise
+    else:
+        value = low + span * random.random()
+
+    return min(high, max(low, value))
+
+
+def push_readings(mac, readings):
+    """服务端单次 push 上限 500 条，按 400 条分批，幂等键带上批次号。"""
+    for batch, start in enumerate(range(0, len(readings), 400)):
+        chunk = readings[start : start + 400]
+        key = f"seed-screen-readings-{mac}-{batch}"
+        call(
+            "POST",
+            "/sync/push",
+            TOKEN,
+            {"clientId": key, "readings": chunk},
+            idem=key,
+        )
+
 
 for mac, dtype, name, household, room, metrics in DEVICES + [GHOST]:
     call(
@@ -152,36 +237,35 @@ for mac, dtype, name, household, room, metrics in DEVICES + [GHOST]:
             },
         )
 
-# 读数：近 7 天，每天每指标 2 个点。
 for mac, dtype, name, household, room, metrics in DEVICES:
     readings = []
-    days = 7 if mac not in STALE else 3
-    for day in range(days):
-        for metric in metrics:
-            low, high, unit = METRIC_RANGES[metric]
-            for hour in (9, 19):
-                value = round(random.uniform(low, high), 1)
-                if metric in ("heart_rate", "cadence_rpm", "body_fat_percent", "pressure_hpa", "bmi"):
-                    value = round(value)
-                ts = now - timedelta(days=day, hours=hour)
-                readings.append(
-                    {
-                        "id": str(uuid.uuid4()),
-                        "platform": "android",
-                        "externalId": mac,
-                        "metric": metric,
-                        "value": float(value),
-                        "unit": unit,
-                        "recordedAt": rfc3339(ts),
-                    }
-                )
-    call(
-        "POST",
-        "/sync/push",
-        TOKEN,
-        {"clientId": "seed-screen-readings-" + mac, "readings": readings},
-        idem="seed-screen-readings-" + mac,
-    )
+    metrics = metrics + ["battery_percent"]
+    # 状态为离线的设备，最新一条读数停在 3 天前，和设备的 updatedAt 对齐。
+    end = now - timedelta(days=3) if mac in STALE else now
+    for metric in metrics:
+        step_min = DENSE_STEP_MIN if metric in DENSE_METRICS else SPARSE_STEP_MIN
+        count = int(7 * 24 * 60 / step_min)
+        seed_offset = (hash((mac, metric)) % 1000) / 1000.0 * 2 * math.pi
+        for index in range(count):
+            ts = end - timedelta(minutes=step_min * index)
+            value = waveform(metric, ts, seed_offset)
+            _, _, unit = METRIC_RANGES[metric]
+            if metric in INTEGER_METRICS:
+                value = float(round(value))
+            else:
+                value = round(value, 1)
+            readings.append(
+                {
+                    "id": str(uuid.uuid4()),
+                    "platform": "android",
+                    "externalId": mac,
+                    "metric": metric,
+                    "value": float(value),
+                    "unit": unit,
+                    "recordedAt": rfc3339(ts),
+                }
+            )
+    push_readings(mac, readings)
 
 # 场景：4 个（指标 / 离线 / 低 RSSI / 定时）。
 SCENES = [
@@ -303,10 +387,11 @@ env = "\n".join(
         f"USER_ID={USER_ID}",
         f"TOKEN={TOKEN}",
         f"PAIRING_CODE={code}",
+        f"MEMBER2_USER_ID={MEMBER2_USER_ID}",
         f"FEEDBACK_CLOSED_ID={feedback_ids[0]}",
     ]
 )
 with open("/tmp/screenshot-seed.env", "w") as f:
     f.write(env + "\n")
 print(env)
-print("seeded: 3 households / 6 rooms / 12 devices / 4 scenes / 3 feedbacks")
+print("seeded: 3 households / 6 rooms / 12 devices / 2 members / 4 scenes / 3 feedbacks")

@@ -17,6 +17,13 @@ class ProductAdapter(
     private val onClick: (DeviceTypeCatalogItem) -> Unit,
 ) : ListAdapter<DeviceTypeCatalogItem, ProductAdapter.ViewHolder>(DIFF) {
 
+    init {
+        setHasStableIds(true)
+    }
+
+    /** 目录条的稳定 ID 来自 `type`；目录刷新不会让整表重绑。 */
+    override fun getItemId(position: Int): Long = getItem(position).type.hashCode().toLong()
+
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
         val binding = ItemProductBinding.inflate(LayoutInflater.from(parent.context), parent, false)
         return ViewHolder(binding, deviceCounts, onClick)

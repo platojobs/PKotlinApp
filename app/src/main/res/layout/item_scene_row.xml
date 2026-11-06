@@ -72,7 +72,6 @@
                 style="@style/Widget.App.Button.Text"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:minWidth="0dp"
                 android:text="@string/home_scene_run" />
 
             <com.google.android.material.button.MaterialButton
@@ -80,7 +79,6 @@
                 style="@style/Widget.App.Button.Text"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:minWidth="0dp"
                 android:text="@string/action_edit" />
 
             <com.google.android.material.button.MaterialButton
@@ -88,7 +86,6 @@
                 style="@style/Widget.App.Button.Text"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:minWidth="0dp"
                 android:text="@string/action_delete"
                 android:textColor="@color/danger" />
         </LinearLayout>

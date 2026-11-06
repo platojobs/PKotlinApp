@@ -23,6 +23,8 @@ import com.platojobs.pkotlinapp.PKotlinApplication
 import com.platojobs.pkotlinapp.R
 import com.platojobs.pkotlinapp.data.prefs.DeviceSortMode
 import com.platojobs.pkotlinapp.databinding.FragmentHomeBinding
+import com.platojobs.pkotlinapp.diagnostics.StartupDiagnostics
+import com.platojobs.pkotlinapp.diagnostics.StartupStage
 import com.platojobs.pkotlinapp.domain.model.Device
 import com.platojobs.pkotlinapp.domain.model.displayName
 import com.platojobs.pkotlinapp.ui.MainActivity
@@ -196,49 +198,13 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
     }
 
     private fun renderItems(state: HomeUiState) {
-        val items = mutableListOf<HomeItem>()
-        items += HomeItem.TodayOverview(state.overview)
-        items += HomeItem.DeviceStatus(
-            overview = state.overview,
-            filter = state.statusFilter,
-            onlineWindowMinutes = (HomeViewModel.ONLINE_WINDOW_MS / 60_000L).toInt(),
+        val items = HomeListBuilder.build(
+            state = state,
+            sceneProgress = sceneProgress,
+            unassignedRoomLabel = getString(R.string.room_unassigned),
         )
-        items += HomeItem.RecentActivity(state.overview)
-        if (state.devices.isNotEmpty() || state.rooms.isNotEmpty()) {
-            items += HomeItem.DevicesHeader(state.devices.size, state.groups.size)
-            if (!state.searching && state.rooms.isEmpty() && state.statusFilter == null) {
-                items += HomeItem.RoomEmpty
-            }
-            state.sections.forEach { section ->
-                // 搜索结果是平铺的设备清单，折叠状态不影响搜索可见性。
-                val collapsed = !state.searching && (
-                    section.room?.id?.let { it in state.collapsedRooms }
-                        ?: (HomeViewModel.UNASSIGNED_ROOM_ID in state.collapsedRooms)
-                    )
-                if (!state.searching && state.statusFilter == null) {
-                    items += HomeItem.RoomHeader(
-                        roomId = section.room?.id,
-                        name = section.room?.name ?: getString(R.string.room_unassigned),
-                        deviceCount = section.devices.size,
-                        collapsed = collapsed,
-                        empty = section.room != null && section.devices.isEmpty(),
-                        unsynced = !state.householdSynced || section.room?.synced == false,
-                    )
-                }
-                if (!collapsed) {
-                    section.devices.forEach { device ->
-                        items += HomeItem.DeviceCard(
-                            device = device,
-                            reading = state.latestReadings[device.mac],
-                            connected = state.connectedMac == device.mac,
-                        )
-                    }
-                }
-            }
-        }
-        items += HomeItem.ScenesHeader(state.scenes.size)
-        items += HomeItem.SceneCards(state.scenes, sceneProgress)
         adapter.submitList(items)
+        if (!state.loading) StartupDiagnostics.mark(StartupStage.HOME_DATA_READY)
     }
 
     /** 多于一个家庭时才显示切换控件；单家庭不占用首页空间。 */

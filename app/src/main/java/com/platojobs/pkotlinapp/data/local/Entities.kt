@@ -6,7 +6,11 @@ import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "devices")
+@Entity(
+    tableName = "devices",
+    // 首页在线/离线统计按最近出现时间过滤；避免 devices 全表扫描。
+    indices = [Index("lastSeenTimestamp")],
+)
 data class DeviceEntity(
     @PrimaryKey val mac: String,
     val name: String,
@@ -106,6 +110,12 @@ data class RoomEntity(
         Index("deviceId"),
         Index("syncState"),
         Index(value = ["deviceId", "metric", "recordedAt"]),
+        // 首页今日概览按时间窗口计数/分组，不依赖设备或指标前缀。
+        Index("recordedAt"),
+        // 首页「每设备最新一条」：GROUP BY deviceId + MAX(recordedAt) 走该索引。
+        Index(value = ["deviceId", "recordedAt"]),
+        // 按指标取每设备最新值：metric 等值 + deviceId 分组 + recordedAt 排序。
+        Index(value = ["metric", "deviceId", "recordedAt"]),
     ],
 )
 data class ReadingEntity(
@@ -139,7 +149,11 @@ data class RuleEntity(
     val intervalMinutes: Int? = null,
 )
 
-@Entity(tableName = "rule_events")
+@Entity(
+    tableName = "rule_events",
+    // 首页告警摘要按时间窗口计数，事件列表按时间倒序取最近 N 条。
+    indices = [Index("timestamp")],
+)
 data class RuleEventEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val ruleType: String,

@@ -96,16 +96,21 @@ class AppSettings(context: Context) {
         }
 
     fun applyTheme() {
-        AppCompatDelegate.setDefaultNightMode(
-            when (themeMode) {
-                ThemeMode.SYSTEM -> AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
-                ThemeMode.LIGHT -> AppCompatDelegate.MODE_NIGHT_NO
-                ThemeMode.DARK -> AppCompatDelegate.MODE_NIGHT_YES
-            },
-        )
+        applyThemeMode(themeMode)
     }
 
     companion object {
+        /** 必须在主线程调用；主题值由调用方在 IO 线程读好再传进来，避免主线程读偏好文件。 */
+        fun applyThemeMode(mode: ThemeMode) {
+            AppCompatDelegate.setDefaultNightMode(
+                when (mode) {
+                    ThemeMode.SYSTEM -> AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
+                    ThemeMode.LIGHT -> AppCompatDelegate.MODE_NIGHT_NO
+                    ThemeMode.DARK -> AppCompatDelegate.MODE_NIGHT_YES
+                },
+            )
+        }
+
         val ALERT_THROTTLE_OPTIONS = listOf(1, 5, 30)
         const val DEFAULT_ALERT_THROTTLE_MINUTES = 5
 

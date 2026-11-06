@@ -4,6 +4,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.platojobs.pkotlinapp.R
 import com.platojobs.pkotlinapp.databinding.ItemFeedbackFooterBinding
@@ -16,46 +17,25 @@ import com.platojobs.pkotlinapp.ui.common.TimeFormat
 /** 反馈记录列表：真实服务端状态 + 时间；底部为游标加载更多。 */
 class FeedbackHistoryAdapter(
     private val onLoadMoreRetry: () -> Unit,
-) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+) : ListAdapter<FeedbackHistoryAdapter.Row, RecyclerView.ViewHolder>(DIFF) {
 
-    private val items = mutableListOf<FeedbackItem>()
-    private var footer: Footer = Footer.NONE
-
-    fun submit(items: List<FeedbackItem>, footer: Footer) {
-        val oldFooter = this.footer
-        val diff = DiffUtil.calculateDiff(
-            object : DiffUtil.Callback() {
-                override fun getOldListSize(): Int = this@FeedbackHistoryAdapter.items.size
-
-                override fun getNewListSize(): Int = items.size
-
-                override fun areItemsTheSame(oldPosition: Int, newPosition: Int): Boolean =
-                    this@FeedbackHistoryAdapter.items[oldPosition].feedbackId ==
-                        items[newPosition].feedbackId
-
-                override fun areContentsTheSame(oldPosition: Int, newPosition: Int): Boolean =
-                    this@FeedbackHistoryAdapter.items[oldPosition] == items[newPosition]
-            },
-        )
-        this.items.clear()
-        this.items.addAll(items)
-        this.footer = footer
-        diff.dispatchUpdatesTo(this)
-
-        // 尾部加载状态独立于条目 diff，避免整表重绑。
-        if (oldFooter != footer) {
-            when {
-                oldFooter == Footer.NONE -> notifyItemInserted(this.items.size)
-                footer == Footer.NONE -> notifyItemRemoved(this.items.size)
-                else -> notifyItemChanged(this.items.size)
-            }
-        }
+    init {
+        setHasStableIds(true)
     }
 
-    override fun getItemCount(): Int = items.size + if (footer == Footer.NONE) 0 else 1
+    override fun getItemId(position: Int): Long = getItem(position).stableId
+
+    fun submit(items: List<FeedbackItem>, footer: Footer) {
+        submitList(
+            buildList(items.size + 1) {
+                items.forEach { add(Row.Item(it)) }
+                if (footer != Footer.NONE) add(Row.FooterRow(footer))
+            },
+        )
+    }
 
     override fun getItemViewType(position: Int): Int =
-        if (position >= items.size) TYPE_FOOTER else TYPE_ITEM
+        if (getItem(position) is Row.FooterRow) TYPE_FOOTER else TYPE_ITEM
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
         val inflater = LayoutInflater.from(parent.context)
@@ -67,13 +47,26 @@ class FeedbackHistoryAdapter(
     }
 
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
-        when (holder) {
-            is ItemHolder -> holder.bind(items[position])
-            is FooterHolder -> holder.bind(footer, onLoadMoreRetry)
+        when (val row = getItem(position)) {
+            is Row.Item -> (holder as ItemHolder).bind(row.item)
+            is Row.FooterRow -> (holder as FooterHolder).bind(row.footer, onLoadMoreRetry)
         }
     }
 
     enum class Footer { NONE, LOADING, FAILED }
+
+    /** 条目与尾部加载态都进 DiffUtil，稳定 ID 保证尾部状态变化不重绑条目。 */
+    sealed interface Row {
+        val stableId: Long
+
+        data class Item(val item: FeedbackItem) : Row {
+            override val stableId: Long get() = item.feedbackId.hashCode().toLong()
+        }
+
+        data class FooterRow(val footer: Footer) : Row {
+            override val stableId: Long get() = FOOTER_ID
+        }
+    }
 
     private class ItemHolder(
         private val binding: ItemFeedbackHistoryBinding,
@@ -147,5 +140,14 @@ class FeedbackHistoryAdapter(
     private companion object {
         const val TYPE_ITEM = 0
         const val TYPE_FOOTER = 1
+        const val FOOTER_ID = Long.MIN_VALUE
+
+        val DIFF = object : DiffUtil.ItemCallback<Row>() {
+            override fun areItemsTheSame(oldItem: Row, newItem: Row): Boolean =
+                oldItem.stableId == newItem.stableId
+
+            override fun areContentsTheSame(oldItem: Row, newItem: Row): Boolean =
+                oldItem == newItem
+        }
     }
 }

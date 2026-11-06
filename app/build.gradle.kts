@@ -31,8 +31,9 @@ android {
         applicationId = "com.platojobs.pkotlinapp"
         minSdk = 24
         targetSdk = 36
-        versionCode = 28
-        versionName = "0.20.0"
+        versionCode = 29
+        versionName = "0.21.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
     }
 
@@ -198,4 +199,9 @@ dependencies {
     testImplementation(libs.sqlite.jdbc)
     testImplementation(libs.robolectric)
     testImplementation(libs.kotlinx.coroutines.test)
+
+    // 设备侧测试：StrictMode 磁盘/网络检测是框架在真实进程里做的，Robolectric 无法复现。
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.core)
+    androidTestImplementation(libs.androidx.test.ext.junit)
 }

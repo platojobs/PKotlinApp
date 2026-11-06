@@ -61,7 +61,6 @@
                         style="@style/Widget.App.Button.Text"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:minWidth="0dp"
                         android:text="@string/intelligence_rules_recommend" />
 
                     <com.google.android.material.button.MaterialButton
@@ -69,7 +68,6 @@
                         style="@style/Widget.App.Button.Text"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:minWidth="0dp"
                         android:text="@string/intelligence_rules_add" />
                 </LinearLayout>
             </LinearLayout>
@@ -157,7 +155,6 @@
                     style="@style/Widget.App.Button.Text"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:minWidth="0dp"
                     android:text="@string/intelligence_scenes_add" />
             </LinearLayout>
 
@@ -217,7 +214,6 @@
                     style="@style/Widget.App.Button.Text"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:minWidth="0dp"
                     android:text="@string/intelligence_runs_clear" />
             </LinearLayout>
 

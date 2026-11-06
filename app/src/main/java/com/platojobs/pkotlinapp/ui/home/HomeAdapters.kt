@@ -14,6 +14,12 @@ class LiveDeviceAdapter(
     private val onClick: (ScannedDevice) -> Unit,
 ) : ListAdapter<ScannedDevice, LiveDeviceAdapter.ViewHolder>(DIFF) {
 
+    init {
+        setHasStableIds(true)
+    }
+
+    override fun getItemId(position: Int): Long = getItem(position).mac.hashCode().toLong()
+
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
         val binding = ItemLiveDeviceBinding.inflate(
             LayoutInflater.from(parent.context),

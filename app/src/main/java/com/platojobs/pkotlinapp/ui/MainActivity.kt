@@ -9,6 +9,7 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
+import androidx.core.view.doOnPreDraw
 import androidx.core.widget.NestedScrollView
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.commit
@@ -19,6 +20,8 @@ import androidx.recyclerview.widget.RecyclerView
 import com.platojobs.pkotlinapp.PKotlinApplication
 import com.platojobs.pkotlinapp.R
 import com.platojobs.pkotlinapp.databinding.ActivityMainBinding
+import com.platojobs.pkotlinapp.diagnostics.StartupDiagnostics
+import com.platojobs.pkotlinapp.diagnostics.StartupStage
 import com.platojobs.pkotlinapp.ui.common.applyBottomInset
 import com.platojobs.pkotlinapp.ui.common.applyHorizontalInsets
 import com.platojobs.pkotlinapp.ui.common.applyTopInset
@@ -28,8 +31,10 @@ import com.platojobs.pkotlinapp.ui.market.MarketFragment
 import com.platojobs.pkotlinapp.ui.onboarding.OnboardingActivity
 import com.platojobs.pkotlinapp.ui.products.ProductsFragment
 import com.platojobs.pkotlinapp.ui.profile.ProfileFragment
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 五模块容器：首页 / 智能 / 产品 / 市场 / 我的。
@@ -68,6 +73,8 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        StartupDiagnostics.mark(StartupStage.ACTIVITY_CREATE)
+        binding.root.doOnPreDraw { StartupDiagnostics.mark(StartupStage.FIRST_FRAME) }
 
         binding.root.applyHorizontalInsets()
         binding.appHeader.applyTopInset()
@@ -85,8 +92,16 @@ class MainActivity : AppCompatActivity() {
         val restoredTab = savedInstanceState?.getInt(STATE_TAB, R.id.nav_home) ?: R.id.nav_home
 
         val app = application as PKotlinApplication
-        if (savedInstanceState == null && !app.container.settings.onboardingCompleted) {
-            startActivity(Intent(this, OnboardingActivity::class.java))
+        if (savedInstanceState == null) {
+            // 偏好文件在 IO 线程读，首帧路径不碰磁盘；读完后主线程再决定是否进入引导。
+            lifecycleScope.launch {
+                val completed = withContext(Dispatchers.IO) {
+                    app.container.settings.onboardingCompleted
+                }
+                if (!completed && !isFinishing && !isDestroyed) {
+                    startActivity(Intent(this@MainActivity, OnboardingActivity::class.java))
+                }
+            }
         }
 
         binding.bottomNav.setOnItemSelectedListener { item ->
@@ -125,13 +140,18 @@ class MainActivity : AppCompatActivity() {
         binding.headerTitleLarge.text = initialTitle
         binding.headerTitleCollapsed.text = initialTitle
         binding.root.postOnAnimation {
+            // 首帧绘制回调（Robolectric 与真机都可断言）；doOnPreDraw 已标记时这里会去重。
+            StartupDiagnostics.mark(StartupStage.FIRST_FRAME)
             showTab(restoredTab)
             app.startBackgroundWork()
         }
 
         lifecycleScope.launch {
+            // syncManager 的依赖（安装号/游标）在偏好文件里，第一次装配要读磁盘：
+            // 放到 IO 线程，避免 Application/首帧阶段的主线程磁盘 IO。
+            val syncManager = withContext(Dispatchers.IO) { app.container.syncManager }
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                app.container.syncManager.status.collect { status ->
+                syncManager.status.collect { status ->
                     binding.syncBanner.visibility =
                         if (status.localOnly) View.VISIBLE else View.GONE
                 }

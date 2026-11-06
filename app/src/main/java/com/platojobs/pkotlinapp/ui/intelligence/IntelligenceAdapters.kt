@@ -43,6 +43,12 @@ class RuleAdapter(
     private val onDelete: (DeviceRule) -> Unit,
 ) : ListAdapter<DeviceRule, RuleAdapter.ViewHolder>(DIFF) {
 
+    init {
+        setHasStableIds(true)
+    }
+
+    override fun getItemId(position: Int): Long = getItem(position).id
+
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
         val binding = ItemRuleBinding.inflate(LayoutInflater.from(parent.context), parent, false)
         return ViewHolder(binding, onToggle, onDelete)
@@ -124,6 +130,15 @@ class RuleAdapter(
 
 class RuleEventAdapter : ListAdapter<RuleEvent, RuleEventAdapter.ViewHolder>(DIFF) {
 
+    init {
+        setHasStableIds(true)
+    }
+
+    override fun getItemId(position: Int): Long {
+        val event = getItem(position)
+        return (event.id.hashCode().toLong() shl 32) xor event.timestamp
+    }
+
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
         val binding = ItemRuleEventBinding.inflate(
             LayoutInflater.from(parent.context),
@@ -170,10 +185,21 @@ class SceneAdapter(
     private val onEnabledChange: (Scene, Boolean) -> Unit,
 ) : ListAdapter<Scene, SceneAdapter.ViewHolder>(DIFF) {
 
+    init {
+        setHasStableIds(true)
+    }
+
+    override fun getItemId(position: Int): Long = getItem(position).id
+
     var progress: SceneProgress? = null
         set(value) {
+            val previous = field
             field = value
-            if (itemCount > 0) notifyItemRangeChanged(0, itemCount)
+            // 进度只影响正在执行的场景，按稳定 ID 精确刷新，避免整表重绑。
+            val touched = setOfNotNull(previous?.sceneId, value?.sceneId)
+            currentList.forEachIndexed { index, scene ->
+                if (scene.id in touched) notifyItemChanged(index)
+            }
         }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -248,6 +274,12 @@ class SceneAdapter(
 
 /** 执行记录列表：只读展示引擎/手动真实写入的结果，不提供任何编辑入口。 */
 class SceneRunAdapter : ListAdapter<SceneRun, SceneRunAdapter.ViewHolder>(DIFF) {
+
+    init {
+        setHasStableIds(true)
+    }
+
+    override fun getItemId(position: Int): Long = getItem(position).id
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
         val binding = ItemSceneRunBinding.inflate(

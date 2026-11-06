@@ -29,7 +29,6 @@
             style="@style/Widget.App.Button.Text"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:minWidth="0dp"
             android:paddingStart="@dimen/space_16"
             android:paddingEnd="@dimen/space_16"
             android:text="@string/onboarding_skip" />

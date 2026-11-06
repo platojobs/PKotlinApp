@@ -1,7 +1,12 @@
 package com.platojobs.pkotlinapp
 
 import android.app.Application
+import android.os.Handler
+import android.os.Looper
+import com.platojobs.pkotlinapp.data.prefs.AppSettings
 import com.platojobs.pkotlinapp.data.scene.SceneScheduleWorker
+import com.platojobs.pkotlinapp.diagnostics.StartupDiagnostics
+import com.platojobs.pkotlinapp.diagnostics.StartupStage
 import com.platojobs.pkotlinapp.di.AppContainer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -17,10 +22,19 @@ class PKotlinApplication : Application() {
     private var backgroundWorkStarted = false
 
     override fun onCreate() {
+        // 诊断必须先于任何业务初始化安装，StrictMode 才能覆盖到后面的代码。
+        StartupDiagnostics.install(this)
         super.onCreate()
-        // onCreate 只做轻量的容器装配与主题恢复，不打开数据库、不发网络请求。
+        // onCreate 只做轻量的容器装配：主题偏好、Room 开户都在 IO 读，
+        // 主线程只负责切换主题模式，避免首帧前的同步磁盘 IO。
         container = AppContainer(this)
-        container.settings.applyTheme()
+        appScope.launch {
+            // 与首帧的布局工作并行：首页第一条数据不必再等 Room 开户和迁移。
+            runCatching { container.preWarmDatabase() }
+            val mode = container.settings.themeMode
+            Handler(Looper.getMainLooper()).post { AppSettings.applyThemeMode(mode) }
+        }
+        StartupDiagnostics.mark(StartupStage.APPLICATION_CREATE)
     }
 
     /**
@@ -39,6 +53,6 @@ class PKotlinApplication : Application() {
                 container.ruleEngine.onScheduleTick()
             }
         }
-        SceneScheduleWorker.schedule(this)
+        appScope.launch { runCatching { SceneScheduleWorker.schedule(this@PKotlinApplication) } }
     }
 }

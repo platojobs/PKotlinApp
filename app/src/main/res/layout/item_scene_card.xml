@@ -42,7 +42,6 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="@dimen/space_8"
-            android:minWidth="0dp"
             android:paddingStart="@dimen/space_8"
             android:paddingEnd="@dimen/space_8"
             android:text="@string/home_scene_run" />

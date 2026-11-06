@@ -12,6 +12,12 @@ import com.platojobs.pkotlinapp.ui.common.TimeFormat
 
 class ScanLogAdapter : ListAdapter<ScanLog, ScanLogAdapter.ViewHolder>(DIFF) {
 
+    init {
+        setHasStableIds(true)
+    }
+
+    override fun getItemId(position: Int): Long = getItem(position).id
+
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
         val binding = ItemScanLogBinding.inflate(LayoutInflater.from(parent.context), parent, false)
         return ViewHolder(binding)

@@ -64,7 +64,6 @@
                 android:layout_width="wrap_content"
                 android:layout_height="@dimen/input_h"
                 android:layout_marginStart="@dimen/space_8"
-                android:minWidth="0dp"
                 android:paddingStart="@dimen/space_16"
                 android:paddingEnd="@dimen/space_16"
                 android:text="@string/home_scan_add" />

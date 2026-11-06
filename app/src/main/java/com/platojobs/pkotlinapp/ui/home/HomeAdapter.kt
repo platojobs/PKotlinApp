@@ -83,6 +83,23 @@ sealed interface HomeItem {
     ) : HomeItem
 }
 
+/** 稳定的条目 ID：固定条目用类型值，带业务键的条目把键哈希放进低位。 */
+internal fun HomeItem.stableId(): Long = when (this) {
+    is HomeItem.Alert -> 1L
+    is HomeItem.TodayOverview -> 2L
+    is HomeItem.DeviceStatus -> 3L
+    is HomeItem.RecentActivity -> 4L
+    is HomeItem.DevicesHeader -> 5L
+    is HomeItem.RoomHeader -> stableId(6, roomId ?: -1L)
+    HomeItem.RoomEmpty -> 7L
+    is HomeItem.DeviceCard -> stableId(8, device.mac)
+    is HomeItem.ScenesHeader -> 9L
+    is HomeItem.SceneCards -> 10L
+}
+
+private fun stableId(type: Int, key: Any): Long =
+    (type.toLong() shl 48) or (key.hashCode().toLong() and 0x0000_FFFF_FFFF_FFFFL)
+
 class HomeAdapter(
     private val unknownName: String,
     private val onDeviceClick: (Device) -> Unit,
@@ -95,6 +112,12 @@ class HomeAdapter(
     private val onDeviceLongClick: (Device) -> Unit,
     private val onStatusClick: (HomeStatusFilter) -> Unit,
 ) : ListAdapter<HomeItem, RecyclerView.ViewHolder>(Diff) {
+
+    init {
+        setHasStableIds(true)
+    }
+
+    override fun getItemId(position: Int): Long = getItem(position).stableId()
 
     override fun getItemViewType(position: Int): Int = when (getItem(position)) {
         is HomeItem.Alert -> TYPE_ALERT

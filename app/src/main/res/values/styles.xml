@@ -105,6 +105,7 @@
     <!-- 按钮：只变色不缩放、无阴影 -->
     <style name="Widget.App.Button.Primary" parent="Widget.Material3.Button">
         <item name="android:minHeight">@dimen/button_h</item>
+        <item name="android:minWidth">@dimen/touch_min</item>
         <item name="android:insetTop">0dp</item>
         <item name="android:insetBottom">0dp</item>
         <item name="android:elevation">0dp</item>
@@ -117,6 +118,7 @@
 
     <style name="Widget.App.Button.Secondary" parent="Widget.Material3.Button.OutlinedButton">
         <item name="android:minHeight">@dimen/button_h</item>
+        <item name="android:minWidth">@dimen/touch_min</item>
         <item name="android:insetTop">0dp</item>
         <item name="android:insetBottom">0dp</item>
         <item name="android:elevation">0dp</item>
@@ -131,6 +133,7 @@
 
     <style name="Widget.App.Button.Text" parent="Widget.Material3.Button.TextButton">
         <item name="android:minHeight">@dimen/button_h</item>
+        <item name="android:minWidth">@dimen/touch_min</item>
         <item name="android:insetTop">0dp</item>
         <item name="android:insetBottom">0dp</item>
         <item name="android:textAppearance">@style/TextAppearance.App.Button</item>
@@ -140,6 +143,7 @@
 
     <style name="Widget.App.Button.Danger" parent="Widget.Material3.Button">
         <item name="android:minHeight">@dimen/button_h</item>
+        <item name="android:minWidth">@dimen/touch_min</item>
         <item name="android:insetTop">0dp</item>
         <item name="android:insetBottom">0dp</item>
         <item name="android:elevation">0dp</item>

@@ -6,6 +6,20 @@
 
 ---
 
+## v0.21.0
+
+**主题：可自动化验证的产品质量（启动与主线程、列表与图表性能、无障碍与对比度）**
+
+- 冷启动诊断（`src/debug` 源集）：debug 构建安装 StrictMode `ThreadPolicy` / `VmPolicy` 的 `detectAll()` + `penaltyLog()`，并用直接执行的监听器把违规连同**触发线程名**记入内存；`PROCESS_START → APPLICATION_CREATE → ACTIVITY_CREATE → FIRST_FRAME → HOME_DATA_READY` 各阶段耗时异步写入 `files/diagnostics/cold-start.log`（单线程守护线程、128KB 上限）。release 变体提供同名 no-op 实现，`app-release.apk` 的 dex 中已确认不含 `cold-start.log` / `StartupDiagnostics` / `ColdStart` 符号。
+- 主线程磁盘 IO 治理：Application 只在主线程装配轻量容器，主题偏好读取、Room 开户移到 IO；`MainActivity` 的引导标记与 `syncManager` 首次装配（安装号/游标）也移到 IO。修复前设备侧实测冷启动路径有 4 条 `DiskReadViolation`（全部来自 `syncManager` 在主线程惰性初始化），修复后为 0。
+- `startBackgroundWork()` 的清理、冷启动拉取、同步调度、规则刷新与场景调度全部在 `appScope`（IO）中执行，且统一 `runCatching`，不阻塞首帧。
+- 新增设备侧测试 `ColdStartNoMainThreadDiskIoTest`（`androidTest`）：真实进程里启动 `MainActivity` 并断言无主线程 `DiskReadViolation` / `DiskWriteViolation`；Robolectric 的 StrictMode 是空壳，这条断言只能在真机/模拟器上跑。
+- 列表统一 `ListAdapter` + `DiffUtil` + `setHasStableIds`：首页、设备、扫描日志、规则、规则事件、场景、场景执行、反馈历史全部补齐稳定 ID；删除全部 `notifyDataSetChanged`，`SceneAdapter.progress` 从整表刷新改为只刷新变化的场景行。
+- 图表绘制去分配：`ReadingChartView` 缓存几何、轴标签与日期标签，只有数据或尺寸变化才重算；`onDraw` 不再 `String.format` / `new Date` / 重建 Path。新增 `ReadingChartCacheTest` 断言重复绘制不重算、尺寸变化才重算。
+- Room v19（`MIGRATION_18_19`）补索引：`readings(recordedAt)`、`readings(deviceId, recordedAt)`、`readings(metric, deviceId, recordedAt)`、`rule_events(timestamp)`、`devices(lastSeenTimestamp)`；`HomeQueryPlanTest` 用 `EXPLAIN QUERY PLAN` 断言首页聚合走索引且无裸 `SCAN table`，`HomeAggregationIndexMigrationTest` 用真实 SQLite 验证迁移后数据与索引结构。
+- 无障碍与可读性全部测试化：`AccessibilityAuditTest`（可点击控件标签、`ImageView` 描述或装饰标记、触控 ≥48dp）、`FontScaleTruncationTest`（1.3×/2.0× 字号下 26 个关键布局不截断）、`ContrastAuditTest`（浅/深两套主题按 WCAG 算比值，正文 ≥4.5:1、大字 ≥3:1）。修补：按钮样式补 `minWidth=touch_min`、移除 13 处 `minWidth=0dp` 覆盖、规则弹窗 RadioButton 补 `minHeight`。
+- 验证：`testDebugUnitTest` 310 项全绿、`lintDebug` 0 error（11 条既有 warning）、`assembleDebug` / `assembleRelease` 通过、fixture e2e 全绿、设备侧 StrictMode 测试在 Pixel_10a AVD 上通过；tag `v0.21.0`（`versionCode = 29`）。
+
 ## v0.20.0
 
 **主题：设备类型目录改为服务端唯一真值；账号导出与删除接入异步任务与一次性令牌**

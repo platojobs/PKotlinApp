@@ -217,6 +217,14 @@ class AppContainer(context: Context) {
 
     val settings: AppSettings by lazy { AppSettings(appContext) }
 
+    /**
+     * 在 IO 线程预热 Room：开户、迁移与 schema 校验是首页首条数据的主要等待项。
+     * 只做打开，不发查询，调用方负责放到后台线程。
+     */
+    fun preWarmDatabase() {
+        database.openHelper.writableDatabase
+    }
+
     private val alertNotifier by lazy {
         AlertNotifier(
             throttle = AlertThrottle(

@@ -252,6 +252,22 @@ internal object CatalogMigrationSql {
     )
 }
 
+/** v18 -> v19：给首页聚合查询补索引，避免读数/告警/设备统计全表扫描。 */
+internal object HomeAggregationIndexSql {
+    val V18_TO_V19 = listOf(
+        "CREATE INDEX IF NOT EXISTS `index_readings_recordedAt` " +
+            "ON `readings` (`recordedAt`)",
+        "CREATE INDEX IF NOT EXISTS `index_readings_deviceId_recordedAt` " +
+            "ON `readings` (`deviceId`, `recordedAt`)",
+        "CREATE INDEX IF NOT EXISTS `index_readings_metric_deviceId_recordedAt` " +
+            "ON `readings` (`metric`, `deviceId`, `recordedAt`)",
+        "CREATE INDEX IF NOT EXISTS `index_rule_events_timestamp` " +
+            "ON `rule_events` (`timestamp`)",
+        "CREATE INDEX IF NOT EXISTS `index_devices_lastSeenTimestamp` " +
+            "ON `devices` (`lastSeenTimestamp`)",
+    )
+}
+
 @Database(
     entities = [
         DeviceEntity::class,
@@ -268,7 +284,7 @@ internal object CatalogMigrationSql {
         CatalogItemEntity::class,
         CatalogSyncEntity::class,
     ],
-    version = 18,
+    version = 19,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -464,6 +480,13 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v18 -> v19：只补索引，不改表结构与数据。 */
+        val MIGRATION_18_19 = object : Migration(18, 19) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                HomeAggregationIndexSql.V18_TO_V19.forEach(db::execSQL)
+            }
+        }
+
         @Volatile
         private var instance: AppDatabase? = null
 
@@ -491,6 +514,7 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_15_16,
                     MIGRATION_16_17,
                     MIGRATION_17_18,
+                    MIGRATION_18_19,
                 )
                     .build()
                     .also { instance = it }

@@ -30,6 +30,7 @@
             android:id="@+id/typeLowRssi"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:minHeight="@dimen/touch_min"
             android:checked="true"
             android:text="@string/rule_low_rssi" />
 
@@ -37,18 +38,21 @@
             android:id="@+id/typeDisconnected"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:minHeight="@dimen/touch_min"
             android:text="@string/rule_disconnected" />
 
         <RadioButton
             android:id="@+id/typeBondLost"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:minHeight="@dimen/touch_min"
             android:text="@string/rule_bond_lost" />
 
         <RadioButton
             android:id="@+id/typeMetric"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:minHeight="@dimen/touch_min"
             android:text="@string/rule_metric_threshold" />
     </RadioGroup>
 

@@ -1,9 +1,9 @@
-# 真机验收清单（v0.20.0）
+# 真机验收清单（v0.21.0）
 
 本清单用于「执行人不在开发现场」时也能照着做完验收。每项都写明**操作步骤、预期现象、失败判定**。
 所有结果请记录到文末的「验收记录表」；未实际执行的项不要填 PASS。
 
-- 适用版本：`versionName = 0.20.0`（`versionCode = 28`）
+- 适用版本：`versionName = 0.21.0`（`versionCode = 29`）
 - 应用包名：`com.platojobs.pkotlinapp`
 - 主界面：`com.platojobs.pkotlinapp.ui.MainActivity`
 - 设备详情：`com.platojobs.pkotlinapp.ui.detail.DeviceDetailActivity`
@@ -383,7 +383,7 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
 
 ---
 
-## 7. Room v1 → v2 → … → v17 → v18 迁移
+## 7. Room v1 → v2 → … → v18 → v19 迁移
 
 > 需要 v0.3.1 的 Debug APK 作为「旧版本」。若手头没有，可从 tag 构建：
 >
@@ -1094,4 +1094,83 @@ apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk
 - Room v1→v2→v3→v4→v5→v6→v7 在真实旧数据上的迁移（本仓库已导出 schema 与 v6→v7 SQLite 迁移测试，但未跑真机迁移）；
 - 真实 BLE notify 读数投递与各厂商固件字节格式（心率/电池/温度/NUS 的实际报文需按 §7.6 真机验收）；
 - WorkManager 在真实网络切换下的调度与退避；
-- 生产后端域名、真实账号体系与跨设备同步。
+- 生产后端域名、真实账号体系与跨设备同步；
+- 冷启动绝对耗时：下文 §11 的数字来自 Pixel_10a **模拟器**（软件渲染、debug 构建），只代表本机环境快照，不构成真机性能承诺；
+- StrictMode 的磁盘/网络违规检测由真实 framework 完成，Robolectric 是空壳，`ColdStartNoMainThreadDiskIoTest` 必须连真机/模拟器执行。
+
+---
+
+## 11. 冷启动与质量基线（v0.21.0）
+
+### 11.1 测量环境
+
+| 项 | 值 |
+| --- | --- |
+| 设备 | `Pixel_10a` AVD（`sdk_gphone64_arm64`），Android 17 / API 37，`ro.hardware.egl=emulation`（软件渲染，无 GPU） |
+| 构建 | `debug`（`versionCode = 29`、`versionName = 0.21.0`），JDK 21，未带 Baseline Profile |
+| 宿主 | macOS；采样时 1 分钟 load average ≈ 7.7、空闲内存 ≈ 140 MB，模拟器资源被抢占 |
+| 方法 | `adb shell am force-stop` → `adb shell am start -W`；5 次冷启动；阶段耗时读自 `files/diagnostics/cold-start.log` |
+
+> 因为宿主与 AVD 都在过载状态，绝对值偏大且抖动明显（同一构建曾出现 `首帧→首页数据就绪` 仅 0.5 s 的样本）。
+> 这张表记录**本机真实测到的快照**，不作为回归门槛；回归门槛是单测里的预算断言（见 §11.3）。
+
+### 11.2 冷启动各阶段（ms）
+
+| 阶段（相邻打点差值） | #1 | #2 | #3 | #4 | #5 | 中位数 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 进程创建 → 诊断安装（`PROCESS_START`） | 3284 | 2515 | 4931 | 3387 | 3874 | 3387 |
+| 诊断安装 → `Application.onCreate` 结束 | 46 | 23 | 23 | 11 | 24 | 23 |
+| Application.onCreate → `ACTIVITY_CREATE` | 1219 | 624 | 615 | 643 | 653 | 643 |
+| Activity 创建 → `FIRST_FRAME` | 1121 | 1575 | 876 | 1623 | 1495 | 1495 |
+| 首帧 → `HOME_DATA_READY` | 4106 | 6375 | 6028 | 5438 | 6815 | 6028 |
+| 进程创建 → 首页数据就绪（合计） | 6492 | 8597 | 7542 | 7715 | 8987 | 7715 |
+| `am start -W` TotalTime（系统口径） | 10366 | 8340 | 10579 | 8858 | 10036 | 10036 |
+
+`am start -W` 比应用内合计更大，差值落在系统启动 Activity 任务栈、等待窗口动画等框架侧开销。
+
+### 11.3 大列表与图表（JVM，非真机）
+
+`ListAndChartPerfTest`（纯 JUnit，无 Robolectric）：1000 台设备 / 20 个房间构列表，单设备 10000 条读数做 `1h` 聚合 + 图表几何。
+
+| 场景 | 实测均值 | 预算 | 余量 |
+| --- | --- | --- | --- |
+| 构建首页列表（1000 设备 / 20 房间，10 次平均） | 0.17 ms | 20 ms | ~117× |
+| 10000 读数聚合 → 167 桶 → 几何（5 次平均） | 1.74 ms | 60 ms | ~34× |
+
+这是 JVM 上的算法/分配开销，不含 Android 渲染、GC 停顿与真机 IO，不能当作真机帧耗时。
+
+### 11.4 对比度（WCAG，浅色 / 深色）
+
+`ContrastAuditTest` 直接计算相对亮度比值；正文阈值 4.5:1，大字 3:1。
+
+| 前景 → 背景 | 浅色 | 深色 |
+| --- | --- | --- |
+| `text_primary` → `canvas` | 16.39 | 16.00 |
+| `text_primary` → `surface` | 17.75 | 14.76 |
+| `text_primary` → `surface_sunken` | 15.66 | 15.31 |
+| `text_secondary` → `canvas` | 7.10 | 8.90 |
+| `text_secondary` → `surface` | 7.69 | 8.21 |
+| `text_secondary` → `surface_sunken` | 6.79 | 8.52 |
+| `text_tertiary` → `surface` | 5.46 | 5.79 |
+| `text_tertiary` → `surface_sunken` | 4.82 | 6.00 |
+| `primary_text` → `surface` | 5.99 | 6.90 |
+| `primary_text` → `chart_band` | 5.18 | 5.74 |
+| `on_primary` → `primary` | 5.99 | 5.17 |
+| `on_primary` → `danger_fill` | 6.57 | 5.44 |
+| `success` → `success_bg` | 5.40 | 8.51 |
+| `warning` → `warning_bg` | 5.20 | 7.76 |
+| `danger` → `danger_bg` | 6.05 | 6.25 |
+| `toast_text` → `toast_surface` | 14.70 | 11.04 |
+| `chart_axis` → `canvas` | 4.59 | 6.27 |
+
+复跑方式：
+
+```bash
+./gradlew :app:testDebugUnitTest \
+  --tests "com.platojobs.pkotlinapp.ui.ContrastAuditTest" \
+  --tests "com.platojobs.pkotlinapp.performance.ListAndChartPerfTest"
+
+# 设备侧（需连接真机/模拟器）
+./gradlew :app:connectedDebugAndroidTest \
+  --tests "com.platojobs.pkotlinapp.diagnostics.ColdStartNoMainThreadDiskIoTest"
+```

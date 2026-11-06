@@ -2334,6 +2334,85 @@ class E2eContractTest {
 
     private data class UserSession(val userId: String, val token: String)
 
+    /**
+     * Push 设备契约（fixture 与 Postgres 都跑）：注册、同 token 幂等、
+     * inactive 重置、400 PUSH_DEVICE_INVALID、跨用户 404 与幂等注销。
+     */
+    @org.junit.Test
+    fun `push devices contract registration idempotency and deactivation`() {
+        val user = captureStep("push: anonymous login") {
+            val result = post("/auth/anonymous")
+            assertEquals(201, result.code)
+            val body = parseMap(result.body)
+            UserSession(body["userId"] as String, body["token"] as String)
+        }
+        val other = captureStep("push: other user anonymous login") {
+            val result = post("/auth/anonymous")
+            assertEquals(201, result.code)
+            val body = parseMap(result.body)
+            UserSession(body["userId"] as String, body["token"] as String)
+        }
+
+        step("push: unauthenticated register is 401") {
+            assertUnauthorized(post("/push/devices", pushBody("fcm-token")))
+        }
+        step("push: missing token is 400 PUSH_DEVICE_INVALID") {
+            val result = post("/push/devices", """{"platform":"android"}""", user.token)
+            assertEquals(400, result.code)
+            val error = parseMap(result.body)["error"] as Map<*, *>
+            assertEquals("PUSH_DEVICE_INVALID", error["code"])
+        }
+        step("push: missing platform is 400 PUSH_DEVICE_INVALID") {
+            val result = post("/push/devices", """{"token":"fcm-token"}""", user.token)
+            assertEquals(400, result.code)
+            val error = parseMap(result.body)["error"] as Map<*, *>
+            assertEquals("PUSH_DEVICE_INVALID", error["code"])
+        }
+
+        val token = "fcm-e2e-${java.util.UUID.randomUUID()}"
+        val firstDeviceId = captureStep("push: register device") {
+            val result = post("/push/devices", pushBody(token), user.token)
+            assertEquals(200, result.code)
+            val body = parseMap(result.body)
+            assertEquals("active", body["status"])
+            assertEquals("android", body["platform"])
+            body["id"] as String
+        }
+
+        step("push: same token upserts the same device id") {
+            val result = post(
+                "/push/devices",
+                """{"platform":"android","token":"$token","appVersion":"0.29.0","deviceModel":"Pixel 8"}""",
+                user.token,
+            )
+            assertEquals(200, result.code)
+            val body = parseMap(result.body)
+            assertEquals(firstDeviceId, body["id"])
+            assertEquals("Pixel 8", body["deviceModel"])
+            assertEquals("active", body["status"])
+        }
+
+        step("push: another user cannot deactivate this device") {
+            assertEquals(404, delete("/push/devices/$firstDeviceId", other.token).code)
+        }
+
+        step("push: deactivate is 204 and idempotent") {
+            assertEquals(204, delete("/push/devices/$firstDeviceId", user.token).code)
+            assertEquals(204, delete("/push/devices/$firstDeviceId", user.token).code)
+        }
+
+        step("push: re-registering an inactive token resets it to active") {
+            val result = post("/push/devices", pushBody(token), user.token)
+            assertEquals(200, result.code)
+            val body = parseMap(result.body)
+            assertEquals(firstDeviceId, body["id"])
+            assertEquals("active", body["status"])
+        }
+    }
+
+    private fun pushBody(token: String): String =
+        """{"platform":"android","token":"$token","appVersion":"0.29.0","deviceModel":"E2E Device"}"""
+
     private data class HttpResult(
         val code: Int,
         val body: String,

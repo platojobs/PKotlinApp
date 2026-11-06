@@ -21,16 +21,17 @@ OUT = SRC / "play"
 W, H = 1080, 1920
 CAPTION_FONT = "/System/Library/Fonts/Supplemental/Arial Unicode.ttf"
 
-# (源截图, 输出文件名, 文案)。文案只写该截图里实际可见的元素：
+# (源截图, 输出文件名, 文案, 底部裁剪高度)。文案只写该截图里实际可见的元素：
 # home 只有今日概览与设备状态（无设备卡片）；device_detail 只有曲线与汇总（无阈值告警）；
 # products 只有设备类型目录（无 GATT 服务表）；profile_household 只有家庭与成员行（无房间行）。
+# 裁剪高度用于去掉底部被 Tab 条切断的半句/半张卡片；None 表示保留完整截图。
 SHOTS = [
-    ("home.png", "01-home.png", "首页 · 今日概览与设备状态"),
-    ("device_detail.png", "02-device-detail.png", "设备详情 · 历史曲线与 24 小时汇总"),
-    ("scenes.png", "03-scenes.png", "智能 · 本机场景一键执行"),
-    ("products.png", "04-products.png", "产品 · 设备类型目录"),
-    ("profile_household.png", "05-household.png", "我的 · 家庭与成员"),
-    ("profile_scan_logs.png", "06-scan-logs.png", "我的 · 扫描日志"),
+    ("home.png", "01-home.png", "首页 · 今日概览与设备状态", None),
+    ("device_detail.png", "02-device-detail.png", "设备详情 · 历史曲线与 24 小时汇总", None),
+    ("scenes.png", "03-scenes.png", "智能 · 本机场景一键执行", 2000),
+    ("products.png", "04-products.png", "产品 · 设备类型目录", 2000),
+    ("profile_household.png", "05-household.png", "我的 · 家庭与成员", 2040),
+    ("profile_scan_logs.png", "06-scan-logs.png", "我的 · 扫描日志", None),
 ]
 
 BG_TOP = (232, 241, 240)
@@ -67,8 +68,10 @@ def rounded_mask(size: tuple[int, int], radius: int) -> Image.Image:
     return mask
 
 
-def compose(src: Path, caption: str) -> Image.Image:
+def compose(src: Path, caption: str, crop_bottom=None) -> Image.Image:
     shot = Image.open(src).convert("RGB")
+    if crop_bottom is not None:
+        shot = shot.crop((0, 0, shot.width, crop_bottom))
     scale = min(1320 / shot.width, 1560 / shot.height)
     size = (round(shot.width * scale), round(shot.height * scale))
     shot = shot.resize(size, Image.LANCZOS)
@@ -160,18 +163,18 @@ def make_feature_graphic() -> Image.Image:
     draw.text((72, 298), "实时读数与本地告警",
               font=fit_font("实时读数与本地告警", 640, 33), fill=text_secondary)
     draw.line([(72, 380), (676, 380)], fill=(208, 213, 221), width=2)
-    draw.text((72, 402), "无需账号密码 · 数据保存在本机",
-              font=fit_font("无需账号密码 · 数据保存在本机", 640, 24), fill=text_tertiary)
+    draw.text((72, 402), "无需账号密码 · 本地优先，支持匿名同步",
+              font=fit_font("无需账号密码 · 本地优先，支持匿名同步", 640, 24), fill=text_tertiary)
     return canvas
 
 
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
-    for src_name, out_name, caption in SHOTS:
+    for src_name, out_name, caption, crop_bottom in SHOTS:
         src = SRC / src_name
         if not src.is_file():
             raise SystemExit(f"缺少源截图：{src}")
-        image = compose(src, caption)
+        image = compose(src, caption, crop_bottom)
         target = OUT / out_name
         image.save(target, "PNG", optimize=True)
         print(f"{target.relative_to(ROOT)} {image.width}x{image.height}")

@@ -1,9 +1,9 @@
-# 真机验收清单（v0.31.0）
+# 真机验收清单（v0.31.1）
 
 本清单用于「执行人不在开发现场」时也能照着做完验收。每项都写明**操作步骤、预期现象、失败判定**。
 所有结果请记录到文末的「验收记录表」；未实际执行的项不要填 PASS。
 
-- 适用版本：`versionName = 0.31.0`（`versionCode = 40`）
+- 适用版本：`versionName = 0.31.1`（`versionCode = 41`）
 - 应用包名：`com.platojobs.pkotlinapp`
 - 主界面：`com.platojobs.pkotlinapp.ui.MainActivity`
 - 设备详情：`com.platojobs.pkotlinapp.ui.detail.DeviceDetailActivity`
@@ -55,7 +55,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versionCode"
 ```
 
-预期：`versionName=0.31.0`、`versionCode=40`。
+预期：`versionName=0.31.1`、`versionCode=41`。
 
 ---
 

@@ -642,7 +642,7 @@
     <string name="home_scenes_title">快捷场景</string>
     <string name="home_scenes_manage">管理场景</string>
     <string name="home_scenes_empty">还没有场景，先去智能页创建第一个</string>
-    <string name="home_scenes_local">仅本机</string>
+    <string name="home_scenes_local">本机执行</string>
 
     <string name="home_scene_run">执行</string>
 
@@ -657,7 +657,7 @@
     <string name="intelligence_events_empty_title">还没有触发记录</string>
     <string name="intelligence_events_empty_hint">规则命中后会在这里留下真实记录</string>
     <string name="intelligence_scenes_title">场景</string>
-    <string name="intelligence_scenes_hint">场景仅保存本机，不会同步到云端</string>
+    <string name="intelligence_scenes_hint">场景按匿名账号同步；离线时先保存在本机，恢复网络后上传</string>
     <string name="intelligence_scenes_empty_title">还没有场景</string>
     <string name="intelligence_scenes_empty_hint">把连接设备、开始采集、静音告警等动作组合起来，一键执行</string>
     <string name="intelligence_scenes_add">新建场景</string>

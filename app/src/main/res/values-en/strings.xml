@@ -638,7 +638,7 @@
     <string name="home_scenes_title">Quick scenes</string>
     <string name="home_scenes_manage">Manage scenes</string>
     <string name="home_scenes_empty">No scenes yet. Create your first one on the Intelligence page</string>
-    <string name="home_scenes_local">On this device only</string>
+    <string name="home_scenes_local">Runs on this device</string>
 
     <string name="home_scene_run">Run</string>
 
@@ -653,7 +653,7 @@
     <string name="intelligence_events_empty_title">No triggers yet</string>
     <string name="intelligence_events_empty_hint">Real records appear here when a rule triggers</string>
     <string name="intelligence_scenes_title">Scenes</string>
-    <string name="intelligence_scenes_hint">Scenes are stored on this device only and do not sync to the cloud</string>
+    <string name="intelligence_scenes_hint">Scenes sync with your anonymous account; offline changes stay on this device and upload when the network returns</string>
     <string name="intelligence_scenes_empty_title">No scenes yet</string>
     <string name="intelligence_scenes_empty_hint">Combine actions such as connecting a device, starting collection or muting alerts, then run them with one tap</string>
     <string name="intelligence_scenes_add">New scene</string>

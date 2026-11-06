@@ -43,6 +43,10 @@ class AccountService(
     private val pollIntervalMillis: Long = DEFAULT_POLL_INTERVAL_MILLIS,
     /** 轮询上限，避免任务长期挂起时无限等待。 */
     private val maxPolls: Int = DEFAULT_MAX_POLLS,
+    /** 登出/删号前注销推送令牌（先 DELETE 再清本地）。 */
+    private val onPushUnregister: suspend () -> Unit = {},
+    /** 配对码领取成功（新会话就绪）后触发推送注册。 */
+    private val onSessionReady: suspend () -> Unit = {},
 ) {
 
     suspend fun createPairingCode(): PairingCode = remote.createPairingCode()
@@ -61,6 +65,8 @@ class AccountService(
         cursorStore.cursor = null
         markAllPending()
         resetSyncStatus()
+        // 新会话已就绪：按新 token 重新注册推送（失败不影响账号恢复流程）。
+        runCatching { onSessionReady() }
         return account
     }
 
@@ -81,6 +87,8 @@ class AccountService(
      * @return 服务端是否成功吊销（离线时为 false，本地仍然退出）。
      */
     suspend fun logout(): Boolean {
+        // 先注销推送令牌，避免退出后服务端仍向本机投递告警；失败不阻塞本地退出。
+        runCatching { onPushUnregister() }
         val revoked = remote.logout()
         tokenStore.clear()
         tokenStore.setReloginRequired(true)
@@ -146,6 +154,8 @@ class AccountService(
      * 远端失败（含 409 家庭还有成员）时本地数据原样保留。
      */
     suspend fun deleteAccount() {
+        // 删除账号前先注销推送（此时 token 仍可用）；本地清理在远端删除成功后继续。
+        runCatching { onPushUnregister() }
         val token = remote.requestDeletionToken()
         remote.deleteAccount(token.token)
         withContext(Dispatchers.IO) {

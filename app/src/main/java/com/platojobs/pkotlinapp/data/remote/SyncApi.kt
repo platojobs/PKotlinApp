@@ -487,6 +487,26 @@ data class FeedbackCloseRequest(
     val status: String = "closed",
 )
 
+/** POST /push/devices 请求体；缺 platform/token 会返回 400 PUSH_DEVICE_INVALID。 */
+data class PushDeviceRegistrationRequest(
+    val platform: String = "android",
+    val token: String,
+    val appVersion: String? = null,
+    val deviceModel: String? = null,
+)
+
+/** POST /push/devices 响应（服务端 PushRegistration）。 */
+data class PushDeviceRegistrationResponse(
+    val id: String? = null,
+    val platform: String? = null,
+    val token: String? = null,
+    val appVersion: String? = null,
+    val deviceModel: String? = null,
+    val status: String? = null,
+    val createdAt: String? = null,
+    val updatedAt: String? = null,
+)
+
 interface SyncApi {
 
     /** 匿名登录请求体按契约可为空；installId 通过 clientId 放入 push 请求。 */
@@ -781,6 +801,22 @@ interface SyncApi {
         @Path("id") id: String,
         @Body body: FeedbackCloseRequest,
     ): FeedbackDetailDto
+
+    // ---- 推送设备（openapi 0.18.0 / 后端 v0.23.0） ----
+
+    /** 同一 (user_id, token) 幂等 upsert；inactive 会重置为 active。 */
+    @POST("api/v1/push/devices")
+    suspend fun registerPushDevice(
+        @Header("Authorization") authorization: String,
+        @Body body: PushDeviceRegistrationRequest,
+    ): PushDeviceRegistrationResponse
+
+    /** 置 inactive，不硬删；404 表示不存在/属于他人，客户端按已清理处理。 */
+    @DELETE("api/v1/push/devices/{deviceId}")
+    suspend fun deactivatePushDevice(
+        @Header("Authorization") authorization: String,
+        @Path("deviceId") deviceId: String,
+    )
 }
 
 /** 场景接口独立于 SyncApi，避免设备同步的测试假实现被场景端点绑架。 */

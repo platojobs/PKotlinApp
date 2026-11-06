@@ -476,8 +476,16 @@
     <string name="profile_alerts_desc">Sends a local notification when a rule triggers; when off, rules are still recorded but no alert is shown.</string>
     <string name="profile_alert_throttle_title">Reminder interval per device and rule</string>
     <string name="profile_alert_throttle_minutes">%1$d min</string>
-    <string name="profile_alert_permission_denied">Notification permission is not granted, so alerts are not delivered.</string>
+    <string name="profile_alert_permission_denied">Notification permission is not granted; alerts and push notifications will not be shown.</string>
     <string name="profile_alert_permission_action">Grant notification permission in settings</string>
+    <string name="profile_push_idle">Server push will register after sign-in</string>
+    <string name="profile_push_not_configured">Push service not configured; alerts are local only</string>
+    <string name="profile_push_pending">Server push pending registration: %1$s</string>
+    <string name="profile_push_pending_no_reason">Server push waiting to retry</string>
+    <string name="profile_push_registered">Server push is enabled</string>
+    <string name="profile_push_rejected">Server push registration failed: %1$s</string>
+    <string name="profile_push_rejected_no_reason">Server push registration failed</string>
+    <string name="profile_push_inactive">Server push unregistered</string>
 
     <string name="detail_export_desc">Exports all readings for the current device, metric and range. The CSV opens directly in Excel.</string>
     <string name="detail_export_button">Export CSV</string>

@@ -302,6 +302,14 @@ class RemoteSyncTokenTest {
             limit: Int,
         ): com.platojobs.pkotlinapp.data.remote.FeedbackPageResponse =
             com.platojobs.pkotlinapp.data.remote.FeedbackPageResponse()
+
+        override suspend fun registerPushDevice(
+            authorization: String,
+            body: com.platojobs.pkotlinapp.data.remote.PushDeviceRegistrationRequest,
+        ): com.platojobs.pkotlinapp.data.remote.PushDeviceRegistrationResponse =
+            com.platojobs.pkotlinapp.data.remote.PushDeviceRegistrationResponse()
+
+        override suspend fun deactivatePushDevice(authorization: String, deviceId: String) = Unit
     }
 
     private fun httpError(code: Int, body: String = "") = HttpException(

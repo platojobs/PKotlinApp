@@ -92,7 +92,12 @@ class MainActivity : AppCompatActivity() {
             isAppearanceLightNavigationBars = !night
         }
 
-        val restoredTab = savedInstanceState?.getInt(STATE_TAB, R.id.nav_home) ?: R.id.nav_home
+        val openScenesFromPush = savedInstanceState == null &&
+            intent.getBooleanExtra(EXTRA_OPEN_SCENES, false)
+        val restoredTab = when {
+            openScenesFromPush -> R.id.nav_intelligence
+            else -> savedInstanceState?.getInt(STATE_TAB, R.id.nav_home) ?: R.id.nav_home
+        }
 
         val app = application as PKotlinApplication
         if (savedInstanceState == null) {
@@ -330,7 +335,10 @@ class MainActivity : AppCompatActivity() {
         else -> HomeFragment()
     }
 
-    private companion object {
-        const val STATE_TAB = "state_selected_tab"
+    companion object {
+        private const val STATE_TAB = "state_selected_tab"
+
+        /** 推送点击「场景类告警」时带到首页的跳转标记。 */
+        const val EXTRA_OPEN_SCENES = "extra_open_scenes"
     }
 }

@@ -52,6 +52,8 @@ import com.platojobs.pkotlinapp.domain.household.HouseholdRole
 import com.platojobs.pkotlinapp.domain.household.HouseholdSyncStatus
 import com.platojobs.pkotlinapp.domain.household.InvitationStatus
 import com.platojobs.pkotlinapp.domain.household.householdCapabilities
+import com.platojobs.pkotlinapp.domain.push.PushRegistrationState
+import com.platojobs.pkotlinapp.domain.push.PushRegistrationStatus
 import com.platojobs.pkotlinapp.domain.sync.SyncStatus
 import com.platojobs.pkotlinapp.ui.common.BlePermissions
 import com.platojobs.pkotlinapp.ui.common.FileSharing
@@ -160,6 +162,9 @@ class ProfileFragment : Fragment() {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 launch {
                     viewModel.permissions.collect { renderPermissions(it) }
+                }
+                launch {
+                    viewModel.pushState.collect { renderPushState(it) }
                 }
                 launch {
                     viewModel.scanLogs.collect { logs ->
@@ -1229,6 +1234,31 @@ class ProfileFragment : Fragment() {
             }
             .setPositiveButton(R.string.profile_relogin_new_account) { _, _ -> viewModel.relogin() }
             .show()
+    }
+
+    /**
+     * 服务端推送注册状态。未配置/待重试/被拒绝都如实展示，
+     * 不会因为「本机告警可用」就显示成「已开启」。
+     */
+    private fun renderPushState(state: PushRegistrationState) {
+        val (text, color) = when (state.status) {
+            PushRegistrationStatus.REGISTERED ->
+                getString(R.string.profile_push_registered) to R.color.success
+            PushRegistrationStatus.NOT_CONFIGURED ->
+                getString(R.string.profile_push_not_configured) to R.color.text_secondary
+            PushRegistrationStatus.PENDING -> (state.lastError?.takeIf { it.isNotBlank() }
+                ?.let { getString(R.string.profile_push_pending, it) }
+                ?: getString(R.string.profile_push_pending_no_reason)) to R.color.warning
+            PushRegistrationStatus.REJECTED -> (state.lastError?.takeIf { it.isNotBlank() }
+                ?.let { getString(R.string.profile_push_rejected, it) }
+                ?: getString(R.string.profile_push_rejected_no_reason)) to R.color.danger
+            PushRegistrationStatus.INACTIVE ->
+                getString(R.string.profile_push_inactive) to R.color.text_secondary
+            PushRegistrationStatus.IDLE ->
+                getString(R.string.profile_push_idle) to R.color.text_secondary
+        }
+        binding.pushStatusText.text = text
+        binding.pushStatusText.setTextColor(ContextCompat.getColor(requireContext(), color))
     }
 
     private fun renderPermissions(status: PermissionStatus) {

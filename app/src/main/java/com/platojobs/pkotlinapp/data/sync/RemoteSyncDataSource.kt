@@ -54,6 +54,8 @@ class RemoteSyncDataSource(
     private val api: SyncApi,
     private val tokenStore: TokenStore,
     private val installId: String,
+    /** 匿名登录写入新会话后通知推送注册；默认空实现，便于既有测试替身。 */
+    private val onSessionReady: () -> Unit = {},
 ) : SyncRemote, ReadingRemote {
 
     override suspend fun push(records: List<SyncRecord>, idempotencyKey: String): SyncPushAck =
@@ -258,6 +260,7 @@ class RemoteSyncDataSource(
         val response = api.anonymousLogin()
         val token = response.token?.takeIf { it.isNotBlank() } ?: return null
         tokenStore.saveSession(token, Rfc3339.parse(response.expiresAt))
+        onSessionReady()
         return token
     }
 }

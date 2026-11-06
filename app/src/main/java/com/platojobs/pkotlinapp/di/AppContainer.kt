@@ -177,6 +177,35 @@ class AppContainer(context: Context) {
             api = syncApi,
             tokenStore = secureTokenStore,
             installId = syncPrefs.installId,
+            // 匿名登录/会话就绪后异步注册推送；不阻塞同步主流程。
+            onSessionReady = {
+                ioScope.launch { runCatching { pushRegistrationRepository.onSessionReady() } }
+            },
+        )
+    }
+
+    /**
+     * 默认无 FCM：返回 NotConfigured，不虚构 token。
+     * 放入 google-services.json 并接入 firebase-messaging 后，
+     * 在这里切换为 FirebasePushTokenProvider 即可，其余生命周期无需改动。
+     */
+    private fun createPushTokenProvider(): com.platojobs.pkotlinapp.domain.push.PushTokenProvider =
+        com.platojobs.pkotlinapp.data.push.UnavailablePushTokenProvider()
+
+    /** 推送令牌生命周期：登录注册、token 轮换重注册、登出注销、启动补齐。 */
+    val pushRegistrationRepository: com.platojobs.pkotlinapp.data.push.PushRegistrationRepository by lazy {
+        com.platojobs.pkotlinapp.data.push.PushRegistrationRepository(
+            store = com.platojobs.pkotlinapp.data.push.RoomPushDeviceStore(database.pushDeviceDao()),
+            tokenProvider = createPushTokenProvider(),
+            remote = com.platojobs.pkotlinapp.data.push.RemotePushDataSource(
+                api = syncApi,
+                tokenStore = secureTokenStore,
+            ),
+            appVersion = BuildConfig.VERSION_NAME,
+            deviceModel = android.os.Build.MODEL.orEmpty(),
+            scope = ioScope,
+            sessionAvailable = { secureTokenStore.token()?.isNotBlank() == true },
+            notificationsGranted = { NotificationPermission.isGranted(appContext) },
         )
     }
 
@@ -238,6 +267,8 @@ class AppContainer(context: Context) {
             },
             wipeLocalData = { database.clearAllTables() },
             exportDir = File(appContext.cacheDir, "exports"),
+            onPushUnregister = { pushRegistrationRepository.unregisterAll() },
+            onSessionReady = { pushRegistrationRepository.onSessionReady() },
         )
     }
 

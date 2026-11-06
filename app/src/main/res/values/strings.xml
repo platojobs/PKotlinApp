@@ -478,8 +478,16 @@
     <string name="profile_alerts_desc">规则命中后发送本地通知；关闭后规则仍会记录，只是不再提醒。</string>
     <string name="profile_alert_throttle_title">同一设备同一规则提醒间隔</string>
     <string name="profile_alert_throttle_minutes">%1$d 分钟</string>
-    <string name="profile_alert_permission_denied">系统通知权限未授予，告警不会投递。</string>
+    <string name="profile_alert_permission_denied">未授权通知，告警与推送都不会展示。</string>
     <string name="profile_alert_permission_action">去设置授予通知权限</string>
+    <string name="profile_push_idle">登录后将注册服务端推送</string>
+    <string name="profile_push_not_configured">未配置推送服务，告警目前只在本机提醒</string>
+    <string name="profile_push_pending">服务端推送待注册：%1$s</string>
+    <string name="profile_push_pending_no_reason">服务端推送待重试</string>
+    <string name="profile_push_registered">服务端推送已开启</string>
+    <string name="profile_push_rejected">服务端推送注册失败：%1$s</string>
+    <string name="profile_push_rejected_no_reason">服务端推送注册失败</string>
+    <string name="profile_push_inactive">服务端推送已注销</string>
 
     <string name="detail_export_desc">导出当前设备、当前指标与当前区间的全部读数，CSV 可直接用 Excel 打开。</string>
     <string name="detail_export_button">导出 CSV</string>

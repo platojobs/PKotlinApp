@@ -6,6 +6,8 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.platojobs.pkotlinapp.data.push.PushDeviceDao
+import com.platojobs.pkotlinapp.data.push.PushDeviceEntity
 import java.util.UUID
 
 /** 迁移 SQL 单独暴露，便于 JVM 用真实 SQLite 验证迁移不丢数据。 */
@@ -318,6 +320,34 @@ internal object SceneDeviceMissingMigrationSql {
     )
 }
 
+/**
+ * v21 -> v22：新增服务端推送设备映射 `push_devices`。
+ * token 唯一，只记录真实拿到的令牌；「未配置 FCM」使用空串占位行，绝不注册到服务端。
+ * 其它业务表原样保留。
+ */
+internal object PushDeviceMigrationSql {
+    val V21_TO_V22 = listOf(
+        """
+        CREATE TABLE IF NOT EXISTS `push_devices` (
+            `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+            `token` TEXT NOT NULL,
+            `remoteDeviceId` TEXT,
+            `status` TEXT NOT NULL DEFAULT 'pending',
+            `lastError` TEXT,
+            `retryCount` INTEGER NOT NULL DEFAULT 0,
+            `nextRetryAt` INTEGER,
+            `platform` TEXT NOT NULL DEFAULT 'android',
+            `createdAt` INTEGER NOT NULL DEFAULT 0,
+            `updatedAt` INTEGER NOT NULL DEFAULT 0
+        )
+        """.trimIndent(),
+        "CREATE UNIQUE INDEX IF NOT EXISTS `index_push_devices_token` " +
+            "ON `push_devices` (`token`)",
+        "CREATE INDEX IF NOT EXISTS `index_push_devices_status` " +
+            "ON `push_devices` (`status`)",
+    )
+}
+
 @Database(
     entities = [
         DeviceEntity::class,
@@ -333,8 +363,9 @@ internal object SceneDeviceMissingMigrationSql {
         FeedbackDraftEntity::class,
         CatalogItemEntity::class,
         CatalogSyncEntity::class,
+        PushDeviceEntity::class,
     ],
-    version = 21,
+    version = 22,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -360,6 +391,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun feedbackDao(): FeedbackDao
 
     abstract fun catalogDao(): CatalogDao
+
+    abstract fun pushDeviceDao(): PushDeviceDao
 
     companion object {
         private const val DB_NAME = "device_dashboard.db"
@@ -550,6 +583,13 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v21 -> v22：新增 push_devices；既有业务数据完全保留。 */
+        val MIGRATION_21_22 = object : Migration(21, 22) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                PushDeviceMigrationSql.V21_TO_V22.forEach(db::execSQL)
+            }
+        }
+
         @Volatile
         private var instance: AppDatabase? = null
 
@@ -580,6 +620,7 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_18_19,
                     MIGRATION_19_20,
                     MIGRATION_20_21,
+                    MIGRATION_21_22,
                 )
                     .build()
                     .also { instance = it }

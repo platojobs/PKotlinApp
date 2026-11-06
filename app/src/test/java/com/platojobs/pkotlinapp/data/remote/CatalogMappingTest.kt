@@ -251,6 +251,13 @@ class CatalogMappingTest {
             limit: Int,
         ): com.platojobs.pkotlinapp.data.remote.FeedbackPageResponse =
             com.platojobs.pkotlinapp.data.remote.FeedbackPageResponse()
+
+        override suspend fun registerPushDevice(
+            authorization: String,
+            body: PushDeviceRegistrationRequest,
+        ): PushDeviceRegistrationResponse = PushDeviceRegistrationResponse()
+
+        override suspend fun deactivatePushDevice(authorization: String, deviceId: String) = Unit
     }
 
     private class FakeApi(

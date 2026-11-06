@@ -338,6 +338,16 @@
                     android:textAppearance="@style/TextAppearance.App.Caption"
                     android:textColor="@color/text_secondary" />
 
+                <!-- 服务端推送注册状态：未配置时如实显示，不会伪装成已开启。 -->
+                <TextView
+                    android:id="@+id/pushStatusText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:text="@string/profile_push_idle"
+                    android:textAppearance="@style/TextAppearance.App.Caption"
+                    android:textColor="@color/text_secondary" />
+
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"

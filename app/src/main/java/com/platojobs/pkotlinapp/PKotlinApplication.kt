@@ -45,7 +45,11 @@ class PKotlinApplication : Application() {
         if (backgroundWorkStarted) return
         backgroundWorkStarted = true
         appScope.launch { runCatching { container.readingRepository.cleanup() } }
-        appScope.launch { runCatching { container.syncManager.coldStartPull() } }
+        appScope.launch {
+            // 先保证会话就绪，再对未注册成功的推送令牌做一次启动补齐。
+            runCatching { container.syncManager.coldStartPull() }
+            runCatching { container.pushRegistrationRepository.retryPending() }
+        }
         appScope.launch { runCatching { container.syncScheduler.schedule() } }
         appScope.launch {
             runCatching {

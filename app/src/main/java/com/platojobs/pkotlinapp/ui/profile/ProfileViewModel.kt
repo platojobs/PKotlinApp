@@ -16,6 +16,7 @@ import com.platojobs.pkotlinapp.data.feedback.FeedbackStore
 import com.platojobs.pkotlinapp.data.household.HouseholdRepository
 import com.platojobs.pkotlinapp.data.prefs.AppSettings
 import com.platojobs.pkotlinapp.data.prefs.ThemeMode
+import com.platojobs.pkotlinapp.data.push.PushRegistrationRepository
 import com.platojobs.pkotlinapp.data.sync.SyncErrorKind
 import com.platojobs.pkotlinapp.data.sync.SyncManager
 import com.platojobs.pkotlinapp.data.sync.TokenStore
@@ -42,6 +43,7 @@ import com.platojobs.pkotlinapp.domain.household.HouseholdSyncStatus
 import com.platojobs.pkotlinapp.domain.household.OwnershipTransferUnsupportedException
 import com.platojobs.pkotlinapp.domain.household.classifyHouseholdError
 import com.platojobs.pkotlinapp.domain.model.ScanLog
+import com.platojobs.pkotlinapp.domain.push.PushRegistrationState
 import com.platojobs.pkotlinapp.domain.repository.ScanLogRepository
 import com.platojobs.pkotlinapp.domain.sync.SyncStatus
 import com.platojobs.pkotlinapp.ui.common.BlePermissions
@@ -113,6 +115,7 @@ class ProfileViewModel(
     private val householdRepository: HouseholdRepository,
     private val feedbackStore: FeedbackStore,
     collectionSession: CollectionSession,
+    private val pushRegistrationRepository: PushRegistrationRepository,
 ) : ViewModel() {
 
     private val _permissions = MutableStateFlow(readPermissions())
@@ -163,6 +166,13 @@ class ProfileViewModel(
 
     /** 后台采集实时状态（是否在采集、设备名、已采集条数）。 */
     val collectionStatus: StateFlow<CollectionStatus> = collectionSession.status
+
+    /** 服务端推送注册状态；与系统通知权限解耦展示。 */
+    val pushState: StateFlow<PushRegistrationState> = pushRegistrationRepository.state
+
+    init {
+        viewModelScope.launch { pushRegistrationRepository.refresh() }
+    }
 
     fun refreshPermissions() {
         _permissions.value = readPermissions()
@@ -784,6 +794,7 @@ class ProfileViewModel(
                     householdRepository = app.container.householdRepository,
                     feedbackStore = app.container.feedbackStore,
                     collectionSession = app.container.collectionSession,
+                    pushRegistrationRepository = app.container.pushRegistrationRepository,
                 )
             }
         }

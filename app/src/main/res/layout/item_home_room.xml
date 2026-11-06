@@ -14,12 +14,16 @@
     android:paddingEnd="@dimen/space_20"
     android:paddingBottom="@dimen/space_4">
 
+    <!-- 展开/折叠是独立动作，与「打开房间详情」分开，避免一个标题承担两种语义。 -->
     <TextView
         android:id="@+id/roomArrow"
         style="@style/Widget.App.TextView"
-        android:layout_width="20dp"
-        android:layout_height="wrap_content"
-        android:importantForAccessibility="no"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:clickable="true"
+        android:focusable="true"
+        android:foreground="?attr/selectableItemBackground"
+        android:gravity="center"
         android:textAppearance="@style/TextAppearance.App.Caption"
         android:textColor="@color/text_secondary" />
 

@@ -121,6 +121,31 @@ data class HouseholdCapabilities(
 )
 
 /**
+ * 角色能力矩阵：与后端一致——家庭改名、邀请码、成员管理、房间增删改排序均为 owner 专属；
+ * 任何成员都可以使用共享设备，并移动自己的设备到房间（服务端按设备归属校验，不按家庭角色）。
+ * 界面据此展示「谁能做什么」，不再依赖点击后 403 才让用户知道。
+ */
+data class HouseholdRolePermissions(
+    val manageHousehold: Boolean,
+    val manageRooms: Boolean,
+    val manageMembers: Boolean,
+    val moveOwnDevices: Boolean,
+    val useSharedDevices: Boolean,
+)
+
+fun householdRolePermissions(role: HouseholdRole): HouseholdRolePermissions {
+    val owner = role == HouseholdRole.OWNER
+    return HouseholdRolePermissions(
+        manageHousehold = owner,
+        manageRooms = owner,
+        manageMembers = owner,
+        // 设备级操作对两种角色都开放；共享设备只读由 Device.canEditRoom 单独约束。
+        moveOwnDevices = true,
+        useSharedDevices = true,
+    )
+}
+
+/**
  * @param transferSupported 服务端是否支持转让所有权（老后端不返回 `isSelf`、无该路由时传 false）。
  */
 fun householdCapabilities(

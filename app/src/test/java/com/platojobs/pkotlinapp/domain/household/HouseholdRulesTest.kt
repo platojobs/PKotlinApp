@@ -166,6 +166,39 @@ class HouseholdRulesTest {
         assertFalse(caps.canLeave)
     }
 
+    @Test
+    fun `owner permission matrix includes household rooms and members`() {
+        val permissions = householdRolePermissions(HouseholdRole.OWNER)
+
+        assertTrue(permissions.manageHousehold)
+        assertTrue(permissions.manageRooms)
+        assertTrue(permissions.manageMembers)
+        assertTrue(permissions.moveOwnDevices)
+        assertTrue(permissions.useSharedDevices)
+    }
+
+    @Test
+    fun `member permission matrix hides owner-only management`() {
+        val permissions = householdRolePermissions(HouseholdRole.MEMBER)
+
+        assertFalse(permissions.manageHousehold)
+        assertFalse(permissions.manageRooms)
+        assertFalse(permissions.manageMembers)
+        // 设备级操作不随家庭角色收窄：成员可以移动自己的设备、使用共享设备。
+        assertTrue(permissions.moveOwnDevices)
+        assertTrue(permissions.useSharedDevices)
+    }
+
+    @Test
+    fun `unknown role is treated as member not owner`() {
+        val permissions = householdRolePermissions(HouseholdRole.parse("guest"))
+
+        assertFalse(permissions.manageHousehold)
+        assertFalse(permissions.manageRooms)
+        assertFalse(permissions.manageMembers)
+        assertTrue(permissions.useSharedDevices)
+    }
+
     private fun household(
         role: HouseholdRole,
         memberCount: Int,

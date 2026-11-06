@@ -22,9 +22,41 @@ import com.platojobs.pkotlinapp.domain.scene.Scene
 import com.platojobs.pkotlinapp.domain.scene.SceneRun
 import com.platojobs.pkotlinapp.domain.scene.SceneSyncState
 import com.platojobs.pkotlinapp.domain.scene.SceneTrigger
+import com.platojobs.pkotlinapp.domain.scene.SceneRunOutcome
+import com.platojobs.pkotlinapp.domain.scene.outcome
 import com.platojobs.pkotlinapp.ui.common.TimeFormat
 import com.platojobs.pkotlinapp.ui.home.SceneProgress
 import com.platojobs.pkotlinapp.ui.home.sceneActionLabel
+
+/**
+ * 场景卡片上的最近一次执行摘要：时间取执行记录真实 timestamp，结果由成功/失败计数推导；
+ * 失败原因只在记录里确实存在时展示，不补写猜测文案。
+ */
+private fun lastRunText(context: Context, run: SceneRun?): String {
+    if (run == null) return context.getString(R.string.scene_last_run_none)
+    val time = TimeFormat.relative(context, run.timestamp)
+    val reason = run.failureReason?.takeIf(String::isNotBlank)
+    return when (run.outcome()) {
+        SceneRunOutcome.SUCCESS ->
+            context.getString(R.string.scene_last_run_success, time, run.successCount)
+        SceneRunOutcome.FAILURE -> if (reason == null) {
+            context.getString(R.string.scene_last_run_failure, time, run.failureCount)
+        } else {
+            context.getString(R.string.scene_last_run_failure_reason, time, run.failureCount, reason)
+        }
+        SceneRunOutcome.PARTIAL -> if (reason == null) {
+            context.getString(R.string.scene_last_run_partial, time, run.successCount, run.failureCount)
+        } else {
+            context.getString(
+                R.string.scene_last_run_partial_reason,
+                time,
+                run.successCount,
+                run.failureCount,
+                reason,
+            )
+        }
+    }
+}
 
 private fun metricLabel(context: android.content.Context, metric: String?): String =
     context.getString(
@@ -205,6 +237,13 @@ class SceneAdapter(
             }
         }
 
+    /** sceneId -> 最近一次执行；执行记录变化时整表刷新（场景数有限）。 */
+    var latestRuns: Map<Long, SceneRun> = emptyMap()
+        set(value) {
+            field = value
+            notifyItemRangeChanged(0, itemCount)
+        }
+
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
         val binding = ItemSceneRowBinding.inflate(
             LayoutInflater.from(parent.context),
@@ -215,7 +254,8 @@ class SceneAdapter(
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-        holder.bind(getItem(position), progress)
+        val scene = getItem(position)
+        holder.bind(scene, progress, latestRuns[scene.id])
     }
 
     class ViewHolder(
@@ -226,9 +266,10 @@ class SceneAdapter(
         private val onEnabledChange: (Scene, Boolean) -> Unit,
     ) : RecyclerView.ViewHolder(binding.root) {
 
-        fun bind(scene: Scene, progress: SceneProgress?) {
+        fun bind(scene: Scene, progress: SceneProgress?, latestRun: SceneRun?) {
             val context = binding.root.context
             binding.sceneName.text = scene.name
+            binding.sceneLastRun.text = lastRunText(context, latestRun)
             // 设备被删不会级联删场景：列表明确标注，执行侧再跳过并记失败日志。
             binding.sceneLocalBadge.text = when {
                 scene.deviceMissing -> context.getString(R.string.scene_device_missing_badge)

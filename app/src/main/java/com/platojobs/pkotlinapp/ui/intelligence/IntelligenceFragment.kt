@@ -144,6 +144,7 @@ class IntelligenceFragment : Fragment(R.layout.fragment_intelligence) {
                 viewModel.uiState.collect { state ->
                     ruleAdapter.submitList(state.rules)
                     eventAdapter.submitList(state.events)
+                    sceneAdapter.latestRuns = state.latestRuns
                     sceneAdapter.submitList(state.scenes)
                     runAdapter.submitList(state.runs)
                     binding.rulesEmptyContainer.visibility =

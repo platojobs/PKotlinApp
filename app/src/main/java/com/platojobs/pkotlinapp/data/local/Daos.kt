@@ -867,6 +867,10 @@ interface SceneRunDao {
     @Query("SELECT * FROM scene_runs ORDER BY timestamp DESC, id DESC LIMIT 1")
     fun observeLatest(): Flow<SceneRunEntity?>
 
+    /** 每个场景最近一次执行：场景卡片据此展示最近触发时间与结果，不依赖列表页的条数上限。 */
+    @Query("SELECT * FROM scene_runs WHERE id IN (SELECT MAX(id) FROM scene_runs GROUP BY sceneId)")
+    fun observeLatestPerScene(): Flow<List<SceneRunEntity>>
+
     @Query("SELECT * FROM scene_runs ORDER BY timestamp DESC, id DESC LIMIT :limit")
     suspend fun getRecent(limit: Int): List<SceneRunEntity>
 

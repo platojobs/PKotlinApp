@@ -92,6 +92,9 @@ interface SceneRunRepository {
 
     fun observeLatest(): Flow<SceneRun?>
 
+    /** 每个场景最近一次执行；用于场景卡片上的「最近触发」摘要。 */
+    fun observeLatestPerScene(): Flow<Map<Long, SceneRun>>
+
     suspend fun getRecent(limit: Int): List<SceneRun>
 
     suspend fun add(run: SceneRun): Long

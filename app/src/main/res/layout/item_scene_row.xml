@@ -63,6 +63,15 @@
             android:textAppearance="@style/TextAppearance.App.Caption"
             tools:text="3 个动作" />
 
+        <TextView
+            android:id="@+id/sceneLastRun"
+            style="@style/Widget.App.TextView"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/space_4"
+            android:textAppearance="@style/TextAppearance.App.Caption"
+            tools:text="最近：5 分钟前 · 成功 3 项" />
+
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

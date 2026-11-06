@@ -623,6 +623,39 @@ class HomeViewModel(
 
     fun connect(mac: String): Boolean = bleConnectionManager.connect(mac)
 
+    /**
+     * 房间详情批量断开：BLE 层同一时刻只维护一条连接，
+     * 仅当当前连接/连接中的设备在所选集合内时才真正断开，避免报出并不存在的成功数。
+     */
+    fun disconnectDevices(macs: List<String>) {
+        val current = when (val state = bleConnectionManager.state.value) {
+            is BleConnectionState.Connected -> state.mac
+            is BleConnectionState.Connecting -> state.mac
+            else -> null
+        }
+        if (current != null && current in macs) {
+            bleConnectionManager.disconnect(current)
+            _messages.tryEmit(context.getString(R.string.room_batch_disconnected))
+        } else {
+            _messages.tryEmit(context.getString(R.string.room_batch_disconnect_none))
+        }
+    }
+
+    /** 房间详情批量标记：与场景「标记设备」动作使用同一份标记时间，供场景选择器识别。 */
+    fun markDevices(macs: List<String>) {
+        if (macs.isEmpty()) return
+        viewModelScope.launch {
+            runCatching {
+                val now = System.currentTimeMillis()
+                macs.forEach { deviceRepository.markDevice(it, now) }
+            }.onSuccess {
+                _messages.tryEmit(context.getString(R.string.room_batch_marked, macs.size))
+            }.onFailure {
+                _messages.tryEmit(context.getString(R.string.room_batch_mark_failed))
+            }
+        }
+    }
+
     private fun handleScanResult(device: ScannedDevice) {
         _scanResults.update { current ->
             (current.filterNot { it.mac == device.mac } + device)

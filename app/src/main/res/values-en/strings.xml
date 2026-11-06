@@ -786,6 +786,14 @@
     <string name="scene_trigger_type_bond_lost">Bond lost</string>
     <string name="scene_trigger_type_manual">Manual</string>
 
+    <!-- Last run summary on scene cards -->
+    <string name="scene_last_run_none">Not run yet</string>
+    <string name="scene_last_run_success">Last: %1$s · succeeded: %2$d</string>
+    <string name="scene_last_run_failure">Last: %1$s · failed: %2$d</string>
+    <string name="scene_last_run_failure_reason">Last: %1$s · failed: %2$d · %3$s</string>
+    <string name="scene_last_run_partial">Last: %1$s · succeeded / failed: %2$d / %3$d</string>
+    <string name="scene_last_run_partial_reason">Last: %1$s · succeeded / failed: %2$d / %3$d · %4$s</string>
+
     <!-- Scene local notifications -->
     <string name="scene_notification_title">Scene notification</string>
     <string name="scene_notification_text">%1$s: %2$s</string>
@@ -834,6 +842,26 @@
     <string name="room_no_devices">No devices in this room</string>
     <string name="room_unsynced_meta">%1$s · Not synced</string>
 
+    <!-- Room detail: aggregate view and batch actions -->
+    <string name="room_detail_summary">Total: %1$d · online: %2$d · offline: %3$d · marked: %4$d</string>
+    <string name="room_detail_device_row">%1$s · %2$s · %3$s</string>
+    <string name="room_detail_online">Online</string>
+    <string name="room_detail_offline">Offline</string>
+    <string name="room_detail_no_reading">No reading yet</string>
+    <string name="room_detail_marked_suffix"> · Marked</string>
+    <string name="room_detail_mark">Mark devices</string>
+    <string name="room_detail_disconnect">Disconnect</string>
+    <string name="room_detail_add_device">Scan to add devices</string>
+    <string name="room_detail_select_none">Select at least one device</string>
+    <string name="room_batch_marked">Devices marked: %1$d</string>
+    <string name="room_batch_mark_failed">Could not mark devices. Try again later.</string>
+    <string name="room_batch_disconnected">Disconnected the currently connected device</string>
+    <string name="room_batch_disconnect_none">None of the selected devices are connected</string>
+    <string name="room_manage_member_hint">Only the household owner can create, rename, reorder, or delete rooms.</string>
+    <string name="room_a11y_open_detail">%1$s, %2$s, open room details</string>
+    <string name="room_a11y_expand">Expand room %1$s</string>
+    <string name="room_a11y_collapse">Collapse room %1$s</string>
+
     <string name="household_title">Household</string>
     <string name="household_current">Current household: %1$s (%2$s)</string>
     <string name="household_none">Households not synced yet; showing local data</string>
@@ -842,6 +870,11 @@
     <string name="household_members_title">Members</string>
     <string name="household_members_empty">No member info yet (not synced)</string>
     <string name="household_member_row">%1$s · %2$s%3$s</string>
+    <string name="household_member_row_capability">%1$s · %2$s%3$s · %4$s</string>
+    <string name="household_member_capability_owner">Can manage household and members</string>
+    <string name="household_member_capability_member">Can use shared devices</string>
+    <string name="household_permission_owner">You are the owner: can rename, invite members, and manage members and rooms.</string>
+    <string name="household_permission_member">You are a member: can use shared devices and move your own devices; the owner manages the household and rooms.</string>
     <string name="household_member_ordinal">Member %1$d</string>
     <string name="household_member_self_mark"> (you)</string>
     <string name="household_create">Create household</string>

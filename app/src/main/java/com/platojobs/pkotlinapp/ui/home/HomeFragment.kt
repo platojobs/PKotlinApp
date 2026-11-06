@@ -4,11 +4,13 @@ import android.content.Context
 import android.os.Bundle
 import android.view.View
 import android.widget.EditText
+import android.widget.CheckBox
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import com.google.android.material.button.MaterialButton
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.widget.doAfterTextChanged
 import androidx.fragment.app.Fragment
@@ -25,6 +27,7 @@ import com.platojobs.pkotlinapp.data.prefs.DeviceSortMode
 import com.platojobs.pkotlinapp.databinding.FragmentHomeBinding
 import com.platojobs.pkotlinapp.diagnostics.StartupDiagnostics
 import com.platojobs.pkotlinapp.diagnostics.StartupStage
+import com.platojobs.pkotlinapp.domain.household.householdRolePermissions
 import com.platojobs.pkotlinapp.domain.model.Device
 import com.platojobs.pkotlinapp.domain.model.displayName
 import com.platojobs.pkotlinapp.ui.MainActivity
@@ -73,13 +76,16 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             onRunScene = { scene -> viewModel.runScene(scene) },
             onManageScenes = { (activity as? MainActivity)?.openIntelligence() },
             onManageRooms = ::showRoomManager,
-            onCreateRoom = { promptRoomName(getString(R.string.room_create), "") { viewModel.createRoom(it) } },
+            onCreateRoom = ::createRoomFlow,
             onRoomClick = { roomId, empty ->
-                if (empty) {
-                    openScanDialog()
-                } else {
-                    viewModel.toggleRoom(roomId ?: HomeViewModel.UNASSIGNED_ROOM_ID)
+                when {
+                    empty -> openScanDialog()
+                    roomId != null -> showRoomDetail(roomId)
+                    else -> viewModel.toggleRoom(HomeViewModel.UNASSIGNED_ROOM_ID)
                 }
+            },
+            onRoomToggle = { roomId ->
+                viewModel.toggleRoom(roomId ?: HomeViewModel.UNASSIGNED_ROOM_ID)
             },
             onDeviceLongClick = ::showRoomPicker,
             onStatusClick = { filter ->
@@ -174,11 +180,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                     title = getString(R.string.room_empty_title),
                     hint = getString(R.string.room_empty_hint),
                     action = getString(R.string.room_create),
-                    onAction = {
-                        promptRoomName(getString(R.string.room_create), "") {
-                            viewModel.createRoom(it)
-                        }
-                    },
+                    onAction = ::createRoomFlow,
                 )
 
             // 状态筛选后没有匹配设备时不替换整页空态，保留聚合与筛选提示。
@@ -236,6 +238,117 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         }
     }
 
+    /** 房间增删改排序是 owner 专属（后端 requireHouseholdOwner）；成员点击只给出说明。 */
+    private fun canManageRooms(): Boolean =
+        lastState.currentHousehold?.let { householdRolePermissions(it.role).manageRooms } ?: true
+
+    private fun createRoomFlow() {
+        if (!canManageRooms()) {
+            toast(getString(R.string.room_manage_member_hint))
+            return
+        }
+        promptRoomName(getString(R.string.room_create), "") { viewModel.createRoom(it) }
+    }
+
+    /**
+     * 房间详情：聚合本机真实设备与最新读数，筛选后可批量标记（供场景动作引用）或断开当前连接。
+     * 所有数据来自 [HomeUiState]，不额外请求也不构造假数据。
+     */
+    private fun showRoomDetail(roomId: Long) {
+        val state = lastState
+        val room = state.rooms.firstOrNull { it.id == roomId } ?: return
+        val detail = RoomDetailBuilder.build(
+            room = room,
+            devices = state.devices,
+            readings = state.latestReadings,
+            onlineSince = state.onlineSince,
+            unknownName = getString(R.string.device_unknown),
+        )
+        if (detail.isEmpty) {
+            openScanDialog()
+            return
+        }
+
+        val context = requireContext()
+        val content = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(8), dp(20), dp(8))
+        }
+        content.addView(TextView(context).apply {
+            text = getString(
+                R.string.room_detail_summary,
+                detail.total,
+                detail.onlineCount,
+                detail.offlineCount,
+                detail.markedCount,
+            )
+            setTextAppearance(R.style.TextAppearance_App_Caption)
+            setTextColor(context.getColor(R.color.text_secondary))
+        })
+
+        val selection = LinkedHashMap<String, CheckBox>()
+        detail.entries.forEach { entry ->
+            val row = CheckBox(context).apply {
+                text = roomDeviceText(entry)
+                isChecked = true
+                minimumHeight = dp(48)
+                setTextAppearance(R.style.TextAppearance_App_Body)
+            }
+            selection[entry.mac] = row
+            content.addView(row)
+        }
+
+        val actions = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.END
+            setPadding(0, dp(8), 0, 0)
+        }
+        fun selectedMacs(): List<String> =
+            selection.filterValues { it.isChecked }.keys.toList()
+        actions.addView(batchButton(R.string.room_detail_mark) {
+            val macs = selectedMacs()
+            if (macs.isEmpty()) {
+                toast(getString(R.string.room_detail_select_none))
+            } else {
+                viewModel.markDevices(macs)
+            }
+        })
+        actions.addView(batchButton(R.string.room_detail_disconnect) {
+            val macs = selectedMacs()
+            if (macs.isEmpty()) {
+                toast(getString(R.string.room_detail_select_none))
+            } else {
+                viewModel.disconnectDevices(macs)
+            }
+        })
+        content.addView(actions)
+
+        val scroll = ScrollView(context).apply { addView(content) }
+        MaterialAlertDialogBuilder(context)
+            .setTitle(room.name)
+            .setView(scroll)
+            .setNeutralButton(R.string.room_detail_add_device) { _, _ -> openScanDialog() }
+            .setNegativeButton(R.string.action_close, null)
+            .show()
+    }
+
+    private fun roomDeviceText(entry: RoomDeviceEntry): String {
+        val status = getString(
+            if (entry.online) R.string.room_detail_online else R.string.room_detail_offline,
+        )
+        val reading = entry.reading?.let(::formatReading)
+            ?: getString(R.string.room_detail_no_reading)
+        val marked = if (entry.marked) getString(R.string.room_detail_marked_suffix) else ""
+        return getString(R.string.room_detail_device_row, entry.name, status, reading) + marked
+    }
+
+    private fun batchButton(textRes: Int, onClick: () -> Unit): MaterialButton =
+        MaterialButton(requireContext(), null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+            setText(textRes)
+            minHeight = dp(48)
+            setOnClickListener { onClick() }
+        }
+
     /** 长按设备卡片：选择目标房间；首项为「未分配」用于移出房间。 */
     private fun showRoomPicker(device: Device) {
         if (!device.canEditRoom) {
@@ -260,6 +373,10 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
     }
     private fun showRoomManager() {
         val context = requireContext()
+        if (!canManageRooms()) {
+            showReadOnlyRoomManager()
+            return
+        }
         val ordered = lastState.rooms.toMutableList()
         val content = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -361,6 +478,34 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                 promptRoomName(getString(R.string.room_create), "") { viewModel.createRoom(it) }
             }
             .setNegativeButton(R.string.action_cancel, null)
+            .show()
+    }
+
+    /** 成员视图：只列房间并说明权限归属，不提供任何会 403 的入口。 */
+    private fun showReadOnlyRoomManager() {
+        val context = requireContext()
+        val content = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(8), dp(20), dp(8))
+        }
+        content.addView(TextView(context).apply {
+            setText(R.string.room_manage_member_hint)
+            setTextAppearance(R.style.TextAppearance_App_Caption)
+            setTextColor(context.getColor(R.color.text_secondary))
+            setPadding(0, 0, 0, dp(8))
+        })
+        lastState.rooms.forEach { room ->
+            content.addView(TextView(context).apply {
+                text = room.name
+                setTextAppearance(R.style.TextAppearance_App_Body)
+                minimumHeight = dp(48)
+                gravity = android.view.Gravity.CENTER_VERTICAL
+            })
+        }
+        MaterialAlertDialogBuilder(context)
+            .setTitle(R.string.room_manage_title)
+            .setView(ScrollView(context).apply { addView(content) })
+            .setPositiveButton(R.string.action_close, null)
             .show()
     }
 

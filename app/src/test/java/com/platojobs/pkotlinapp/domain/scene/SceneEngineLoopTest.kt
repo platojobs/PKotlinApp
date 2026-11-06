@@ -269,6 +269,9 @@ class SceneEngineLoopTest {
 
         override fun observeLatest(): Flow<SceneRun?> = flowOf(runs.lastOrNull())
 
+        override fun observeLatestPerScene(): Flow<Map<Long, SceneRun>> =
+            flowOf(runs.reversed().distinctBy { it.sceneId }.associateBy { it.sceneId })
+
         override suspend fun getRecent(limit: Int): List<SceneRun> = runs.takeLast(limit)
 
         override suspend fun add(run: SceneRun): Long {

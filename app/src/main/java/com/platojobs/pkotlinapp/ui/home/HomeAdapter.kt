@@ -109,6 +109,7 @@ class HomeAdapter(
     private val onManageRooms: () -> Unit,
     private val onCreateRoom: () -> Unit,
     private val onRoomClick: (roomId: Long?, empty: Boolean) -> Unit,
+    private val onRoomToggle: (roomId: Long?) -> Unit,
     private val onDeviceLongClick: (Device) -> Unit,
     private val onStatusClick: (HomeStatusFilter) -> Unit,
 ) : ListAdapter<HomeItem, RecyclerView.ViewHolder>(Diff) {
@@ -396,13 +397,19 @@ class HomeAdapter(
             } else {
                 baseMeta
             }
-            binding.root.contentDescription = context.getString(
-                R.string.room_a11y_header,
-                item.name,
-                binding.roomMeta.text,
-            )
+            // 标题点击进入房间详情，箭头单独负责展开/折叠。
+            binding.root.contentDescription = if (item.roomId != null && !item.empty) {
+                context.getString(R.string.room_a11y_open_detail, item.name, binding.roomMeta.text)
+            } else {
+                context.getString(R.string.room_a11y_header, item.name, binding.roomMeta.text)
+            }
             binding.root.setOnClickListener { onRoomClick(item.roomId, item.empty) }
             binding.root.setOnLongClickListener(null)
+            binding.roomArrow.contentDescription = context.getString(
+                if (item.collapsed) R.string.room_a11y_expand else R.string.room_a11y_collapse,
+                item.name,
+            )
+            binding.roomArrow.setOnClickListener { onRoomToggle(item.roomId) }
         }
     }
 
@@ -576,7 +583,7 @@ private fun metricName(context: Context, metric: String): String = context.getSt
 private fun formatTime(timestamp: Long): String =
     SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(timestamp))
 
-private fun formatReading(reading: Reading): String {
+internal fun formatReading(reading: Reading): String {
     val number = if (reading.value % 1.0 == 0.0) {
         reading.value.toLong().toString()
     } else {

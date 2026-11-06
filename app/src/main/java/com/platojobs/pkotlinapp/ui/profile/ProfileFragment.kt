@@ -52,6 +52,7 @@ import com.platojobs.pkotlinapp.domain.household.HouseholdRole
 import com.platojobs.pkotlinapp.domain.household.HouseholdSyncStatus
 import com.platojobs.pkotlinapp.domain.household.InvitationStatus
 import com.platojobs.pkotlinapp.domain.household.householdCapabilities
+import com.platojobs.pkotlinapp.domain.household.householdRolePermissions
 import com.platojobs.pkotlinapp.domain.push.PushRegistrationState
 import com.platojobs.pkotlinapp.domain.push.PushRegistrationStatus
 import com.platojobs.pkotlinapp.domain.sync.SyncStatus
@@ -576,7 +577,7 @@ class ProfileFragment : Fragment() {
     private fun confirmTransferOwnership(member: HouseholdMember) {
         MaterialAlertDialogBuilder(requireContext())
             .setTitle(R.string.household_transfer_title)
-            .setMessage(getString(R.string.household_transfer_message, shortUserId(member.userId)))
+            .setMessage(getString(R.string.household_transfer_message, memberLabel(member)))
             .setNegativeButton(R.string.action_cancel, null)
             .setPositiveButton(R.string.household_transfer_action) { _, _ ->
                 viewModel.transferOwnership(member.userId)
@@ -608,6 +609,18 @@ class ProfileFragment : Fragment() {
         section.householdCounts.visibility = if (household == null) View.GONE else View.VISIBLE
         section.householdCounts.text = household?.let {
             getString(R.string.household_counts, it.memberCount, it.deviceCount, it.roomCount)
+        }.orEmpty()
+
+        // 当前角色能做什么直接写明，避免成员点到 owner 专属入口才知道没权限。
+        section.householdPermissions.visibility = if (household == null) View.GONE else View.VISIBLE
+        section.householdPermissions.text = household?.let {
+            getString(
+                if (householdRolePermissions(it.role).manageHousehold) {
+                    R.string.household_permission_owner
+                } else {
+                    R.string.household_permission_member
+                },
+            )
         }.orEmpty()
 
         // owner 才能改家庭名、签发/撤销邀请码；member 一律隐藏这些入口。
@@ -646,8 +659,14 @@ class ProfileFragment : Fragment() {
             val name = HouseholdMemberLabel.resolve(member.displayName, index + 1) {
                 getString(R.string.household_member_ordinal, it)
             }
+            // 每个成员行写明该角色能做什么；能力矩阵与后端一致，不展示用户 ID。
+            val canManage = householdRolePermissions(member.role).manageHousehold
+            val capability = getString(
+                if (canManage) R.string.household_member_capability_owner
+                else R.string.household_member_capability_member,
+            )
             val row = memberRow(
-                getString(R.string.household_member_row, name, role, selfMark),
+                getString(R.string.household_member_row_capability, name, role, selfMark, capability),
             )
             // 服务端 isSelf 标记「这一行是我」：自己的行不出现移除/转让入口。
             val actionable = capabilities.canRemoveMembers && !member.isSelf && !isOwnerRow
@@ -677,7 +696,7 @@ class ProfileFragment : Fragment() {
         }
         if (actions.isEmpty()) return
         MaterialAlertDialogBuilder(requireContext())
-            .setTitle(getString(R.string.household_member_actions_title, shortUserId(member.userId)))
+            .setTitle(getString(R.string.household_member_actions_title, memberLabel(member)))
             .setItems(actions.toTypedArray()) { _, which ->
                 when (actions[which].toString()) {
                     getString(R.string.household_transfer_action) -> confirmTransferOwnership(member)
@@ -752,8 +771,13 @@ class ProfileFragment : Fragment() {
         setPadding(0, 4, 0, 4)
     }
 
-    private fun shortUserId(userId: String): String =
-        if (userId.length <= 10) userId else "${userId.take(6)}…${userId.takeLast(4)}"
+    /** 弹窗标题/正文只使用展示名或「成员 N」；用户 ID 仅在请求体里出现，不进入界面。 */
+    private fun memberLabel(member: HouseholdMember): String {
+        val index = viewModel.members.value.indexOfFirst { it.userId == member.userId }
+        return HouseholdMemberLabel.resolve(member.displayName, index + 1) {
+            getString(R.string.household_member_ordinal, it)
+        }
+    }
 
     private fun renderHouseholdStatus(status: HouseholdSyncStatus) {
         val section = binding.householdSection

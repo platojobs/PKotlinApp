@@ -40,6 +40,7 @@ import com.platojobs.pkotlinapp.domain.repository.SceneRunRepository
 import com.platojobs.pkotlinapp.domain.scene.SceneActionType
 import com.platojobs.pkotlinapp.domain.scene.SceneRun
 import com.platojobs.pkotlinapp.domain.scene.SceneTrigger
+import com.platojobs.pkotlinapp.domain.scene.latestRunByScene
 import com.platojobs.pkotlinapp.data.scene.SceneCanonical
 import com.platojobs.pkotlinapp.domain.scene.SceneSyncState
 import kotlinx.coroutines.flow.Flow
@@ -375,6 +376,11 @@ class SceneRunRepositoryImpl(
 
     override fun observeLatest(): Flow<SceneRun?> =
         dao.observeLatest().map { it?.toDomain() }
+
+    override fun observeLatestPerScene(): Flow<Map<Long, SceneRun>> =
+        dao.observeLatestPerScene().map { rows ->
+            latestRunByScene(rows.map { it.toDomain() })
+        }
 
     override suspend fun getRecent(limit: Int): List<SceneRun> =
         dao.getRecent(limit).map { it.toDomain() }

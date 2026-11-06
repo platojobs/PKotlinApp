@@ -790,6 +790,14 @@
     <string name="scene_trigger_type_bond_lost">绑定丢失</string>
     <string name="scene_trigger_type_manual">手动</string>
 
+    <!-- 场景卡片上的最近执行摘要 -->
+    <string name="scene_last_run_none">尚未执行</string>
+    <string name="scene_last_run_success">最近：%1$s · 成功 %2$d 项</string>
+    <string name="scene_last_run_failure">最近：%1$s · 失败 %2$d 项</string>
+    <string name="scene_last_run_failure_reason">最近：%1$s · 失败 %2$d 项 · %3$s</string>
+    <string name="scene_last_run_partial">最近：%1$s · 成功 %2$d / 失败 %3$d</string>
+    <string name="scene_last_run_partial_reason">最近：%1$s · 成功 %2$d / 失败 %3$d · %4$s</string>
+
     <!-- 场景本地通知 -->
     <string name="scene_notification_title">场景通知</string>
     <string name="scene_notification_text">%1$s：%2$s</string>
@@ -838,6 +846,26 @@
     <string name="room_no_devices">该房间暂无设备</string>
     <string name="room_unsynced_meta">%1$s · 未同步</string>
 
+    <!-- 房间详情：聚合视图与批量操作 -->
+    <string name="room_detail_summary">共 %1$d 台 · 在线 %2$d · 离线 %3$d · 已标记 %4$d</string>
+    <string name="room_detail_device_row">%1$s · %2$s · %3$s</string>
+    <string name="room_detail_online">在线</string>
+    <string name="room_detail_offline">离线</string>
+    <string name="room_detail_no_reading">暂无读数</string>
+    <string name="room_detail_marked_suffix"> · 已标记</string>
+    <string name="room_detail_mark">标记设备</string>
+    <string name="room_detail_disconnect">断开连接</string>
+    <string name="room_detail_add_device">扫描添加设备</string>
+    <string name="room_detail_select_none">请先选择设备</string>
+    <string name="room_batch_marked">已标记 %1$d 台设备</string>
+    <string name="room_batch_mark_failed">标记设备失败，请稍后重试</string>
+    <string name="room_batch_disconnected">已断开当前连接的设备</string>
+    <string name="room_batch_disconnect_none">所选设备当前都未连接</string>
+    <string name="room_manage_member_hint">只有家庭所有者可以新建、改名、排序或删除房间。</string>
+    <string name="room_a11y_open_detail">%1$s，%2$s，打开房间详情</string>
+    <string name="room_a11y_expand">展开房间 %1$s</string>
+    <string name="room_a11y_collapse">折叠房间 %1$s</string>
+
     <string name="household_title">家庭</string>
     <string name="household_current">当前家庭：%1$s（%2$s）</string>
     <string name="household_none">尚未同步家庭，当前显示本机数据</string>
@@ -846,6 +874,11 @@
     <string name="household_members_title">家庭成员</string>
     <string name="household_members_empty">暂无成员信息（未同步）</string>
     <string name="household_member_row">%1$s · %2$s%3$s</string>
+    <string name="household_member_row_capability">%1$s · %2$s%3$s · %4$s</string>
+    <string name="household_member_capability_owner">可管理家庭与成员</string>
+    <string name="household_member_capability_member">可使用共享设备</string>
+    <string name="household_permission_owner">你当前是所有者：可改名、邀请成员、管理成员与房间。</string>
+    <string name="household_permission_member">你当前是成员：可使用共享设备、移动自己的设备；家庭与房间由所有者管理。</string>
     <string name="household_member_ordinal">成员 %1$d</string>
     <string name="household_member_self_mark">（我）</string>
     <string name="household_create">创建家庭</string>

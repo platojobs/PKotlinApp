@@ -48,6 +48,8 @@ data class IntelligenceUiState(
     val scenes: List<Scene> = emptyList(),
     val devices: List<Device> = emptyList(),
     val runs: List<SceneRun> = emptyList(),
+    /** sceneId -> 最近一次执行；用于场景卡片上的「最近触发」摘要。 */
+    val latestRuns: Map<Long, SceneRun> = emptyMap(),
     val loading: Boolean = true,
     val loadError: String? = null,
 )
@@ -97,8 +99,9 @@ class IntelligenceViewModel(
             )
         },
         sceneRunRepository.observeRecent(RUN_LIMIT),
-    ) { state, runs ->
-        state.copy(runs = runs)
+        sceneRunRepository.observeLatestPerScene(),
+    ) { state, runs, latestRuns ->
+        state.copy(runs = runs, latestRuns = latestRuns)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),

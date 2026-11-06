@@ -1007,13 +1007,13 @@ cursor=0 changes=4 nextCursor=59 entities=['household', 'room', 'user_device']
 CI：GitHub Actions 的 `e2e-postgres` job 与该次运行同一脚本，日志与测试报告见
 <https://github.com/platojobs/PKotlinApp/actions/workflows/android.yml>。
 
-## 16. 界面截图（v0.27.0）
+## 16. 界面截图（v0.28.0）
 
 以下截图全部来自 **Android 模拟器（Pixel_10a，Android 37）+ 本机 PJGoIoT v0.22.0 后端（真 Postgres）+ `scripts/seed-screenshots.py` 造的演示数据**，不是设计稿、拼图或真机生产环境。
 
 | 截图 | 页面 |
 | --- | --- |
-| [home.png](docs/screenshots/home.png) | 首页：3 个家庭（7/3/2 台）、今日概览（温度/湿度/气压/心率/电量）、在线/离线状态、房间分组、最近活动 |
+| [home.png](docs/screenshots/home.png) | 首页：3 个家庭（7/3/2 台）、客厅 3 台 + 主卧 2 台完整设备卡（连接状态、电量/RSSI、最新读数），停点落在设备卡顶部，顶部无上一张卡的尾巴 |
 | [device_detail.png](docs/screenshots/device_detail.png) | 设备详情：连接状态与设备信息统一为「未连接 / 当前未连接」，24 小时视图 48 个桶、折线与 min–max 区间带可见，横轴 `11-05` / `11-06`，导出说明与按钮完整位于手势条上方 |
 | [scenes.png](docs/screenshots/scenes.png) | 智能：4 个场景，含 `rejected` 与 `deviceMissing` 徽标、1 个定时场景 |
 | [scene_detail.png](docs/screenshots/scene_detail.png) | 场景详情（编辑弹窗）：定时触发与动作列表 |
@@ -1021,7 +1021,7 @@ CI：GitHub Actions 的 `e2e-postgres` job 与该次运行同一脚本，日志�
 | [product_detail.png](docs/screenshots/product_detail.png) | 产品详情：说明、可解析指标、兼容性 |
 | [market.png](docs/screenshots/market.png) | 市场：兼容性查询与服务入口 |
 | [profile.png](docs/screenshots/profile.png) | 我的：同步状态、权限、告警设置 |
-| [profile_household.png](docs/screenshots/profile_household.png) | 我的 · 家庭区：当前家庭 7 台设备、3 个房间、成员显示「成员 1 · 所有者（我）」与「成员 2 · 成员」 |
+| [profile_household.png](docs/screenshots/profile_household.png) | 我的 · 家庭区：视图从「家庭」卡顶部开始（不再残留「后台采集」卡的最后一行），当前家庭 7 台设备、3 个房间、成员显示「成员 1 · 所有者（我）」与「成员 2 · 成员」 |
 | [profile_scan_logs.png](docs/screenshots/profile_scan_logs.png) | 我的 · 扫描日志：最近 12 条真实扫描记录（在线/离线设备、RSSI -45 ~ -88 dBm） |
 | [rooms.png](docs/screenshots/rooms.png) | 房间管理：当前家庭的 3 个房间（客厅/主卧/次卧），排序与删除 |
 | [sessions.png](docs/screenshots/sessions.png) | 会话管理：当前会话与其他会话的吊销入口 |
@@ -1032,10 +1032,13 @@ CI：GitHub Actions 的 `e2e-postgres` job 与该次运行同一脚本，日志�
 
 数据口径：3 个家庭（12 台设备按 7/3/2 分布）、6 个房间（按家庭分别建 3/2/1 个，设备归属各自家庭）、12 台设备（5 种 `deviceType`，2 台离线，MAC 为 `C8:47:8C:` 开头的假地址）、4 个场景（1 个 `rejected`、1 个定时、1 个引用已删除设备的 `deviceMissing`）、3 条服务端反馈（1 条已关闭）、12 条本地扫描日志。家庭设备是服务端共享关系，seed 脚本按家庭分别创建房间并通过 `PATCH /my/devices` 写归属，可重复执行（每次新建匿名账号）。读数在服务端保留 7 天，`seed-screenshots.py` 每 10 分钟写一条原始读数（正弦 + 噪声 + 偶发尖峰，电量每小时），24 小时视图由客户端拉原始读数后聚合成 30 分钟桶（48 个），7 天视图走服务端 `1h` 分桶（168 个），每桶内 3/6 个样本足以画出折线与 min–max 区间带；首页与详情离线兜底读本地 Room，`seed-local-db.py` 按同一表结构写入 7 天读数、12 条扫描日志与设备在线状态/房间归属。`rejected` 场景是本地 `syncState` 的展示态（服务端不会持久化被拒状态），截图时让本地字段更新时间晚于服务端快照，避免启动同步把它拉回 `synced`；这属于演示数据构造，不是产品行为。
 
-本版截图走查修复了四个问题：**导出按钮遮挡正文**——设备详情导出说明与「导出 CSV」从同一行改为纵向排列（说明独占整行、按钮另起一行右对齐），可滚动容器底部 padding 由 48dp 起步再叠加 `systemBars.bottom`，滚到底时按钮与卡片完整位于手势条上方；全仓没有 `FloatingActionButton`，首页扫描与场景新建都在固定 header 内，无同类悬浮遮挡。**连接状态矛盾**——新增 `ConnectionUi` 作为唯一状态源，连接状态与设备信息提示都由 `ConnectionUi.from(state, mac)` 派生：连接中显示「正在连接…」+「取消」、隐藏 RSSI；已连接显示 `已连接` + RSSI；已断开显示「未连接」+「重新连接」；设备信息卡在连接中提示「正在连接，连接成功后会…」而不是「当前未连接」。**截图切字**——逐页滚动到关键卡片完整可见的位置再截，首页最近活动、家庭区加入家庭、场景页说明，以及产品列表/产品详情 GATT、市场明细卡、房间管理与会话弹窗的底部内容均不再被 Tab、手势条切断。**MAC 占位值**——seed 的设备 MAC 从 `AA:BB:CC:` 改为 `C8:47:8C:` 开头的假地址，`seed-local-db.py` 改按设备名匹配房间/离线状态，不再复制 MAC 常量。原仓库与 `PJGoIoT` 主干未提交内容均未改动，后端跑在 `v0.22.0` 的干净 worktree。
+本版（v0.28.0）修了两个问题。**截图停点残留上一张卡的尾巴**——首页原停点让「今日概览」只剩「今日读数按小时分布…」一行露在筛选 chip 下，家庭区原停点让「后台采集」只剩「断开自动停止。」一句露在「我的」标题下。现在停点统一落在整卡顶部或区块标题：首页停在「客厅温湿度计」卡顶部（上方不再有半截卡），家庭区停在「家庭」卡顶部。停点由 `scripts/check-screenshot-top.py` 自动断言，不靠肉眼：脚本用 `adb shell uiautomator dump` 解析节点树，取视口内**第一个带 `text` 的节点**（不取 `contentDescription`，它会覆盖整卡而排在标题前），要求它的文字等于 `--expect-top` 指定的完整卡片标题/区块标题，且其所属 `CardView` 的 top 不高于视口 top（容差 2dp）。`home.png` 断言输出「首个可见文字『客厅温湿度计』卡片 top=1024，视口 top=993（间隙 31px）」，`profile_household.png` 输出「『家庭』卡片 top=394，视口 top=394（间隙 0px）」。**峰值小时口径**——「今日读数按小时分布，峰值 0 点 100 条」不是零点真峰值：本地今日 0–22 点每小时恰好 100 条、23 点 25 条，旧实现 `maxByOrNull` 并列时取首个（即 0 点）。新增 `List<HourCount>.peakHour()`，并列时取最晚出现的小时（今日实际显示「峰值 22 点 100 条」），`HourlyPeakTest` 覆盖并列、单峰、无数据三种情况。
+
+v0.27.0 截图走查修复了四个问题：**导出按钮遮挡正文**——设备详情导出说明与「导出 CSV」从同一行改为纵向排列（说明独占整行、按钮另起一行右对齐），可滚动容器底部 padding 由 48dp 起步再叠加 `systemBars.bottom`，滚到底时按钮与卡片完整位于手势条上方；全仓没有 `FloatingActionButton`，首页扫描与场景新建都在固定 header 内，无同类悬浮遮挡。**连接状态矛盾**——新增 `ConnectionUi` 作为唯一状态源，连接状态与设备信息提示都由 `ConnectionUi.from(state, mac)` 派生：连接中显示「正在连接…」+「取消」、隐藏 RSSI；已连接显示 `已连接` + RSSI；已断开显示「未连接」+「重新连接」；设备信息卡在连接中提示「正在连接，连接成功后会…」而不是「当前未连接」。**截图切字**——逐页滚动到关键卡片完整可见的位置再截，首页最近活动、家庭区加入家庭、场景页说明，以及产品列表/产品详情 GATT、市场明细卡、房间管理与会话弹窗的底部内容均不再被 Tab、手势条切断。**MAC 占位值**——seed 的设备 MAC 从 `AA:BB:CC:` 改为 `C8:47:8C:` 开头的假地址，`seed-local-db.py` 改按设备名匹配房间/离线状态，不再复制 MAC 常量。原仓库与 `PJGoIoT` 主干未提交内容均未改动，后端跑在 `v0.22.0` 的干净 worktree。
 
 ## 17. 版本记录
 
+- `v0.28.0`：截图层收口。**停点**：首页原停点让「今日概览」只剩「今日读数按小时分布…」一行、家庭区原停点让「后台采集」只剩「断开自动停止。」一句；改为整卡顶部/区块标题（首页「客厅温湿度计」卡、家庭区「家庭」卡），并新增 `scripts/check-screenshot-top.py` 用 uiautomator 节点树自动断言（首个可见 `text` 节点须以 `--expect-top` 开头，其 `CardView` top 不高于视口 top，容差 2dp），不靠肉眼。**峰值口径**：`maxByOrNull` 并列取首个导致均匀数据下「峰值 0 点」；新增 `List<HourCount>.peakHour()` 并列取最晚小时，今日显示「峰值 22 点 100 条」，补 `HourlyPeakTest`（并列/单峰/无数据）。重截 `home.png`、`profile_household.png`。单测 385 全绿、`lintDebug` 0 error、fixture e2e 与真 Postgres e2e 全绿，tag `v0.28.0`（`versionCode = 36`）。
 - `v0.27.0`：截图验收四项修复。**导出遮挡**：设备详情导出说明与按钮改为纵向布局，滚动容器底部 padding = 48dp + `systemBars.bottom`，正文与按钮不再落在手势条下方；确认全仓无 `FloatingActionButton`。**连接状态**：新增 `ConnectionUi` 单一状态源，连接中/已连接/已断开分别对应「正在连接… + 取消」「已连接 + 断开连接 + RSSI」「未连接 + 重新连接」，「设备信息」提示同源派生，补 `ConnectionUiTest` 覆盖三态与跨设备状态。**截图切字**：逐页滚动到关键卡片完整可见再截，重截首页、设备详情、场景、家庭区、扫描日志、产品列表、产品详情（GATT 末行）、市场明细、房间管理、会话与两张 200% 字号截图。**MAC**：seed 设备 MAC 改为 `C8:47:8C:` 开头的假地址，`seed-local-db.py` 按设备名匹配，不再复制 MAC。单测、lint、fixture e2e 与真 Postgres e2e 全绿，tag `v0.27.0`（`versionCode = 35`）。
 - `v0.26.0`：截图验收五项修复。**图表数据**：`scripts/seed-screenshots.py` 改为 7 天、每 10 分钟一条原始读数（温度/湿度/气压/心率，正弦 + 噪声 + 偶发尖峰；电量每小时），24 小时视图不再依赖服务端白名单里的 `30m`，由 `ReadingPager` 分页拉原始读数后经 `ReadingSeriesBucketing.aggregateRemote` 聚合成 48 个 30 分钟桶，7 天视图走服务端 `1h` 共 168 桶；修复 `ReadingChartView` 折线 `Paint` 默认 `FILL` 把开放路径隐式闭合、盖住 min–max 区间带的问题。**横轴标签**：新增 `ChartAxisLabelFormatter`，按跨度选 `MM-dd`/`HH:mm`/`HH:mm:ss`，首尾同串时加细到 `MM-dd HH:mm`/`HH:mm:ss`/`HH:mm:ss.SSS`，补 `ChartAxisLabelFormatterTest` 覆盖三种跨度与同串细分。**成员显示名**：`HouseholdMember.displayName` 优先，缺失时回落「成员 N · 角色」，原始用户 ID 只在长按/转让提示等排障场景出现，补 `HouseholdMemberLabelTest`。**造数**：`scripts/seed-local-db.py` 注入 7 天本地读数、12 条扫描日志（含在线/离线设备）与设备在线状态/房间归属，可重复执行且不污染已有账号；重新截图并把 `household.png` 重命名为 `profile_household.png`，新增 `profile_scan_logs.png`，共 16 张。单测、lint、fixture e2e 与真 Postgres e2e 全绿，tag `v0.26.0`（`versionCode = 34`）。
 - `v0.25.0`：截图验收三项修复。**底部 inset**：新增 `applyBottomInsetPadding()`/`applyBottomInsetHeight()`，首页、智能、产品、市场、我的、产品详情、设备详情、反馈记录等可滚动容器统一 `clipToPadding=false` + 底部 `systemBars.bottom` padding；底部导航固定 56dp 高度改为「高度 = 56dp + inset、inset 作为 padding」，修复固定高度下把 item 压成 21px 的问题，最后一项可完整滚到手势条上方。**指标展示名**：`ReadingMetrics.displayAlias()` 补 `temperature_celsius`/`relative_humidity`/`pressure_hpa`/`battery_percent`/`co2_ppm` 等服务端 key，详情页、场景/规则摘要、通知文案与首页今日概览统一走该映射；未知 key 回落「其他（原始 key）」便于排查，`MetricThreshold.displayUnit` 同步识别别名单位。**造数**：`scripts/seed-screenshots.py` 改为 3 个家庭 7/3/2、按家庭分别创建 6 个房间并通过 `PATCH /my/devices` 写家庭/房间归属，可重复执行；另修 200% 字号下场景徽标挤占标题的问题（徽标独立成行）。重截首页、设备详情、家庭、房间、场景、场景详情、产品/产品详情、市场、我的、会话、反馈与两张 200% 字号截图，共 15 张。单测、lint、fixture e2e 与真 Postgres e2e 全绿，tag `v0.25.0`（`versionCode = 33`）。

@@ -1311,7 +1311,7 @@ apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk
 - 跨 DST 的真实时区切换（自动化已覆盖 02:30 → 03:30 与秋季重复小时，真机仅作补充）。
 - 场景 6 个 `SCENE_*` 码在真实后端联调环境的逐条触发（fixture 中只做了映射与文案验证）。
 
-## 14. 真 Postgres e2e 与界面截图（v0.27.0）
+## 14. 真 Postgres e2e 与界面截图（v0.28.0）
 
 ### 14.1 场景链路（真 Postgres）
 
@@ -1330,11 +1330,22 @@ apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk
 - 环境：Pixel_10a 模拟器（Android 37，1080×2400）+ 本机 `PJGoIoT v0.22.0` 干净 worktree（API `10.0.2.2:8080`，真 Postgres），App 使用 `-PapiBaseUrl=http://10.0.2.2:8080/` 构建。
 - 造数：`python3 scripts/seed-screenshots.py http://127.0.0.1:8080/api/v1`，再用配对码在「我的 → 8 位配对码」接管账号，最后 `python3 scripts/seed-local-db.py` 注入本地读数与扫描日志；数据含 3 家庭 / 6 房间 / 12 设备（7/3/2 分布，5 种型号、2 台离线）/ 4 场景（1 个 `rejected`、1 个定时、1 个 `deviceMissing`）/ 3 条服务端反馈（1 条已关闭）/ 12 条本地扫描日志；服务端读数每 10 分钟一条、共 7 天。
 - 预期：16 张截图位于 `docs/screenshots/`，覆盖首页、设备详情（连接状态与设备信息同为「未连接」、24 小时 48 桶、折线 + min–max 带、横轴 `MM-dd`、导出说明与按钮完整）、智能（列表 + 详情）、产品（列表 + 详情）、市场、我的、我的 · 家庭区（`profile_household.png`，成员显示「成员 N · 角色」而非原始 ID）、我的 · 扫描日志（`profile_scan_logs.png`，12 条、MAC 为 `C8:47:8C:` 假地址）、房间、会话、反馈详情，以及 200% 字号的首页与场景页；每张图的关键文字/按钮都不被底部 Tab、手势条或悬浮按钮切断；`README.md` 以相对路径引用并写明来源。
+- 截图停点（v0.28.0）：每张滚动页的视口顶部第一个可见元素必须是完整卡片或完整区块标题，不允许上一张卡只剩一行尾巴。停点用 uiautomator 节点树自动断言，不靠肉眼：
+  `adb shell uiautomator dump /sdcard/ui.xml && adb exec-out cat /sdcard/ui.xml > /tmp/ui.xml && python3 scripts/check-screenshot-top.py /tmp/ui.xml --expect-top 客厅温湿度计`
+  脚本取视口内第一个带 `text` 的节点（跳过 `contentDescription`，卡片自身的 content-desc 会排在标题前造成误判），要求其文字以 `--expect-top` 开头、且其所属 `CardView` 的 top 不高于视口 top（容差 2dp × density）。首页断言「客厅温湿度计」卡片 top=1024 / 视口 top=993（间隙 31px），家庭区断言「家庭」卡 top=394 / 视口 top=394（间隙 0px），均 PASS。列表底部露出下一张卡的半截属于正常滚动暗示，脚本只输出 WARN 不判失败（`--strict-bottom` 才计入失败）。
+- 峰值小时口径（v0.28.0）：「今日读数按小时分布，峰值 X 点 Y 条」的 X 由 `List<HourCount>.peakHour()` 计算，并列时取最晚出现的小时（旧实现 `maxByOrNull` 并列取首个，导致均匀数据下永远是 0 点）。本地今日 0–22 点各 100 条、23 点 25 条，页面显示「峰值 22 点 100 条」；`HourlyPeakTest` 覆盖并列 / 单峰 / 无数据。
 - 失败判定：出现占位图/拼图/旧图、页面空白或崩溃、可滚动页面最后一项被系统手势条遮挡、设备详情指标名显示「其他」而原始 key 不是未知值、200% 字号下文字重叠或按钮不可点。
 
 ### 14.4 截图过程中修复的界面问题（需单独提交）
 
-本版（v0.27.0）：
+本版（v0.28.0）：
+
+- 首页截图顶部残留「今日读数按小时分布，峰值 0 点 100 条」一行（今日概览卡被滚掉上半截）：停点改为「客厅温湿度计」卡顶部。
+- 家庭区截图「我的」标题下残留「断开自动停止。」（后台采集卡的最后一行）：停点改为「家庭」卡顶部。
+- 停点新增 `scripts/check-screenshot-top.py` 自动断言（`--expect-top` + 卡片 top 对齐），不靠肉眼。
+- 峰值小时并列时取 0 点：新增 `List<HourCount>.peakHour()` 并列取最晚小时，补 `HourlyPeakTest`（并列/单峰/无数据）。
+
+v0.27.0：
 
 - 设备详情底部「导出 CSV」按钮压住说明文字：导出行改为纵向布局，滚动容器底部 padding = 48dp + `systemBars.bottom`，滚到底时正文/按钮完整位于手势条上方；全仓无 `FloatingActionButton`。
 - 「连接状态」显示正在连接 + -55 dBm + 断开连接，而「设备信息」显示当前未连接：新增 `ConnectionUi` 单一状态源，三态文案与按钮同源派生，连接中隐藏 RSSI、按钮变「取消」，补 `ConnectionUiTest`。

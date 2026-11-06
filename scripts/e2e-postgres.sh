@@ -70,7 +70,7 @@ set +e
 (cd "$ROOT" && ./gradlew --console=plain :app:e2ePostgres -Pe2eBaseUrl="$BASE_URL")
 STATUS=$?
 set -e
-[[ "$STATUS" -eq 0 ]] || fail "Postgres 契约套件未通过（exit=$STATUS）"
+[[ "$STATUS" -eq 0 ]] || fail "Postgres 契约套件未通过（exit=${STATUS}）"
 
 echo "[E2E:pg] ---- 410 RESYNC_REQUIRED 分支 ----"
 login="$(curl -fsS -X POST "$BASE_URL/api/v1/auth/anonymous")" || fail "匿名登录失败"

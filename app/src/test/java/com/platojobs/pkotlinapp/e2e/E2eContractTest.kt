@@ -10,6 +10,14 @@ import com.platojobs.pkotlinapp.data.remote.ReadingPageResponse
 import com.platojobs.pkotlinapp.data.remote.ReadingSeriesResponse
 import com.platojobs.pkotlinapp.data.remote.ReadingSummaryResponse
 import com.platojobs.pkotlinapp.data.remote.Reported
+import com.platojobs.pkotlinapp.data.remote.SceneActionDto
+import com.platojobs.pkotlinapp.data.remote.SceneBoolFieldDto
+import com.platojobs.pkotlinapp.data.remote.SceneDeviceRefDto
+import com.platojobs.pkotlinapp.data.remote.SceneInputDto
+import com.platojobs.pkotlinapp.data.remote.ScenePatchDto
+import com.platojobs.pkotlinapp.data.remote.SceneStringFieldDto
+import com.platojobs.pkotlinapp.data.remote.SceneTimestamps
+import com.platojobs.pkotlinapp.data.remote.SceneTriggerDto
 import com.platojobs.pkotlinapp.data.remote.SyncChangeDto
 import com.platojobs.pkotlinapp.data.remote.SyncChangesResponse
 import com.platojobs.pkotlinapp.data.remote.SyncDeviceDto
@@ -17,6 +25,8 @@ import com.platojobs.pkotlinapp.data.remote.SyncPushRequest
 import com.platojobs.pkotlinapp.data.remote.SyncPushResponse
 import com.platojobs.pkotlinapp.data.remote.SyncScanRecordDto
 import com.platojobs.pkotlinapp.data.remote.SyncApi
+import com.platojobs.pkotlinapp.data.scene.RemoteSceneDataSource
+import com.platojobs.pkotlinapp.data.sync.TokenStore
 import com.platojobs.pkotlinapp.data.sync.toDomain
 import com.platojobs.pkotlinapp.data.sync.toPushDto
 import com.platojobs.pkotlinapp.domain.sync.Rfc3339
@@ -2098,6 +2108,207 @@ class E2eContractTest {
         }
 
         println("[E2E] SUMMARY: postgres-only contract passed")
+    }
+
+    /**
+     * v0.22.0 场景链路跑在真 Postgres 上：首次上传返回 id/version（客户端据此写回 remoteId）、
+     * 字段级 LWW 两端改不同字段都保留、软删后 GET/list 均不可见、deviceMissing 由服务端按设备目录实时计算。
+     */
+    @Test
+    fun `postgres scenes contract upload lww soft delete and device missing`() {
+        assumeTrue("store=$store，跳过 postgres 场景契约", store == "postgres")
+
+        val owner = newAnonymousSession("pg scenes owner")
+        val sceneTokenStore = TestTokenStore(owner.token)
+        val scenes = RemoteSceneDataSource(ApiClient.createScenes(baseUrl), sceneTokenStore)
+        val externalId = "AA:BB:CC:00:00:61"
+        pushDevice(owner.token, externalId, idempotencyKey = "e2e-pg-scene-device-1")
+
+        val created = captureStep("scene: first upload returns id/version for local writeback") {
+            runBlocking {
+                scenes.create(
+                    SceneInputDto(
+                        name = "Postgres 离线提醒",
+                        enabled = true,
+                        cooldownSeconds = 300,
+                        trigger = SceneTriggerDto(
+                            kind = "device_offline",
+                            device = SceneDeviceRefDto(platform = "android", externalId = externalId),
+                            offlineSeconds = 600,
+                        ),
+                        actions = listOf(
+                            SceneActionDto(kind = "notify", title = "{device} 离线", body = "请检查"),
+                        ),
+                    ),
+                )
+            }
+        }
+        assertNotNull(created.remoteId)
+        assertTrue("首次上传必须返回 version", created.version >= 1)
+        assertEquals(
+            "写回 remoteId 后可按 id 读回同一条",
+            created.remoteId,
+            runBlocking { scenes.list() }.single { it.name == "Postgres 离线提醒" }.remoteId,
+        )
+
+        val nameAt = SceneTimestamps.format(System.currentTimeMillis() + 10_000)
+        val enabledAt = SceneTimestamps.format(System.currentTimeMillis() + 20_000)
+        val renamed = runBlocking {
+            scenes.update(created.remoteId, ScenePatchDto(name = SceneStringFieldDto("Postgres 离线提醒-改名", nameAt)))
+        }
+        assertEquals("Postgres 离线提醒-改名", renamed.name)
+        assertTrue("改名不应改动其它字段", renamed.enabled)
+
+        val disabled = runBlocking {
+            scenes.update(created.remoteId, ScenePatchDto(enabled = SceneBoolFieldDto(false, enabledAt)))
+        }
+        assertEquals("另一端停用后，改名结果必须保留", "Postgres 离线提醒-改名", disabled.name)
+        assertFalse("另一端的 enabled=false 必须生效", disabled.enabled)
+        assertTrue("两端各自改一个字段，版本应递增两次", disabled.version > renamed.version)
+
+        val stranger = newAnonymousSession("pg scenes stranger")
+        step("scene: cross-user GET is 404") {
+            assertEquals(404, get("/scenes/${created.remoteId}", stranger.token).code)
+        }
+
+        val missingRef = "AA:BB:CC:00:00:62"
+        pushDevice(owner.token, missingRef, idempotencyKey = "e2e-pg-scene-device-2")
+        val withMissing = captureStep("scene: deviceMissing follows the device directory, not cascade delete") {
+            runBlocking {
+                val created = scenes.create(
+                    SceneInputDto(
+                        name = "Postgres 设备缺失提醒",
+                        enabled = true,
+                        cooldownSeconds = 60,
+                        trigger = SceneTriggerDto(
+                            kind = "rssi_below",
+                            device = SceneDeviceRefDto(platform = "android", externalId = missingRef),
+                            rssiThreshold = -70,
+                        ),
+                        actions = listOf(SceneActionDto(kind = "log", message = "{device} 信号弱", level = "warn")),
+                    ),
+                )
+                assertFalse(created.deviceMissing)
+                pushDevice(owner.token, missingRef, idempotencyKey = "e2e-pg-scene-device-2-del", deleted = true)
+                val afterDelete = scenes.list().single { it.remoteId == created.remoteId }
+                assertTrue("设备删除后场景不级联删除，只标记 deviceMissing", afterDelete.deviceMissing)
+                assertEquals("Postgres 设备缺失提醒", afterDelete.name)
+                afterDelete
+            }
+        }
+        assertEquals(withMissing.remoteId, runBlocking { scenes.list() }.single { it.name == "Postgres 设备缺失提醒" }.remoteId)
+
+        step("scene: soft delete removes it from list and GET returns 404") {
+            runBlocking { scenes.delete(created.remoteId) }
+            val remaining = runBlocking { scenes.list() }
+            assertTrue(remaining.none { it.remoteId == created.remoteId })
+            assertEquals(404, get("/scenes/${created.remoteId}", owner.token).code)
+            // 跨用户与已软删统一 404，不泄露存在性。
+            assertEquals(404, get("/scenes/${created.remoteId}", stranger.token).code)
+        }
+
+        println("[E2E] SUMMARY: postgres scenes contract passed")
+    }
+
+    /**
+     * v0.23.0 会话链路跑在真 Postgres 上：refresh 后旧 token 立刻 401、吊销单个会话后该 token 401、
+     * 其它会话不受影响；跨用户场景 404 在场景用例中已覆盖。
+     */
+    @Test
+    fun `postgres sessions contract refresh rotation and single revoke`() {
+        assumeTrue("store=$store，跳过 postgres 会话契约", store == "postgres")
+
+        val owner = newAnonymousSession("pg sessions owner")
+        val issued = post("/auth/pairing-code", "{}", owner.token)
+        assertEquals(201, issued.code)
+        val code = parseMap(issued.body)["code"] as? String ?: error("missing pairing code")
+
+        val second = captureStep("session: pairing code creates a second session of the same account") {
+            val result = post("/auth/pairing-code/claim", claimBody(code))
+            assertEquals(200, result.code)
+            val body = parseMap(result.body)
+            assertEquals(owner.userId, body["userId"])
+            val token = body["token"] as? String ?: error("missing claimed token")
+            assertTrue(token != owner.token)
+            UserSession(userId = owner.userId, token = token)
+        }
+
+        step("session: list marks exactly one current session and lists both devices") {
+            val result = get("/sessions", second.token)
+            assertEquals(200, result.code)
+            val sessions = (parseMap(result.body)["sessions"] as List<*>)
+                .filterIsInstance<Map<String, Any?>>()
+            assertEquals(2, sessions.size)
+            assertEquals(1, sessions.count { it["current"] == true })
+            assertTrue(sessions.all { !(it["id"] as String).isBlank() })
+        }
+
+        val otherSessionId = captureStep("session: revoking the other session only kills that token") {
+            val result = get("/sessions", second.token)
+            assertEquals(200, result.code)
+            val sessions = (parseMap(result.body)["sessions"] as List<*>)
+                .filterIsInstance<Map<String, Any?>>()
+            val other = sessions.single { it["current"] != true }
+            val id = other["id"] as? String ?: error("missing session id")
+            assertEquals(204, delete("/sessions/$id", second.token).code)
+            id
+        }
+        assertTrue(otherSessionId.isNotBlank())
+        step("session: revoked token gets 401 while the current one still works") {
+            assertUnauthorized(get("/my/devices", owner.token))
+            assertEquals(200, get("/my/devices", second.token).code)
+        }
+
+        val refreshed = captureStep("session: refresh rotates the token and invalidates the old one") {
+            val result = post("/auth/refresh", "{}", second.token)
+            assertEquals(200, result.code)
+            val body = parseMap(result.body)
+            assertEquals(owner.userId, body["userId"])
+            val token = body["token"] as? String ?: error("missing refreshed token")
+            assertTrue(token != second.token)
+            assertTokenTtl(body, "refresh")
+            token
+        }
+        step("session: old token is 401 immediately after refresh, new token works") {
+            assertUnauthorized(get("/my/devices", second.token))
+            assertEquals(200, get("/my/devices", refreshed).code)
+        }
+
+        step("session: logout revokes the current token") {
+            assertEquals(204, post("/auth/logout", "{}", refreshed).code)
+            assertUnauthorized(get("/my/devices", refreshed))
+        }
+
+        println("[E2E] SUMMARY: postgres sessions contract passed")
+    }
+
+    private fun pushDevice(token: String, externalId: String, idempotencyKey: String, deleted: Boolean = false) {
+        val now = System.currentTimeMillis()
+        val payload = SyncPushRequest(
+            clientId = "e2e-pg-device-$externalId",
+            devices = listOf(
+                PushDeviceDto(
+                    id = UUID.randomUUID().toString(),
+                    platform = "android",
+                    externalId = externalId,
+                    mac = externalId.lowercase(),
+                    deviceType = "environmental_sensor",
+                    updatedAt = Rfc3339.format(now),
+                    deleted = deleted,
+                ),
+            ),
+        )
+        val result = push(pushRequestAdapter.toJson(payload), token, idempotencyKey)
+        assertEquals("push device $externalId", 200, result.code)
+    }
+
+    /** e2e 只关心 token 取值；刷新/清空由 Authenticator 用例单独覆盖。 */
+    private class TestTokenStore(private val value: String) : TokenStore {
+        override fun token(): String = value
+
+        override fun saveToken(token: String) = Unit
+
+        override fun clear() = Unit
     }
 
     private fun claimBody(code: String): String = """{"code":"$code"}"""

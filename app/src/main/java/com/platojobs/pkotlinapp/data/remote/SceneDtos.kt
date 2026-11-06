@@ -90,22 +90,46 @@ data class SceneActionsFieldDto(val value: List<SceneActionDto>, val updatedAt: 
 /** 与 JVM/服务端一致的 RFC3339 毫秒时间；解析失败返回 null，由上层保留本地值。 */
 object SceneTimestamps {
 
-    private const val WITH_MILLIS = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
-    private const val WITHOUT_MILLIS = "yyyy-MM-dd'T'HH:mm:ss'Z'"
+    private const val WITH_MILLIS = "yyyy-MM-dd'T'HH:mm:ss.SSSXXX"
+    private const val WITHOUT_MILLIS = "yyyy-MM-dd'T'HH:mm:ssXXX"
+    private const val OUTPUT = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
 
     fun format(epochMillis: Long): String =
-        formatter(WITH_MILLIS).format(Date(epochMillis))
+        formatter(OUTPUT).format(Date(epochMillis))
 
     fun parse(raw: String?): Long? {
         if (raw.isNullOrBlank()) return null
+        val normalized = normalizeFraction(raw)
         for (pattern in listOf(WITH_MILLIS, WITHOUT_MILLIS)) {
             try {
-                return formatter(pattern).parse(raw)?.time
+                return formatter(pattern).parse(normalized)?.time
             } catch (_: ParseException) {
                 // 尝试下一种格式。
             }
         }
         return null
+    }
+
+    /**
+     * Go 的 time.Time 会输出 RFC3339Nano（小数位 0–9 位且会去掉末尾 0），
+     * 而 SimpleDateFormat 的 SSS 只接受固定 3 位小数。统一补齐/截断到毫秒再解析，
+     * 否则服务端的纳秒时间会被判成非法，场景响应会被整条丢弃。
+     * 服务端 create 返回 UTC（`Z`），list 返回服务器本地时区（如 `+08:00`），
+     * 两种都要能解析，所以小数位截断后再交给带 `XXX` 的格式处理偏移。
+     */
+    private fun normalizeFraction(raw: String): String {
+        val dot = raw.indexOf('.')
+        if (dot < 0) return raw
+        val plus = raw.indexOf('+', dot)
+        val minus = raw.indexOf('-', dot)
+        val end = when {
+            plus >= 0 -> plus
+            minus >= 0 -> minus
+            else -> raw.indexOf('Z', dot)
+        }
+        if (end < 0) return raw
+        val millis = (raw.substring(dot + 1, end) + "000").substring(0, 3)
+        return raw.substring(0, dot) + "." + millis + raw.substring(end)
     }
 
     private fun formatter(pattern: String) = SimpleDateFormat(pattern, Locale.US).apply {

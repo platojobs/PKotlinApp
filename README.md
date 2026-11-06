@@ -1007,8 +1007,34 @@ cursor=0 changes=4 nextCursor=59 entities=['household', 'room', 'user_device']
 CI：GitHub Actions 的 `e2e-postgres` job 与该次运行同一脚本，日志与测试报告见
 <https://github.com/platojobs/PKotlinApp/actions/workflows/android.yml>。
 
-## 16. 版本记录
+## 16. 界面截图（v0.24.0）
 
+以下截图全部来自 **Android 模拟器（Pixel_10a，Android 37）+ 本机 PJGoIoT v0.22.0 后端（真 Postgres）+ `scripts/seed-screenshots.py` 造的演示数据**，不是设计稿、拼图或真机生产环境。
+
+| 截图 | 页面 |
+| --- | --- |
+| [home.png](docs/screenshots/home.png) | 首页：家庭切换、今日概览（温度/湿度/心率）、在线/离线状态、房间分组 |
+| [scenes.png](docs/screenshots/scenes.png) | 智能：4 个场景，含 `rejected` 与 `deviceMissing` 徽标、1 个定时场景 |
+| [scene_detail.png](docs/screenshots/scene_detail.png) | 场景详情（编辑弹窗）：定时触发与动作列表 |
+| [products.png](docs/screenshots/products.png) | 产品列表：按型号分组与设备数量 |
+| [product_detail.png](docs/screenshots/product_detail.png) | 产品详情：说明、可解析指标、兼容性 |
+| [market.png](docs/screenshots/market.png) | 市场：兼容性查询与服务入口 |
+| [profile.png](docs/screenshots/profile.png) | 我的：同步状态、权限、告警设置 |
+| [household.png](docs/screenshots/household.png) | 家庭管理：当前家庭、成员、设备/房间计数 |
+| [rooms.png](docs/screenshots/rooms.png) | 房间管理：6 个房间、排序与删除 |
+| [sessions.png](docs/screenshots/sessions.png) | 会话管理：当前会话与其他会话的吊销入口 |
+| [feedback_list.png](docs/screenshots/feedback_list.png) | 我的反馈记录：3 条反馈（1 条已关闭） |
+| [feedback_detail.png](docs/screenshots/feedback_detail.png) | 反馈详情：状态、状态说明、更新时间与描述 |
+| [home_font200.png](docs/screenshots/home_font200.png) | 系统字号 200% 的首页（大字号不炸） |
+| [scenes_font200.png](docs/screenshots/scenes_font200.png) | 系统字号 200% 的场景页（大字号不炸） |
+
+数据口径：3 个家庭、6 个房间、12 台设备（5 种 `deviceType`，2 台离线）、4 个场景（1 个 `rejected`、1 个定时、1 个引用已删除设备的 `deviceMissing`）、3 条服务端反馈（1 条已关闭）。读数在服务端保留 7 天；首页与详情展示的读数来自 App 本地 Room（与 BLE 采集同一张表），由 seed 脚本按同一表结构写入，覆盖温度、湿度与心率。`rejected` 场景是本地 `syncState` 的展示态（服务端不会持久化被拒状态），截图时临时关闭网络避免自动同步覆盖；这属于演示数据构造，不是产品行为。
+
+截图过程中发现并修复了三个界面问题（单独提交）：Material `Chip` 不支持多行导致市场/设备详情崩溃、二级页 `Toolbar` 固定高度叠加状态栏内边距导致标题被压扁、场景编辑弹窗输入框固定高度导致文字裁切。原仓库与 `PJGoIoT` 主干未提交内容均未改动，后端跑在 `v0.22.0` 的干净 worktree。
+
+## 17. 版本记录
+
+- `v0.24.0`：真 Postgres e2e 补齐场景与会话链路。场景侧覆盖首次上传并写回 `remoteId`、LWW 双端改不同字段都保留、软删后列表排除且 owner/陌生人均 404、引用设备软删后 `deviceMissing` 置真且不级联删场景；会话侧覆盖 refresh 轮换后旧 token 401、吊销非当前会话后该 token 401、跨用户访问 404。联调中发现 Go `time.Time` 输出 RFC3339Nano（小数位 0–9 位）且 create 返回 `Z`、list 返回 `+08:00`，客户端只接受固定 3 位毫秒且把 `Z` 当字面量，导致场景响应被整条丢弃；`SceneTimestamps` 改为统一补齐/截断到毫秒并用 `XXX` 解析时区，补 `SceneTimestampsTest`。新增 `scripts/seed-screenshots.py`（3 家庭/6 房间/12 设备/4 场景/3 反馈，含离线、`deviceMissing` 与定时场景），产出 14 张模拟器真实截图（含 200% 字号两张），图片清单与数据口径见上节。截图过程中修复三个界面问题：Material `Chip` 设置 `isSingleLine=false` 会抛异常导致市场/设备详情崩溃、二级页 `Toolbar` 固定高度叠加状态栏内边距导致标题被压扁、场景编辑弹窗输入框固定高度导致文字裁切。单测、lint、fixture e2e 与真 Postgres e2e 全绿，tag `v0.24.0`（`versionCode = 32`）。
 - `v0.19.0`：把意见反馈从「本地待发队列」接成真实发送链路（后端 PJGoIoT v0.16.0 / 契约 0.12.0）。`feedback_drafts` 增加 `retryCount/lastError/lastErrorCode/lastErrorRetryAfterSeconds/remoteFeedbackId/lastAttemptAt`，状态机 `pending→sending→sent/failed`，只有 2xx 且拿到 `feedbackId` 才标 sent；用草稿本地 ID 作 `Idempotency-Key`，断网重试复用同一键不产生重复记录，同 key 不同内容映射 409 `IDEMPOTENCY_CONFLICT`。失败后台只安排有界指数退避（10s 起、5 分钟封顶、最多 5 次自动重试），429 按 `Retry-After` 提示手动稍后再试、不自动狂重试；失败草稿永久保留，前台可无限手动重试。上下文自动填充 `BuildConfig.VERSION_NAME/BUILD_TYPE`、系统版本与 `Build.MODEL`。新增「我的反馈记录」页：`GET /feedback/mine` 游标分页、下拉刷新、触底加载更多，空/加载/错误复用 `ThreeStateHost`；列表 DTO 不含 contact/diagnostics。Room v17（`MIGRATION_16_17`）迁移旧草稿；新增 `FeedbackStoreTest`（状态机/幂等键/429/失败保留/退避上限/上下文）、`FeedbackDtoContractTest`、`FeedbackSyncMigrationTest`（真实 SQLite v16→v17）；fixture e2e 补提交、幂等重放、409、400、本人列表、游标分页与跨账号隔离。单测全绿、`lintDebug` 0 issue、`assembleDebug`、fixture e2e 全绿，tag `v0.19.0`（`versionCode = 27`）。
 - `v0.18.0`：把「智能」场景接成引擎真正执行的闭环，并把首页改成真实聚合。场景触发复用 `rules`（`sceneId` 非空即场景规则），与普通自动化共用阈值/防抖/60 秒冷却；命中时引擎改走 `RuleTriggerObserver`，由 `SceneTriggerRunner` 执行动作并写入真实 `scene_runs`（时间/场景名/触发值/动作结果/失败原因），界面只读可清空。新增通知、记录日志、标记设备三种动作（`markDevice` 写 `devices.markedAt`）；新增 `RuleType.SCHEDULE` + `intervalMinutes`，WorkManager 15 分钟与冷启动驱动；停用场景同步禁用绑定规则，场景级冷却防止重复。Room v16（`MIGRATION_15_16`）扩展 `rules/scenes/devices` 并新建 `scene_runs`。首页今日读数总量、按指标/小时 `GROUP BY`、越界次数、最近告警全部来自 `readings/rule_events`；在线/离线/未分配走 SQL `COUNT`，低电量用每设备最新电量；最近同步/告警/场景触发来自真实记录，无记录显示空态。状态卡四格可下钻并在再次点击时取消，下拉刷新触发一次同步并重算本地零点窗口。新增 `SceneEngineLoopTest`（越界读数 → 触发 → 写记录 → 通知仅一次、冷却不重复、停用不执行）、`SceneEngineMigrationTest`（真实 SQLite v15→v16）、`HomeAggregationTest`（真实 Room 验证窗口与 `GROUP BY`）、`SceneRepositoryTest` 触发落库断言。单测 286 全绿、`lintDebug` 0 issue、`assembleDebug`、fixture e2e 全绿，tag `v0.18.0`。
 - `v0.17.0`：接入后端 v0.15.0（openapi 0.11.0）的家庭结构增量同步，并把「市场」改成不造假的产品内容。`change_log` 解析按 `entity` 显式分派：`household`/`room` 进入 `StructuralChange`，未知 entity 直接丢弃但 `nextCursor` 无条件前进（`SyncUnknownEntityTest` 用固定 JSON 锁定）。`household upsert` 更新名称/接收者角色/成员数，本地缺该家庭时同一次内跑 `GET /households` 全量基线；`household delete` 整段移除房间、共享设备、归属与家庭行；`room upsert` 按 `sortOrder` 落序，`room delete` 删房间并清空设备归属但保留设备本身。Room v15（`MIGRATION_14_15`）为 `rooms` 增加 `pendingEdit/serverName/serverSortOrder`：本地未同步房间编辑优先，收到同房间结构 upsert 只暂存服务端值，下次同步先上传本地值再合并；重排 409 先放弃 pending。成员移除后不再收到新结构、离开前历史仍可读，按正常语义处理；`410 RESYNC_REQUIRED` 仍清游标后 `cursor=0` 全量重拉。市场删除虚构商品与 `MarketAdapter`：兼容性由 `ProductCatalog` 服务 UUID + `ReadingUuids.supported` 推导指标/GATT 服务/限制（NUS 逐行输出），选购指南按健康/环境/组网给出带证据的推荐，无匹配如实为空；配对向导、连接排障、采集省电三条入口直达真实功能；示例条目默认隐藏且固定标注「示例数据，不代表真实在售」。新增 `HouseholdStructuralSyncTest`、`SyncUnknownEntityTest`、`RoomStructuralMigrationTest`（v14→v15 真实 SQLite）、`MarketInsightsTest`；e2e 补结构同步全链路（改名/建房/删房/转让/移除后可见性/新成员不回放历史），真 Postgres 410 分支改为结构缺口（过期一条 `household` 后旧游标 410、`cursor=0` 拉回 household/room）。单测 278 全绿、`lintDebug` 0 issue、`assembleDebug`、fixture 与真 Postgres e2e 全绿，tag `v0.17.0`。

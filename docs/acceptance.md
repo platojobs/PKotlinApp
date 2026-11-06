@@ -1,9 +1,9 @@
-# 真机验收清单（v0.23.0）
+# 真机验收清单（v0.24.0）
 
 本清单用于「执行人不在开发现场」时也能照着做完验收。每项都写明**操作步骤、预期现象、失败判定**。
 所有结果请记录到文末的「验收记录表」；未实际执行的项不要填 PASS。
 
-- 适用版本：`versionName = 0.23.0`（`versionCode = 31`）
+- 适用版本：`versionName = 0.24.0`（`versionCode = 32`）
 - 应用包名：`com.platojobs.pkotlinapp`
 - 主界面：`com.platojobs.pkotlinapp.ui.MainActivity`
 - 设备详情：`com.platojobs.pkotlinapp.ui.detail.DeviceDetailActivity`
@@ -55,7 +55,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versionCode"
 ```
 
-预期：`versionName=0.23.0`、`versionCode=31`。
+预期：`versionName=0.24.0`、`versionCode=32`。
 
 ---
 
@@ -1310,4 +1310,38 @@ apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk
 - 服务端 409 `FEEDBACK_INVALID_TRANSITION` 的线上真实返回（本地用 fixture 模拟）。
 - 跨 DST 的真实时区切换（自动化已覆盖 02:30 → 03:30 与秋季重复小时，真机仅作补充）。
 - 场景 6 个 `SCENE_*` 码在真实后端联调环境的逐条触发（fixture 中只做了映射与文案验证）。
+
+## 14. 真 Postgres e2e 与界面截图（v0.24.0）
+
+### 14.1 场景链路（真 Postgres）
+
+- 步骤：`PJGOIOT_DIR=/tmp/pjgoiot-v022 ./scripts/e2e-postgres.sh`，执行 `postgres scenes contract upload lww soft delete and device missing`。
+- 预期：首次上传返回非空 `remoteId` 且 `version>=1`；`GET /scenes` 按名称命中同一 `remoteId`；双端分别以更晚 `updatedAt` 修改 `name` 与 `enabled` 后两者都保留；引用设备被软删后场景 `deviceMissing=true` 且场景不被级联删除；场景软删后列表排除，owner 与陌生账号 `GET /scenes/{id}` 均 404。
+- 失败判定：`remoteId` 未写回、LWW 丢字段、软删后仍出现在列表、`deviceMissing` 为 false、跨用户可读。
+
+### 14.2 会话链路（真 Postgres）
+
+- 步骤：同一用例内匿名登录、签发并接管第二个会话，执行 `GET/POST/DELETE /sessions` 与 `/auth/refresh`、`/auth/logout`。
+- 预期：接管后 2 个会话且恰 1 个 `current`；吊销非当前会话后该 token 访问 `/my/devices` 返回 401、当前 token 200；`refresh` 返回新 token 且 TTL 存在，旧 token 401、新 token 200；`logout` 后 token 401；跨用户访问他人资源 404。
+- 失败判定：旧 token 仍可用、吊销未生效、跨用户返回 200/403 而非 404。
+
+### 14.3 真实界面截图（模拟器 + 本地后端 + seed 数据）
+
+- 环境：Pixel_10a 模拟器（Android 37，1080×2400）+ 本机 `PJGoIoT v0.22.0` 干净 worktree（API `10.0.2.2:8080`，真 Postgres），App 使用 `-PapiBaseUrl=http://10.0.2.2:8080/` 构建。
+- 造数：`python3 scripts/seed-screenshots.py http://127.0.0.1:8080/api/v1`，再用配对码在「我的 → 8 位配对码」接管账号；数据含 3 家庭 / 6 房间 / 12 设备（5 种型号、2 台离线）/ 4 场景（1 个 `rejected`、1 个定时、1 个 `deviceMissing`）/ 3 条服务端反馈（1 条已关闭）。
+- 预期：14 张截图位于 `docs/screenshots/`，覆盖首页、智能（列表 + 详情）、产品（列表 + 详情）、市场、我的、家庭、房间、会话、反馈详情，以及 200% 字号的首页与场景页；`README.md` 以相对路径引用并写明来源。
+- 失败判定：出现占位图/拼图/旧图、页面空白或崩溃、200% 字号下文字重叠或按钮不可点。
+
+### 14.4 截图过程中修复的界面问题（需单独提交）
+
+- Material `Chip` 调用 `setSingleLine(false)` 会抛 `UnsupportedOperationException`，导致「市场」与设备详情崩溃；改为单行 + 省略号。
+- 二级页 `Toolbar` 固定 `?attr/actionBarSize` 再叠加状态栏 `paddingTop`，标题被压到只剩几像素；改为 `wrap_content + minHeight`。
+- 场景编辑弹窗输入框固定 `@dimen/input_h`，中文名称上下被裁切；改为 `wrap_content`。
+
+### 14.5 未验证部分（记录到验收表时标注 NOT VERIFIED）
+
+- 截图为模拟器 + 本机后端 + seed 数据，不是真机生产环境；未验证真实 BLE 设备的在线/离线切换与真实读数采集。
+- `rejected` 场景是本地 `syncState` 的展示态，不是服务端持久化状态；服务端没有「拒绝原因」字段。
+- 服务端读数（7 天）存在，但设备详情页展示的读数为 App 本地 Room 数据；未连接真实设备时不会从服务端回填读数。
+- 未验证真实多设备并发吊销、真实运营商弱网下的 token 轮换竞态。
 

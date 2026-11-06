@@ -40,8 +40,6 @@ class ReadingChartView @JvmOverloads constructor(
     private val selectionPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val linePath = Path()
-    private val timeFormatter = SimpleDateFormat("HH:mm", Locale.getDefault())
-    private val dayFormatter = SimpleDateFormat("MM-dd", Locale.getDefault())
 
     private var buckets: List<ChartBucket> = emptyList()
     private var from: Long = 0L
@@ -90,6 +88,8 @@ class ReadingChartView @JvmOverloads constructor(
         axisPaint.strokeWidth = 1.dp
         bandPaint.color = ContextCompat.getColor(context, R.color.chart_band)
         linePaint.color = ContextCompat.getColor(context, R.color.chart_line)
+        // 折线必须是描边：默认 FILL 会把开放 Path 隐式闭合，把 min–max 带盖成实心面。
+        linePaint.style = Paint.Style.STROKE
         linePaint.strokeWidth = 2.dp
         linePaint.strokeCap = Paint.Cap.ROUND
         pointPaint.color = ContextCompat.getColor(context, R.color.chart_line_2)
@@ -259,10 +259,10 @@ class ReadingChartView @JvmOverloads constructor(
             val fromLabel: String?
             val toLabel: String?
             if (from > 0L && to > from) {
-                val spanHours = (to - from) / 3_600_000L
-                val formatter = if (spanHours > 48) dayFormatter else timeFormatter
-                fromLabel = formatter.format(Date(from))
-                toLabel = formatter.format(Date(to))
+                ChartAxisLabelFormatter.labels(from, to).let { (start, end) ->
+                    fromLabel = start
+                    toLabel = end
+                }
             } else {
                 fromLabel = null
                 toLabel = null

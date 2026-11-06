@@ -3,12 +3,13 @@ package com.platojobs.pkotlinapp.domain.reading
 /**
  * 详情页可切换的查询区间与默认分桶。
  *
- * 分桶必须与服务端 UTC 网格一致（1m 整分钟 / 1h 整点 / 1d UTC 零点），
- * 且单个区间产生的桶数不得超过 [MAX_BUCKETS]（服务端硬上限 500）。
+ * 除 `30m` 外，分桶必须与服务端 UTC 网格一致（1m 整分钟 / 1h 整点 / 1d UTC 零点）。
+ * 服务端 series 只接受 1m/1h/1d；24 小时视图的 30 分钟桶由客户端用原始读数聚合。
+ * 单个区间产生的桶数不得超过 [MAX_BUCKETS]（服务端硬上限 500）。
  */
 enum class ReadingRange(val hours: Int, val bucket: String) {
     HOUR_1(1, "1m"),
-    HOUR_24(24, "1h"),
+    HOUR_24(24, "30m"),
     DAY_7(7 * 24, "1h"),
     DAY_30(30 * 24, "1d"),
     ;
@@ -23,12 +24,15 @@ enum class ReadingRange(val hours: Int, val bucket: String) {
 
     companion object {
         const val MAX_BUCKETS = 500
+        const val BUCKET_30_MIN = "30m"
         val DEFAULT = HOUR_24
 
-        val BUCKETS = listOf("1m", "1h", "1d")
+        /** 粒度从细到粗；`30m` 仅客户端本地聚合使用。 */
+        val BUCKETS = listOf("1m", BUCKET_30_MIN, "1h", "1d")
 
         fun bucketMillis(bucket: String): Long = when (bucket) {
             "1m" -> 60_000L
+            BUCKET_30_MIN -> 1_800_000L
             "1h" -> 3_600_000L
             "1d" -> 86_400_000L
             else -> 3_600_000L
@@ -42,7 +46,7 @@ enum class ReadingRange(val hours: Int, val bucket: String) {
 
         /**
          * 从首选粒度开始，逐级加粗直到桶数 ≤ [MAX_BUCKETS]。
-         * `1m` → `1h` → `1h`（7 天仍为 168 桶）；`1d` 为最粗粒度。
+         * `1m` 在 24h 会退到 `30m`（48 桶），7 天仍为 168 桶；`1d` 为最粗粒度。
          */
         fun chooseBucket(spanMillis: Long, preferred: String): String {
             val startIndex = BUCKETS.indexOf(preferred).takeIf { it >= 0 } ?: BUCKETS.lastIndex

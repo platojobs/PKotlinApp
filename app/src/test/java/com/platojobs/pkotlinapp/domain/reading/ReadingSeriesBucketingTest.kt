@@ -67,6 +67,23 @@ class ReadingSeriesBucketingTest {
     }
 
     @Test
+    fun `remote twenty four hours at thirty minute buckets keeps forty eight buckets`() {
+        val last = ReadingRange.bucketStart(now, "30m")
+        val halfHour = 1_800_000L
+        val rows = (0 until 48).map { index ->
+            val at = last - (47 - index) * halfHour
+            RemoteReading("r-$index", "temperature", 20.0 + index % 4, "°C", at)
+        }
+
+        val buckets = ReadingSeriesBucketing.aggregateRemote(rows, "30m")
+
+        assertEquals(48, buckets.size)
+        assertEquals(halfHour, buckets[1].start - buckets[0].start)
+        assertEquals(1L, buckets.first().count)
+        assertEquals(20.0, buckets.first().min, 0.001)
+    }
+
+    @Test
     fun `thirty day offline fallback only covers the local seven days`() {
         // 模拟本地只保留了最近 7 天（更早的记录已被 cleanup 删除）。
         val rows = listOf(

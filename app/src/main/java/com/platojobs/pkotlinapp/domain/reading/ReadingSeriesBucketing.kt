@@ -6,27 +6,49 @@ package com.platojobs.pkotlinapp.domain.reading
  */
 object ReadingSeriesBucketing {
 
-    fun aggregate(readings: List<Reading>, bucket: String): List<ReadingBucket> {
+    fun aggregate(readings: List<Reading>, bucket: String): List<ReadingBucket> =
+        aggregateRows(
+            rows = readings,
+            bucket = bucket,
+            value = { it.value },
+            recordedAt = { it.recordedAt },
+            id = { it.id },
+        )
+
+    /** 服务端原始读数的客户端聚合：24 小时视图的 30 分钟桶走这条路径。 */
+    fun aggregateRemote(readings: List<RemoteReading>, bucket: String): List<ReadingBucket> =
+        aggregateRows(
+            rows = readings,
+            bucket = bucket,
+            value = { it.value },
+            recordedAt = { it.recordedAt },
+            id = { it.id },
+        )
+
+    private fun <T> aggregateRows(
+        rows: List<T>,
+        bucket: String,
+        value: (T) -> Double,
+        recordedAt: (T) -> Long,
+        id: (T) -> String,
+    ): List<ReadingBucket> {
         val size = ReadingRange.bucketMillis(bucket)
-        val groups = readings
-            .filter { it.value.isFinite() && it.recordedAt > 0L }
-            .groupBy { ReadingRange.bucketStart(it.recordedAt, bucket) }
+        val valid = rows.filter { value(it).isFinite() && recordedAt(it) > 0L }
+        val groups = valid.groupBy { ReadingRange.bucketStart(recordedAt(it), bucket) }
 
         return groups.entries
             .sortedBy { it.key }
-            .map { (start, rows) ->
-                val values = rows.map { it.value }
-                val lastRow = rows.maxWith(
-                    compareBy<Reading> { it.recordedAt }.thenBy { it.id },
-                )
+            .map { (start, group) ->
+                val values = group.map(value)
+                val lastRow = group.maxWith(compareBy<T>(recordedAt).thenBy(id))
                 ReadingBucket(
                     start = start,
                     end = start + size,
-                    count = rows.size.toLong(),
+                    count = group.size.toLong(),
                     min = values.min(),
                     max = values.max(),
                     avg = values.average(),
-                    last = lastRow.value,
+                    last = value(lastRow),
                 )
             }
     }

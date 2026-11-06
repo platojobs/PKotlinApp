@@ -332,10 +332,9 @@ class DeviceDetailViewModel(
         seriesJob = viewModelScope.launch {
             val to = now()
             val from = to - range.windowMillis
+            val bucket = range.effectiveBucket()
             _readings.update { it.copy(loadingSeries = true, offlineOnlyLocal7d = false) }
-            val remote = runCatching {
-                readingRemote.series(mac, metric, from, to, range.effectiveBucket())
-            }.getOrNull()
+            val remote = runCatching { remoteSeries(metric, from, to, bucket) }.getOrNull()
             if (remote != null) {
                 _readings.update {
                     it.copy(
@@ -350,7 +349,7 @@ class DeviceDetailViewModel(
 
             val local = runCatching { readingRepository.readingsSince(mac, metric, from) }
                 .getOrDefault(emptyList())
-            val buckets = ReadingSeriesBucketing.aggregate(local, range.effectiveBucket())
+            val buckets = ReadingSeriesBucketing.aggregate(local, bucket)
             val unit = local.lastOrNull()?.unit?.takeIf { it.isNotBlank() }
                 ?: ReadingMetrics.unit(metric)
             _readings.update {
@@ -358,7 +357,7 @@ class DeviceDetailViewModel(
                     series = ReadingSeries(
                         metric = metric,
                         unit = unit,
-                        bucket = range.effectiveBucket(),
+                        bucket = bucket,
                         from = from,
                         to = to,
                         buckets = buckets,
@@ -369,6 +368,34 @@ class DeviceDetailViewModel(
                 )
             }
         }
+    }
+
+    /**
+     * 30 分钟桶不在服务端 series 白名单（1m/1h/1d）内：
+     * 24 小时视图按原读数分页拉取后在客户端聚合成 48 个桶，其余区间直接用服务端分桶。
+     */
+    private suspend fun remoteSeries(
+        metric: String,
+        from: Long,
+        to: Long,
+        bucket: String,
+    ): ReadingSeries {
+        if (bucket == ReadingRange.BUCKET_30_MIN) {
+            val rows = ReadingPager { limit, cursor ->
+                readingRemote.queryReadings(mac, metric, from, to, limit, cursor)
+            }.fetchAll()
+            val unit = rows.lastOrNull()?.unit?.takeIf { it.isNotBlank() }
+                ?: ReadingMetrics.unit(metric)
+            return ReadingSeries(
+                metric = metric,
+                unit = unit,
+                bucket = bucket,
+                from = from,
+                to = to,
+                buckets = ReadingSeriesBucketing.aggregateRemote(rows, bucket),
+            )
+        }
+        return readingRemote.series(mac, metric, from, to, bucket)
     }
 
     /** 汇总固定 24 小时，不随区间切换；单位取该指标最新读数。 */

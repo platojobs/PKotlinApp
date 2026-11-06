@@ -266,8 +266,10 @@
     <string name="profile_sync_error_unknown">未知错误，请稍后重试</string>
     <string name="profile_sync_auth_expired">登录已失效，同步已暂停；本地数据与同步游标仍保留。</string>
     <string name="profile_relogin">重新登录</string>
-    <string name="profile_relogin_title">重新登录</string>
-    <string name="profile_relogin_message">将清除失效的登录凭证并申请新的匿名账号，本机现有设备数据会同步到新账号。旧账号中的数据不会被删除或覆盖。确定继续吗？</string>
+    <string name="profile_relogin_title">登录已失效</string>
+    <string name="profile_relogin_message">本机数据仍完整保留。可在下方输入旧设备的配对码恢复原账号；或明确选择「新建匿名账号」，本机数据将同步到新账号，旧账号数据不会被删除。</string>
+    <string name="profile_relogin_new_account">新建匿名账号</string>
+    <string name="profile_relogin_use_pairing">用配对码恢复原账号</string>
     <string name="profile_permissions_title">权限自检</string>
     <string name="profile_permission_scan">蓝牙扫描权限</string>
     <string name="profile_permission_connect">蓝牙连接权限</string>
@@ -351,6 +353,17 @@
     <string name="feedback_status_closed">已关闭</string>
     <string name="feedback_status_unknown">处理中</string>
     <string name="feedback_history_row_meta">%1$s · %2$s</string>
+    <string name="feedback_detail_title">反馈详情</string>
+    <string name="feedback_detail_status">状态：%1$s</string>
+    <string name="feedback_detail_updated">更新于 %1$s</string>
+    <string name="feedback_detail_no_status_message">暂无状态说明</string>
+    <string name="feedback_detail_load_failed">反馈详情加载失败，请稍后重试</string>
+    <string name="feedback_detail_close_action">关闭此反馈</string>
+    <string name="feedback_detail_close_title">关闭反馈</string>
+    <string name="feedback_detail_close_message">关闭后将无法再次修改。确定关闭这条反馈吗？</string>
+    <string name="feedback_detail_close_success">反馈已关闭</string>
+    <string name="feedback_detail_already_closed">该反馈已关闭，不能重复关闭</string>
+    <string name="feedback_detail_close_failed">关闭失败，请稍后重试</string>
     <string name="feedback_history_load_more_failed">加载更多失败，请稍后重试</string>
     <string name="feedback_history_loading_more">正在加载更多…</string>
 
@@ -513,6 +526,23 @@
     <string name="account_claim_rate_limited_seconds">尝试过于频繁，请 %1$d 秒后再试</string>
     <string name="account_claim_success">接管成功，本机数据已重新排队同步（账号 %1$s）</string>
 
+    <!-- 设备会话（退出当前会话 / 吊销其它设备） -->
+    <string name="account_session_title">设备会话</string>
+    <string name="account_session_desc">同一账号在不同设备上的登录会话。可单独吊销其它设备，当前会话不受影响。</string>
+    <string name="account_session_manage">管理设备会话</string>
+    <string name="account_session_revoke">吊销</string>
+    <string name="account_session_revoked">已吊销该设备会话</string>
+    <string name="account_session_empty">没有可显示的会话</string>
+    <string name="account_session_load_failed">会话列表加载失败，请稍后重试</string>
+    <string name="account_session_row_meta">创建于 %1$s · 到期 %2$s</string>
+    <string name="account_session_row_title">会话 %1$s</string>
+    <string name="account_session_current_row">当前会话 · %1$s</string>
+    <string name="account_logout_button">退出当前会话</string>
+    <string name="account_logout_title">退出当前会话</string>
+    <string name="account_logout_message">仅吊销本机登录凭证，不删除账号，也不清空本机设备与读数。之后可用配对码恢复原账号，或新建匿名账号。</string>
+    <string name="account_logout_success">已退出当前会话，本机数据保留</string>
+    <string name="account_logout_offline">已退出本机登录，服务端会话可能尚未吊销</string>
+
     <!-- 账号与数据（导出与注销） -->
     <string name="account_section_title">账号与数据</string>
     <string name="account_section_desc">导出由服务端生成；删除账号会同时清空本机数据。</string>
@@ -626,6 +656,16 @@
 
     <!-- 场景 -->
     <string name="scene_local_badge">仅本机</string>
+    <!-- 服务端 SCENE_* 错误码 → 可读文案（终态拒绝，改内容后可重试） -->
+    <string name="scene_error_name_invalid">场景名称不合法，请修改后重试</string>
+    <string name="scene_error_cooldown_out_of_range">冷却时间超出允许范围（0–86400 秒）</string>
+    <string name="scene_error_trigger_invalid">触发条件不合法，请检查设备与参数</string>
+    <string name="scene_error_action_invalid">动作不合法，请检查动作数量与类型</string>
+    <string name="scene_error_device_not_found">触发条件引用的设备不存在</string>
+    <string name="scene_error_metric_not_supported">设备类型不支持该指标</string>
+    <string name="scene_error_not_found">场景已不存在（可能已在其它设备删除）</string>
+    <string name="scene_error_version_conflict">场景已在其它设备更新，请刷新后重试</string>
+    <string name="scene_error_unknown">同步被服务端拒绝，请修改后重试</string>
     <string name="scene_add_title">新建场景</string>
     <string name="scene_edit_title">编辑场景</string>
     <string name="scene_name_hint">场景名称</string>

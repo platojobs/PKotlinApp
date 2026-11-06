@@ -1,13 +1,17 @@
 package com.platojobs.pkotlinapp.data.feedback
 
+import com.platojobs.pkotlinapp.data.remote.FeedbackCloseRequest
 import com.platojobs.pkotlinapp.data.remote.FeedbackContextDto
 import com.platojobs.pkotlinapp.data.remote.FeedbackCreateRequest
+import com.platojobs.pkotlinapp.data.remote.FeedbackDetailDto
 import com.platojobs.pkotlinapp.data.remote.SyncApi
 import com.platojobs.pkotlinapp.data.remote.apiErrorDetails
 import com.platojobs.pkotlinapp.data.remote.toSyncException
 import com.platojobs.pkotlinapp.data.sync.TokenStore
+import com.platojobs.pkotlinapp.domain.feedback.FeedbackAlreadyClosedException
 import com.platojobs.pkotlinapp.domain.feedback.FeedbackConflictException
 import com.platojobs.pkotlinapp.domain.feedback.FeedbackContext
+import com.platojobs.pkotlinapp.domain.feedback.FeedbackDetail
 import com.platojobs.pkotlinapp.domain.feedback.FeedbackDraft
 import com.platojobs.pkotlinapp.domain.feedback.FeedbackErrorCodes
 import com.platojobs.pkotlinapp.domain.feedback.FeedbackItem
@@ -78,6 +82,33 @@ class RemoteFeedbackDataSource(
             },
             nextCursor = response.nextCursor?.takeIf { it.isNotBlank() },
             hasMore = response.hasMore == true,
+        )
+    }
+
+    override suspend fun detail(id: String): FeedbackDetail = withToken { auth ->
+        api.getMyFeedback(auth, id).toDetail()
+    }
+
+    override suspend fun close(id: String): FeedbackDetail = try {
+        withToken { auth ->
+            api.closeMyFeedback(auth, id, FeedbackCloseRequest()).toDetail()
+        }
+    } catch (e: FeedbackConflictException) {
+        // 409 FEEDBACK_INVALID_TRANSITION：已关闭再改；界面要明确提示，而非通用错误。
+        throw FeedbackAlreadyClosedException(e.message)
+    }
+
+    private fun FeedbackDetailDto.toDetail(): FeedbackDetail {
+        val id = feedbackId?.takeIf { it.isNotBlank() }
+            ?: throw IllegalStateException("反馈详情缺少 feedbackId")
+        return FeedbackDetail(
+            feedbackId = id,
+            kind = FeedbackKind.parse(kind),
+            description = body.orEmpty(),
+            status = FeedbackStatus.parse(status),
+            statusMessage = statusMessage?.takeIf { it.isNotBlank() },
+            createdAt = Rfc3339.parse(createdAt) ?: 0L,
+            updatedAt = Rfc3339.parse(updatedAt) ?: 0L,
         )
     }
 

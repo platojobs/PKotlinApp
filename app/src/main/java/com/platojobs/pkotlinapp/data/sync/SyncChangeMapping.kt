@@ -83,6 +83,7 @@ internal fun SyncChangeDto.toSyncChangeEntry(): SyncChangeEntry? = when (entity?
                     actionsJson = actionsJson,
                     trigger = parsedTrigger,
                     actions = SceneCanonical.actionsFrom(body.actions, parsedTrigger),
+                    deviceMissing = body.deviceMissing == true,
                 ),
             ),
         )
@@ -112,5 +113,6 @@ internal fun SceneDto.toRemoteScene(): RemoteScene? =
             actionsJson = actionsJson,
             trigger = parsedTrigger,
             actions = SceneCanonical.actionsFrom(actions, parsedTrigger),
+            deviceMissing = deviceMissing == true,
         )
     }

@@ -38,6 +38,7 @@ import com.platojobs.pkotlinapp.R
 import com.platojobs.pkotlinapp.data.collection.CollectionStatus
 import com.platojobs.pkotlinapp.data.prefs.ThemeMode
 import com.platojobs.pkotlinapp.databinding.FragmentProfileBinding
+import com.platojobs.pkotlinapp.domain.account.AccountSession
 import com.platojobs.pkotlinapp.domain.account.PairingCodeFormat
 import com.platojobs.pkotlinapp.domain.feedback.FeedbackDraft
 import com.platojobs.pkotlinapp.domain.feedback.FeedbackErrorCodes
@@ -331,6 +332,136 @@ class ProfileFragment : Fragment() {
         binding.accountSection.exportAccountButton.setOnClickListener { viewModel.exportAccountData() }
         binding.accountSection.exportShareButton.setOnClickListener { shareAccountExport() }
         binding.accountSection.deleteAccountButton.setOnClickListener { confirmDeleteAccount() }
+        binding.accountSection.sessionsButton.setOnClickListener { showSessionsDialog() }
+        binding.accountSection.logoutButton.setOnClickListener { confirmLogout() }
+    }
+
+    /** 设备会话管理：当前会话只读，其它会话可单独吊销。 */
+    private fun showSessionsDialog() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            val sessions = try {
+                viewModel.fetchSessions()
+            } catch (_: Exception) {
+                Snackbar.make(
+                    binding.root,
+                    R.string.account_session_load_failed,
+                    Snackbar.LENGTH_LONG,
+                ).show()
+                return@launch
+            }
+            renderSessionsDialog(sessions)
+        }
+    }
+
+    private fun renderSessionsDialog(sessions: List<AccountSession>) {
+        val context = requireContext()
+        val density = resources.displayMetrics.density
+        val container = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(
+                (16 * density).toInt(),
+                (8 * density).toInt(),
+                (16 * density).toInt(),
+                0,
+            )
+        }
+        var dialog: androidx.appcompat.app.AlertDialog? = null
+
+        if (sessions.isEmpty()) {
+            container.addView(
+                TextView(context).apply {
+                    setText(R.string.account_session_empty)
+                    contentDescription = getString(R.string.account_session_empty)
+                },
+            )
+        } else {
+            sessions.sortedByDescending { it.current }.forEach { session ->
+                val shortId = session.id.take(8)
+                val row = LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(0, (8 * density).toInt(), 0, (8 * density).toInt())
+                }
+                val title = TextView(context).apply {
+                    text = if (session.current) {
+                        getString(R.string.account_session_current_row, shortId)
+                    } else {
+                        getString(R.string.account_session_row_title, shortId)
+                    }
+                }
+                val meta = TextView(context).apply {
+                    text = getString(
+                        R.string.account_session_row_meta,
+                        TimeFormat.date(context, session.createdAt),
+                        TimeFormat.date(context, session.expiresAt),
+                    )
+                }
+                row.addView(title)
+                row.addView(meta)
+                if (!session.current) {
+                    val revoke = MaterialButton(context).apply {
+                        setText(R.string.account_session_revoke)
+                        minHeight = (48 * density).toInt()
+                        contentDescription = "${getString(R.string.account_session_revoke)} $shortId"
+                        setOnClickListener {
+                            dialog?.dismiss()
+                            revokeSession(session)
+                        }
+                    }
+                    row.addView(revoke)
+                }
+                container.addView(row)
+            }
+        }
+
+        val scroll = ScrollView(context).apply { addView(container) }
+        dialog = MaterialAlertDialogBuilder(context)
+            .setTitle(R.string.account_session_title)
+            .setView(scroll)
+            .setNegativeButton(R.string.action_close, null)
+            .create()
+        dialog.show()
+    }
+
+    private fun revokeSession(session: AccountSession) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                viewModel.revokeSession(session.id)
+                Snackbar.make(
+                    binding.root,
+                    R.string.account_session_revoked,
+                    Snackbar.LENGTH_LONG,
+                ).show()
+            } catch (_: Exception) {
+                Snackbar.make(
+                    binding.root,
+                    R.string.account_session_load_failed,
+                    Snackbar.LENGTH_LONG,
+                ).show()
+            }
+        }
+    }
+
+    /** 退出当前会话 ≠ 删除账号：只吊销本机会话，不清任何本地业务数据。 */
+    private fun confirmLogout() {
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.account_logout_title)
+            .setMessage(R.string.account_logout_message)
+            .setNegativeButton(R.string.action_cancel, null)
+            .setPositiveButton(R.string.account_logout_button) { _, _ ->
+                viewLifecycleOwner.lifecycleScope.launch {
+                    val revoked = runCatching { viewModel.logout() }.getOrDefault(false)
+                    Snackbar.make(
+                        binding.root,
+                        if (revoked) {
+                            R.string.account_logout_success
+                        } else {
+                            R.string.account_logout_offline
+                        },
+                        Snackbar.LENGTH_LONG,
+                    ).show()
+                }
+            }
+            .show()
     }
 
     private fun setupCollectionControls() {
@@ -1077,12 +1208,20 @@ class ProfileFragment : Fragment() {
         binding.syncLastError.visibility = if (lastError != null) View.VISIBLE else View.GONE
     }
 
+    /**
+     * 登录失效后的两个明确选项：用配对码恢复原账号，或新建匿名账号。
+     * 选「新建」才真正换号；选「恢复」只把焦点带到配对码输入框，不做任何破坏性操作。
+     */
     private fun confirmRelogin() {
         MaterialAlertDialogBuilder(requireContext())
             .setTitle(R.string.profile_relogin_title)
             .setMessage(R.string.profile_relogin_message)
             .setNegativeButton(R.string.action_cancel, null)
-            .setPositiveButton(R.string.action_confirm) { _, _ -> viewModel.relogin() }
+            .setNeutralButton(R.string.profile_relogin_use_pairing) { _, _ ->
+                binding.accountSection.claimCodeInput.requestFocus()
+                binding.profileScroll.smoothScrollTo(0, binding.accountSection.root.top)
+            }
+            .setPositiveButton(R.string.profile_relogin_new_account) { _, _ -> viewModel.relogin() }
             .show()
     }
 

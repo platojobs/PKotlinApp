@@ -3,6 +3,7 @@ package com.platojobs.pkotlinapp.data.feedback
 import androidx.room.Room
 import com.platojobs.pkotlinapp.data.local.AppDatabase
 import com.platojobs.pkotlinapp.domain.feedback.FeedbackContext
+import com.platojobs.pkotlinapp.domain.feedback.FeedbackDetail
 import com.platojobs.pkotlinapp.domain.feedback.FeedbackDraft
 import com.platojobs.pkotlinapp.domain.feedback.FeedbackErrorCodes
 import com.platojobs.pkotlinapp.domain.feedback.FeedbackKind
@@ -207,5 +208,9 @@ class FeedbackStoreTest {
 
         override suspend fun listMine(cursor: String?, limit: Int): FeedbackPage =
             listBlock(cursor, limit)
+
+        override suspend fun detail(id: String): FeedbackDetail = throw UnsupportedOperationException()
+
+        override suspend fun close(id: String): FeedbackDetail = throw UnsupportedOperationException()
     }
 }

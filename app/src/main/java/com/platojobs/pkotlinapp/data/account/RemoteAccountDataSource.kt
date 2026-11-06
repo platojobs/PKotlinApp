@@ -8,6 +8,7 @@ import com.platojobs.pkotlinapp.data.sync.TokenStore
 import com.platojobs.pkotlinapp.domain.account.AccountDeletionBlockedException
 import com.platojobs.pkotlinapp.domain.account.AccountExportTask
 import com.platojobs.pkotlinapp.domain.account.AccountRemote
+import com.platojobs.pkotlinapp.domain.account.AccountSession
 import com.platojobs.pkotlinapp.domain.account.ClaimedAccount
 import com.platojobs.pkotlinapp.domain.account.DeletionRequestToken
 import com.platojobs.pkotlinapp.domain.account.DeletionTokenExpiredException
@@ -18,6 +19,7 @@ import com.platojobs.pkotlinapp.domain.account.ExportTaskStatus
 import com.platojobs.pkotlinapp.domain.account.PairingCode
 import com.platojobs.pkotlinapp.domain.account.PairingCodeInvalidException
 import com.platojobs.pkotlinapp.domain.account.PairingRateLimitedException
+import com.platojobs.pkotlinapp.domain.sync.AuthExpiredException
 import com.platojobs.pkotlinapp.domain.sync.Rfc3339
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
@@ -44,6 +46,31 @@ class RemoteAccountDataSource(
     private val baseUrl: String,
     private val downloadClient: OkHttpClient = OkHttpClient(),
 ) : AccountRemote {
+
+    override suspend fun sessions(): List<AccountSession> = withToken { authorization ->
+        api.listSessions(authorization).sessions.orEmpty().mapNotNull { dto ->
+            val id = dto.id?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            AccountSession(
+                id = id,
+                createdAt = Rfc3339.parse(dto.createdAt) ?: 0L,
+                expiresAt = Rfc3339.parse(dto.expiresAt) ?: 0L,
+                current = dto.current == true,
+            )
+        }
+    }
+
+    override suspend fun revokeSession(id: String) {
+        withToken { authorization -> api.revokeSession(authorization, id) }
+    }
+
+    override suspend fun logout(): Boolean = try {
+        val token = tokenStore.token()?.takeIf { it.isNotBlank() } ?: return false
+        api.logout("Bearer $token")
+        true
+    } catch (_: Exception) {
+        // 网络/服务端失败不阻塞本地退出；会话最终由服务端 TTL 回收。
+        false
+    }
 
     override suspend fun createPairingCode(): PairingCode = withToken { authorization ->
         val response = api.createPairingCode(authorization)
@@ -136,12 +163,17 @@ class RemoteAccountDataSource(
             downloadUrl = dto.downloadUrl,
             downloadExpiresAt = Rfc3339.parse(dto.downloadExpiresAt),
             expiresAt = Rfc3339.parse(dto.expiresAt),
+            failureReason = dto.failureReason?.takeIf { it.isNotBlank() },
         )
     }
 
     private suspend fun <T> withToken(block: suspend (String) -> T): T {
         val token = tokenStore.token()?.takeIf { it.isNotBlank() }
-            ?: throw IllegalStateException("尚未登录，无法执行账号操作")
+            ?: if (tokenStore.reloginRequired()) {
+                throw AuthExpiredException()
+            } else {
+                throw IllegalStateException("尚未登录，无法执行账号操作")
+            }
         return try {
             block("Bearer $token")
         } catch (e: HttpException) {

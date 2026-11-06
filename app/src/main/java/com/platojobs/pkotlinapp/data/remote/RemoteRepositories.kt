@@ -115,6 +115,7 @@ class DeviceInfoRepositoryImpl(
 
     private suspend fun ensureToken(): String {
         tokenStore.token()?.let { return it }
+        if (tokenStore.reloginRequired()) throw AuthExpiredException("登录已失效，请重新登录")
         val response = syncApi.anonymousLogin()
         val token = response.token
             ?: throw AuthExpiredException("匿名登录未返回 token")

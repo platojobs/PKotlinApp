@@ -3,6 +3,7 @@ package com.platojobs.pkotlinapp.data.feedback
 import com.platojobs.pkotlinapp.data.local.FeedbackDao
 import com.platojobs.pkotlinapp.data.local.FeedbackDraftEntity
 import com.platojobs.pkotlinapp.domain.feedback.FeedbackContext
+import com.platojobs.pkotlinapp.domain.feedback.FeedbackDetail
 import com.platojobs.pkotlinapp.domain.feedback.FeedbackDraft
 import com.platojobs.pkotlinapp.domain.feedback.FeedbackErrorCodes
 import com.platojobs.pkotlinapp.domain.feedback.FeedbackFailure
@@ -82,6 +83,12 @@ class FeedbackStore(
     /** 我的反馈列表：远端只返回本人，游标分页。 */
     suspend fun loadPage(cursor: String?, limit: Int): FeedbackPage =
         remote.listMine(cursor, limit)
+
+    /** 反馈详情（状态与状态说明）。 */
+    suspend fun detail(id: String): FeedbackDetail = remote.detail(id)
+
+    /** 关闭本人反馈；已关闭时抛 [FeedbackAlreadyClosedException]。 */
+    suspend fun close(id: String): FeedbackDetail = remote.close(id)
 
     private suspend fun deliver(id: Long): FeedbackSubmission = mutex.withLock {
         val entity = dao.find(id)

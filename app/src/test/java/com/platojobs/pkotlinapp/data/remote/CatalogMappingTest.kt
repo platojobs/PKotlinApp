@@ -35,6 +35,24 @@ class CatalogMappingTest {
             return AnonymousLoginResponse(token = issuedToken, userId = "user-1")
         }
 
+        override suspend fun refreshToken(authorization: String): AnonymousLoginResponse =
+            AnonymousLoginResponse(token = "refreshed", userId = "user-1")
+
+        override suspend fun logout(authorization: String) = Unit
+
+        override suspend fun listSessions(authorization: String): SessionListResponse = SessionListResponse()
+
+        override suspend fun revokeSession(authorization: String, id: String) = Unit
+
+        override suspend fun getMyFeedback(authorization: String, id: String): FeedbackDetailDto =
+            FeedbackDetailDto()
+
+        override suspend fun closeMyFeedback(
+            authorization: String,
+            id: String,
+            body: FeedbackCloseRequest,
+        ): FeedbackDetailDto = FeedbackDetailDto()
+
         override suspend fun changes(
             authorization: String,
             cursor: String?,

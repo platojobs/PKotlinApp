@@ -12,4 +12,10 @@ interface FeedbackRemote {
     suspend fun submit(draft: FeedbackDraft, context: FeedbackContext): String
 
     suspend fun listMine(cursor: String?, limit: Int): FeedbackPage
+
+    /** `GET /feedback/{id}`（仅本人）。 */
+    suspend fun detail(id: String): FeedbackDetail
+
+    /** `PATCH /feedback/{id}` 关闭本人反馈；已关闭再改抛 [FeedbackAlreadyClosedException]。 */
+    suspend fun close(id: String): FeedbackDetail
 }

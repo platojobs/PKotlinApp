@@ -58,6 +58,18 @@ data class AnonymousLoginResponse(
     val expiresAt: String? = null,
 )
 
+/** GET /sessions 的单条会话；不包含 token 本身，服务端只存哈希。 */
+data class SessionDto(
+    val id: String? = null,
+    val createdAt: String? = null,
+    val expiresAt: String? = null,
+    val current: Boolean? = null,
+)
+
+data class SessionListResponse(
+    val sessions: List<SessionDto>? = null,
+)
+
 /** GET /sync/changes 中 `payload` 对应的用户设备。 */
 data class SyncDeviceDto(
     val id: String? = null,
@@ -396,6 +408,8 @@ data class ExportTaskResponse(
     val downloadUrl: String? = null,
     val downloadExpiresAt: String? = null,
     val expiresAt: String? = null,
+    /** 失败时的服务端可读原因（如「导出任务因服务重启中断，请重新发起导出」）。 */
+    val failureReason: String? = null,
 )
 
 /** 反馈提交上下文（openapi 0.12.0 `FeedbackClientContext`），由客户端自动填充。 */
@@ -447,11 +461,61 @@ data class FeedbackPageResponse(
     val hasMore: Boolean? = null,
 )
 
+/** GET /feedback/{id}：本人单条反馈详情，含状态说明，不含 contact/diagnostics。 */
+data class FeedbackDetailDto(
+    val feedbackId: String? = null,
+    val kind: String? = null,
+    val body: String? = null,
+    val platform: String? = null,
+    val appVersion: String? = null,
+    val buildType: String? = null,
+    val osVersion: String? = null,
+    val deviceModel: String? = null,
+    val status: String? = null,
+    /** 给用户看的状态说明，如「已受理，工作人员正在处理」。 */
+    val statusMessage: String? = null,
+    val createdAt: String? = null,
+    val updatedAt: String? = null,
+)
+
+/** PATCH /feedback/{id}：用户侧只允许关闭，固定 status=closed。 */
+data class FeedbackCloseRequest(
+    val status: String = "closed",
+)
+
 interface SyncApi {
 
     /** 匿名登录请求体按契约可为空；installId 通过 clientId 放入 push 请求。 */
     @POST("api/v1/auth/anonymous")
     suspend fun anonymousLogin(): AnonymousLoginResponse
+
+    /**
+     * 滚动刷新：旧 token 在同一事务内失效，响应与匿名登录相同。
+     * 由 OkHttp Authenticator 调用，失败后进入重新登录态，绝不自动新建匿名账号。
+     */
+    @POST("api/v1/auth/refresh")
+    suspend fun refreshToken(
+        @Header("Authorization") authorization: String,
+    ): AnonymousLoginResponse
+
+    /** 吊销当前 token（退出当前会话，不删除账号）。 */
+    @POST("api/v1/auth/logout")
+    suspend fun logout(
+        @Header("Authorization") authorization: String,
+    )
+
+    /** 当前账号未吊销且未过期的会话，按创建时间倒序；current=true 为本请求所用会话。 */
+    @GET("api/v1/sessions")
+    suspend fun listSessions(
+        @Header("Authorization") authorization: String,
+    ): SessionListResponse
+
+    /** 吊销单个会话；404 表示不存在/属于他人，已吊销重复调用为 204（幂等）。 */
+    @DELETE("api/v1/sessions/{id}")
+    suspend fun revokeSession(
+        @Header("Authorization") authorization: String,
+        @Path("id") id: String,
+    )
 
     @GET("api/v1/sync/changes")
     suspend fun changes(
@@ -698,6 +762,21 @@ interface SyncApi {
         @Query("cursor") cursor: String?,
         @Query("limit") limit: Int,
     ): FeedbackPageResponse
+
+    /** 本人单条反馈详情；不存在或属于他人统一 404。 */
+    @GET("api/v1/feedback/{id}")
+    suspend fun getMyFeedback(
+        @Header("Authorization") authorization: String,
+        @Path("id") id: String,
+    ): FeedbackDetailDto
+
+    /** 关闭本人反馈；已关闭再改返回 409 FEEDBACK_INVALID_TRANSITION。 */
+    @PATCH("api/v1/feedback/{id}")
+    suspend fun closeMyFeedback(
+        @Header("Authorization") authorization: String,
+        @Path("id") id: String,
+        @Body body: FeedbackCloseRequest,
+    ): FeedbackDetailDto
 }
 
 /** 场景接口独立于 SyncApi，避免设备同步的测试假实现被场景端点绑架。 */

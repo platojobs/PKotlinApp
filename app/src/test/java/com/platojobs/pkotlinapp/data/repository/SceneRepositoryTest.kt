@@ -178,6 +178,28 @@ class SceneRepositoryTest {
         private var nextActionId = 1L
         private var nextRuleId = 1L
 
+        override suspend fun markSyncStateKeepingRetry(
+            id: Long,
+            syncState: String,
+            reason: String?,
+        ) {
+            scenes[id]?.let { scenes[id] = it.copy(syncState = syncState, syncError = reason) }
+        }
+
+        override suspend fun markRejected(id: Long, code: String?) {
+            scenes[id]?.let { scenes[id] = it.copy(syncState = "rejected", syncError = code) }
+        }
+
+        override suspend fun markRetry(id: Long, reason: String?, retryAt: Long?) {
+            scenes[id]?.let {
+                scenes[id] = it.copy(syncState = "pending", syncError = reason, retryAfterAt = retryAt)
+            }
+        }
+
+        override suspend fun updateDeviceMissing(id: Long, missing: Boolean) {
+            scenes[id]?.let { scenes[id] = it.copy(deviceMissing = missing) }
+        }
+
         override fun observeAll(): Flow<List<SceneWithActions>> = flowOf(snapshot())
 
         override suspend fun getAll(): List<SceneWithActions> = snapshot()

@@ -310,6 +310,14 @@ internal object SceneSyncMigrationSql {
     )
 }
 
+/** v20 -> v21：场景补 `device_missing`（服务端实时计算）与 429 重试时间列，旧场景原样保留。 */
+internal object SceneDeviceMissingMigrationSql {
+    val V20_TO_V21 = listOf(
+        "ALTER TABLE scenes ADD COLUMN deviceMissing INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE scenes ADD COLUMN retryAfterAt INTEGER",
+    )
+}
+
 @Database(
     entities = [
         DeviceEntity::class,
@@ -326,7 +334,7 @@ internal object SceneSyncMigrationSql {
         CatalogItemEntity::class,
         CatalogSyncEntity::class,
     ],
-    version = 20,
+    version = 21,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -535,6 +543,13 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v20 -> v21：场景补 deviceMissing 与 retryAfterAt；既有场景保留，默认 false / null。 */
+        val MIGRATION_20_21 = object : Migration(20, 21) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                SceneDeviceMissingMigrationSql.V20_TO_V21.forEach(db::execSQL)
+            }
+        }
+
         @Volatile
         private var instance: AppDatabase? = null
 
@@ -564,6 +579,7 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_17_18,
                     MIGRATION_18_19,
                     MIGRATION_19_20,
+                    MIGRATION_20_21,
                 )
                     .build()
                     .also { instance = it }

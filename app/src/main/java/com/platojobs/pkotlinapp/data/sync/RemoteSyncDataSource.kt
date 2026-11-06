@@ -26,6 +26,7 @@ import com.platojobs.pkotlinapp.domain.reading.ReadingRemote
 import com.platojobs.pkotlinapp.domain.reading.ReadingSeries
 import com.platojobs.pkotlinapp.domain.reading.ReadingSummary
 import com.platojobs.pkotlinapp.domain.reading.RemoteReading
+import com.platojobs.pkotlinapp.domain.sync.AuthExpiredException
 import com.platojobs.pkotlinapp.domain.sync.Rfc3339
 import com.platojobs.pkotlinapp.domain.sync.SyncConflict
 import com.platojobs.pkotlinapp.domain.sync.SyncPullPage
@@ -252,6 +253,8 @@ class RemoteSyncDataSource(
 
     private suspend fun token(): String? {
         tokenStore.token()?.takeIf { it.isNotBlank() }?.let { return it }
+        // 刷新失败后进入重新登录态：禁止静默新建匿名账号，避免原账号数据「消失」。
+        if (tokenStore.reloginRequired()) throw AuthExpiredException()
         val response = api.anonymousLogin()
         val token = response.token?.takeIf { it.isNotBlank() } ?: return null
         tokenStore.saveSession(token, Rfc3339.parse(response.expiresAt))

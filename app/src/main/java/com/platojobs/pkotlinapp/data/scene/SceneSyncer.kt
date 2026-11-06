@@ -14,6 +14,7 @@ import com.platojobs.pkotlinapp.data.remote.SceneStringFieldDto
 import com.platojobs.pkotlinapp.data.remote.SceneTimestamps
 import com.platojobs.pkotlinapp.data.remote.SceneTriggerFieldDto
 import com.platojobs.pkotlinapp.domain.scene.RemoteScene
+import com.platojobs.pkotlinapp.domain.scene.SceneFailure
 import com.platojobs.pkotlinapp.domain.scene.SceneSyncState
 import com.platojobs.pkotlinapp.domain.scene.SceneTrigger
 
@@ -115,6 +116,7 @@ class SceneSyncer(
                 triggerJson = scene.triggerJson,
                 actionsJson = scene.actionsJson,
                 syncError = null,
+                deviceMissing = scene.deviceMissing,
             )
             dao.createSceneWithRule(
                 scene = entity,
@@ -132,13 +134,17 @@ class SceneSyncer(
         }
         val refreshed = dao.find(local.id) ?: return
         applySnapshot(refreshed, scene, MergeMode.PULL)
+        dao.updateDeviceMissing(local.id, scene.deviceMissing)
         rebuildProjections(local.id)
     }
 
     /** 已上传场景的离线编辑：有 remoteId 走 PUT，把五个字段与各自时间戳全部补传。 */
     suspend fun pushPendingUpdates() {
+        val now = now()
         dao.pendingUpdates().forEach { entity ->
             if (entity.deletedAt != null) return@forEach
+            // 429 Retry-After 未到点：本轮跳过，保持 pending。
+            if (entity.retryAfterAt != null && entity.retryAfterAt > now) return@forEach
             val patch = runCatching { buildPatch(entity) }.getOrElse { error ->
                 dao.markSyncState(entity.id, SceneSyncState.PENDING.storage, readable(error))
                 return@forEach
@@ -147,6 +153,7 @@ class SceneSyncer(
                 .onSuccess { response ->
                     val local = dao.find(entity.id) ?: return@onSuccess
                     applySnapshot(local, response, MergeMode.RESPONSE)
+                    dao.updateDeviceMissing(entity.id, response.deviceMissing)
                     rebuildProjections(entity.id)
                 }
                 .onFailure { error ->
@@ -154,14 +161,16 @@ class SceneSyncer(
                         dao.markServerDeleted(entity.id, now())
                         dao.setRulesEnabled(entity.id, false)
                     } else {
-                        dao.markSyncState(entity.id, SceneSyncState.PENDING.storage, readable(error))
+                        applyFailure(entity.id, error)
                     }
                 }
         }
     }
 
     suspend fun pushDeletes() {
+        val now = now()
         dao.pendingDeletes().forEach { entity ->
+            if (entity.retryAfterAt != null && entity.retryAfterAt > now) return@forEach
             val remoteId = entity.remoteId
             if (remoteId == null) {
                 dao.deleteSceneWithRule(entity.id)
@@ -173,7 +182,7 @@ class SceneSyncer(
                     if (error is SceneGoneException) {
                         dao.deleteSceneWithRule(entity.id)
                     } else {
-                        dao.markSyncState(entity.id, SceneSyncState.PENDING.storage, readable(error))
+                        applyFailure(entity.id, error)
                     }
                 }
         }
@@ -187,7 +196,9 @@ class SceneSyncer(
     suspend fun uploadUnlinked(baseline: List<RemoteScene>? = null) {
         val remoteScenes = baseline ?: remote.list()
         val signatures = remoteScenes.associateBy { signatureOf(it) }.toMutableMap()
+        val now = now()
         dao.pendingUploads().forEach { entity ->
+            if (entity.retryAfterAt != null && entity.retryAfterAt > now) return@forEach
             val row = dao.findRow(entity.id) ?: return@forEach
             val encoded = encodedSnapshot(row) ?: run {
                 dao.markSyncState(
@@ -228,9 +239,26 @@ class SceneSyncer(
                     bindRemote(entity.id, created)
                     signatures[signature] = created
                 }
-                .onFailure { error ->
-                    dao.markSyncState(entity.id, SceneSyncState.PENDING.storage, readable(error))
-                }
+                .onFailure { error -> applyFailure(entity.id, error) }
+        }
+    }
+
+    /**
+     * 4xx 终态落 `rejected`（存服务端错误码），不再自动重试；
+     * 网络/5xx 保持 pending，429 按 Retry-After 延后下一次。
+     */
+    private suspend fun applyFailure(id: Long, error: Throwable) {
+        when (val failure = SceneFailure.of(error)) {
+            is SceneFailure.Terminal -> dao.markRejected(
+                id,
+                failure.code ?: failure.message,
+            )
+
+            is SceneFailure.Retryable -> dao.markRetry(
+                id,
+                readable(error),
+                failure.retryAfterSeconds?.let { now() + it * 1000 },
+            )
         }
     }
 
@@ -242,6 +270,7 @@ class SceneSyncer(
         dao.linkRemote(localId, remoteScene.remoteId, remoteScene.version, remoteScene.updatedAt)
         val local = dao.find(localId) ?: return
         applySnapshot(local, remoteScene, MergeMode.PULL)
+        dao.updateDeviceMissing(localId, remoteScene.deviceMissing)
         rebuildProjections(localId)
     }
 
@@ -255,6 +284,7 @@ class SceneSyncer(
         )
         val local = dao.find(localId) ?: return
         applySnapshot(local, remoteScene, MergeMode.RESPONSE)
+        dao.updateDeviceMissing(localId, remoteScene.deviceMissing)
         rebuildProjections(localId)
     }
 
@@ -299,9 +329,11 @@ class SceneSyncer(
         remoteScene: RemoteScene,
         mode: MergeMode,
     ) {
+        // rejected 的本地内容同样不能被基线覆盖，否则用户的修改会在下一次拉取时静默丢失。
+        val localDirty = local.syncState == SceneSyncState.PENDING.storage ||
+            local.syncState == SceneSyncState.REJECTED.storage
         fun keep(value: Long, serverUpdatedAt: Long): Boolean = when (mode) {
-            MergeMode.PULL -> local.syncState == SceneSyncState.PENDING.storage &&
-                value > local.serverUpdatedAt
+            MergeMode.PULL -> localDirty && value > local.serverUpdatedAt
             MergeMode.RESPONSE -> value > serverUpdatedAt
         }
 
@@ -327,7 +359,17 @@ class SceneSyncer(
         )
         val anyKeep = keepName || keepEnabled || keepCooldown || keepTrigger || keepActions
         if (anyKeep) {
-            dao.markSyncState(local.id, SceneSyncState.PENDING.storage, null)
+            // 仍是 rejected 就保持 rejected（不自动重试），等用户编辑后才回到 pending。
+            if (local.syncState == SceneSyncState.REJECTED.storage) {
+                dao.markRejected(local.id, local.syncError)
+            } else {
+                // 保持 pending，同时保留 429 Retry-After。
+                dao.markSyncStateKeepingRetry(
+                    local.id,
+                    SceneSyncState.PENDING.storage,
+                    local.syncError,
+                )
+            }
         } else {
             dao.finishMerge(local.id, remoteScene.updatedAt)
             dao.setRulesEnabled(local.id, remoteScene.enabled)

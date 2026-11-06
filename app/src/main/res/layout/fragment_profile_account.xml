@@ -194,6 +194,57 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:text="@string/account_session_title"
+                android:textAppearance="@style/TextAppearance.App.Headline" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="@string/account_session_desc"
+                android:textAppearance="@style/TextAppearance.App.Caption"
+                android:textColor="@color/text_secondary" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/sessionsButton"
+                style="?attr/materialButtonOutlinedStyle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:minHeight="48dp"
+                android:text="@string/account_session_manage" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/logoutButton"
+                style="?attr/materialButtonOutlinedStyle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:minHeight="48dp"
+                android:text="@string/account_logout_button"
+                android:textColor="?attr/colorError" />
+
+        </LinearLayout>
+
+    </com.google.android.material.card.MaterialCardView>
+
+    <com.google.android.material.card.MaterialCardView
+    style="@style/Widget.App.Card"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        app:cardCornerRadius="12dp"
+        app:cardElevation="0dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
                 android:text="@string/account_export_title"
                 android:textAppearance="@style/TextAppearance.App.Headline" />
 

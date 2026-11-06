@@ -66,11 +66,14 @@ class AppContainer(context: Context) {
 
     private val database by lazy { AppDatabase.getInstance(appContext) }
 
-    private val apiService by lazy { ApiClient.create() }
-
-    private val syncApi by lazy { ApiClient.createSync() }
-
     private val secureTokenStore by lazy { SecureTokenStore(appContext) }
+
+    /** 刷新失败（服务端明确 401/403）时进入重新登录态；本地数据与游标保持不变。 */
+    private val onReloginRequired: () -> Unit = { syncStatusStore.recordAuthExpired() }
+
+    private val apiService by lazy { ApiClient.create(tokenStore = secureTokenStore, onReloginRequired = onReloginRequired) }
+
+    private val syncApi by lazy { ApiClient.createSync(tokenStore = secureTokenStore, onReloginRequired = onReloginRequired) }
 
     /** 「我的」只读展示会话到期日。 */
     val tokenStore: com.platojobs.pkotlinapp.data.sync.TokenStore
@@ -146,7 +149,10 @@ class AppContainer(context: Context) {
 
     private val remoteSceneDataSource by lazy {
         com.platojobs.pkotlinapp.data.scene.RemoteSceneDataSource(
-            com.platojobs.pkotlinapp.data.remote.ApiClient.createScenes(),
+            com.platojobs.pkotlinapp.data.remote.ApiClient.createScenes(
+                tokenStore = secureTokenStore,
+                onReloginRequired = onReloginRequired,
+            ),
             secureTokenStore,
         )
     }

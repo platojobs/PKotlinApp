@@ -27,6 +27,8 @@ import com.platojobs.pkotlinapp.domain.scene.RemoteScene
 import com.platojobs.pkotlinapp.domain.scene.SceneAction
 import com.platojobs.pkotlinapp.domain.scene.SceneActionType
 import com.platojobs.pkotlinapp.domain.scene.SceneExecutor
+import com.platojobs.pkotlinapp.domain.scene.SceneRejectedException
+import com.platojobs.pkotlinapp.domain.scene.SceneRetryableException
 import com.platojobs.pkotlinapp.domain.scene.SceneRuntime
 import com.platojobs.pkotlinapp.domain.scene.SceneTrigger
 import kotlinx.coroutines.flow.first
@@ -522,6 +524,58 @@ class SceneSyncerTest {
         ): String = "$deviceName $metric $comparator $threshold$unit"
     }
 
+    /** 4xx 终态：落 rejected 且不再自动重试；用户改内容后才重新入队。 */
+    @Test
+    fun `4xx rejection is terminal until user edits`() = runBlocking {
+        val id = saveLocal("回家", SceneTrigger.DeviceOffline(MAC, 600), notifyAction())
+        syncer.sync()
+        assertEquals("synced", dao.find(id)!!.syncState)
+
+        dao.updateNameForSync(id, "新名字", 2_000)
+        remote.failure = SceneRejectedException("SCENE_ACTION_INVALID")
+        syncer.sync()
+
+        val rejected = dao.find(id)!!
+        assertEquals("rejected", rejected.syncState)
+        assertEquals("SCENE_ACTION_INVALID", rejected.syncError)
+        val attempts = remote.updateAttempts
+
+        clock += 10_000
+        syncer.sync()
+        assertEquals("终态不应自动重试", attempts, remote.updateAttempts)
+
+        dao.updateNameForSync(id, "再改一次", 3_000)
+        remote.failure = null
+        syncer.sync()
+        assertEquals("修改内容后应重新提交", attempts + 1, remote.updateAttempts)
+        assertEquals("synced", dao.find(id)!!.syncState)
+    }
+
+    /** 429：记录 Retry-After，到点前跳过，到点后继续补传。 */
+    @Test
+    fun `429 retry-after defers next attempt`() = runBlocking {
+        val id = saveLocal("回家", SceneTrigger.DeviceOffline(MAC, 600), notifyAction())
+        syncer.sync()
+
+        dao.updateNameForSync(id, "新名字", 2_000)
+        remote.failure = SceneRetryableException(retryAfterSeconds = 60)
+        syncer.sync()
+
+        val deferred = dao.find(id)!!
+        assertEquals("pending", deferred.syncState)
+        assertEquals(clock + 60_000, deferred.retryAfterAt)
+        val attempts = remote.updateAttempts
+
+        syncer.sync()
+        assertEquals("未到 Retry-After 不应重试", attempts, remote.updateAttempts)
+
+        clock += 60_000
+        remote.failure = null
+        syncer.sync()
+        assertEquals(attempts + 1, remote.updateAttempts)
+        assertNull(dao.find(id)!!.retryAfterAt)
+    }
+
     private class FakeRuntime : SceneRuntime {
         val calls = mutableListOf<String>()
         private var connected: String? = null
@@ -597,6 +651,11 @@ class SceneSyncerTest {
         var failCreate = false
         var failUpdate = false
 
+        /** 非空时 create/update 直接抛出该异常，用于验证终态/可重试分类。 */
+        var failure: Throwable? = null
+        var updateAttempts = 0
+            private set
+
         fun seed(
             id: String,
             name: String,
@@ -650,6 +709,7 @@ class SceneSyncerTest {
         override suspend fun list(): List<RemoteScene> = scenes.values.toList()
 
         override suspend fun create(input: SceneInputDto): RemoteScene {
+            failure?.let { throw it }
             if (failCreate) throw IOException("网络不可用")
             createCalls++
             val id = "remote-$createCalls"
@@ -664,6 +724,8 @@ class SceneSyncerTest {
         }
 
         override suspend fun update(remoteId: String, patch: ScenePatchDto): RemoteScene {
+            updateAttempts++
+            failure?.let { throw it }
             if (failUpdate) throw IOException("网络不可用")
             updateCalls++
             lastPatch = patch

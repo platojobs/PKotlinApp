@@ -2,6 +2,7 @@ package com.platojobs.pkotlinapp.data.account
 
 import com.platojobs.pkotlinapp.data.sync.TokenStore
 import com.platojobs.pkotlinapp.domain.account.AccountRemote
+import com.platojobs.pkotlinapp.domain.account.AccountSession
 import com.platojobs.pkotlinapp.domain.account.ClaimedAccount
 import com.platojobs.pkotlinapp.domain.account.ExportDownloadExpiredException
 import com.platojobs.pkotlinapp.domain.account.ExportTaskStatus
@@ -55,10 +56,36 @@ class AccountService(
         require(PairingCodeFormat.isValid(code)) { "配对码必须是 8 位有效字符" }
         val account = remote.claim(code)
         tokenStore.saveSession(account.token, account.expiresAt.takeIf { it > 0 })
+        // 恢复原账号成功：解除重新登录态，后续请求不再被拦截。
+        tokenStore.setReloginRequired(false)
         cursorStore.cursor = null
         markAllPending()
         resetSyncStatus()
         return account
+    }
+
+    /** 设备会话列表（标出当前会话）。 */
+    suspend fun sessions(): List<AccountSession> = remote.sessions()
+
+    /** 吊销其它设备会话；401 会以 AuthExpiredException 上抛，由 UI 提示重登。 */
+    suspend fun revokeSession(id: String) {
+        remote.revokeSession(id)
+    }
+
+    /**
+     * 退出当前会话：先尽力让服务端吊销，再清理本地 token。
+     *
+     * 与「删除账号」的区别：不删账号、不清本地业务数据；退出后置重新登录态，
+     * 用户可再用配对码恢复原账号，或明确选择新建匿名账号。
+     *
+     * @return 服务端是否成功吊销（离线时为 false，本地仍然退出）。
+     */
+    suspend fun logout(): Boolean {
+        val revoked = remote.logout()
+        tokenStore.clear()
+        tokenStore.setReloginRequired(true)
+        resetSyncStatus()
+        return revoked
     }
 
     /**
@@ -81,7 +108,11 @@ class AccountService(
             polls += 1
         }
         if (task.status != ExportTaskStatus.READY) {
-            throw IllegalStateException("服务端未能生成导出文件，请稍后重试")
+            // 服务端可能给出具体原因（例如「服务重启导致任务中断」），优先展示。
+            throw IllegalStateException(
+                task.failureReason?.takeIf { it.isNotBlank() }
+                    ?: "服务端未能生成导出文件，请稍后重试",
+            )
         }
         onStage(ExportStage.READY)
         val json = download(task.downloadUrl, task.id)
@@ -119,6 +150,8 @@ class AccountService(
         remote.deleteAccount(token.token)
         withContext(Dispatchers.IO) {
             tokenStore.clear()
+            // 账号已删除，下次启动可正常新建匿名账号。
+            tokenStore.setReloginRequired(false)
             cursorStore.cursor = null
             resetSyncStatus()
             wipeLocalData()

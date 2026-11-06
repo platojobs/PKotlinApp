@@ -33,11 +33,34 @@ data class AccountExportTask(
     val downloadUrl: String? = null,
     val downloadExpiresAt: Long? = null,
     val expiresAt: Long? = null,
+    /** 服务端给出的失败原因（仅 failed 时可能非空）。 */
+    val failureReason: String? = null,
 )
 
-/** 配对码/导出/注销的远端能力；实现负责鉴权头与错误分类。 */
+/** `GET /sessions` 返回的一条设备会话。 */
+data class AccountSession(
+    val id: String,
+    val createdAt: Long,
+    val expiresAt: Long,
+    /** 服务端标记的当前请求所用会话。 */
+    val current: Boolean,
+)
+
+/** 配对码/导出/注销/会话的远端能力；实现负责鉴权头与错误分类。 */
 interface AccountRemote {
     suspend fun createPairingCode(): PairingCode
+
+    /** 列出本人全部设备会话。 */
+    suspend fun sessions(): List<AccountSession>
+
+    /** 吊销指定会话；服务端 204 幂等，404 视为已不存在。 */
+    suspend fun revokeSession(id: String)
+
+    /**
+     * 退出当前会话（`POST /auth/logout`，204）。
+     * @return 远端是否成功吊销；失败时调用方仍需清理本地 token。
+     */
+    suspend fun logout(): Boolean
 
     /** @throws PairingCodeInvalidException 404（不区分无效/过期/已用） */
     suspend fun claim(code: String): ClaimedAccount

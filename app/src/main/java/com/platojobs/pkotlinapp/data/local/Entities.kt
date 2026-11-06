@@ -213,8 +213,12 @@ data class SceneEntity(
     val triggerJson: String? = null,
     /** 规范化 actions JSON（1–4 个服务端动作）。 */
     val actionsJson: String? = null,
-    /** 无法同步/上次同步失败的可读原因，界面用于解释「仅本机」。 */
+    /** 无法同步/上次同步失败的原因（rejected 时存服务端错误码），界面用于解释「仅本机」。 */
     val syncError: String? = null,
+    /** 服务端实时计算的「触发条件引用的设备已不存在」；与 iOS 的 device_missing 列对齐。 */
+    @ColumnInfo(defaultValue = "0") val deviceMissing: Boolean = false,
+    /** 可重试失败的下次允许时间（429 Retry-After）；null 表示立即可重试。 */
+    val retryAfterAt: Long? = null,
 )
 
 /**

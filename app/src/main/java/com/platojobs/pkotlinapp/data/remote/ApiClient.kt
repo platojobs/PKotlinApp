@@ -1,6 +1,9 @@
 package com.platojobs.pkotlinapp.data.remote
 
 import com.platojobs.pkotlinapp.BuildConfig
+import com.platojobs.pkotlinapp.data.auth.HttpSessionRefresher
+import com.platojobs.pkotlinapp.data.auth.TokenRefreshAuthenticator
+import com.platojobs.pkotlinapp.data.sync.TokenStore
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import java.util.concurrent.TimeUnit
@@ -11,14 +14,23 @@ import retrofit2.converter.moshi.MoshiConverterFactory
 
 object ApiClient {
 
-    fun create(baseUrl: String = BuildConfig.API_BASE_URL): ApiService =
-        retrofit(baseUrl).create(ApiService::class.java)
+    fun create(
+        baseUrl: String = BuildConfig.API_BASE_URL,
+        tokenStore: TokenStore? = null,
+        onReloginRequired: () -> Unit = {},
+    ): ApiService = retrofit(baseUrl, tokenStore, onReloginRequired).create(ApiService::class.java)
 
-    fun createSync(baseUrl: String = BuildConfig.API_BASE_URL): SyncApi =
-        retrofit(baseUrl).create(SyncApi::class.java)
+    fun createSync(
+        baseUrl: String = BuildConfig.API_BASE_URL,
+        tokenStore: TokenStore? = null,
+        onReloginRequired: () -> Unit = {},
+    ): SyncApi = retrofit(baseUrl, tokenStore, onReloginRequired).create(SyncApi::class.java)
 
-    fun createScenes(baseUrl: String = BuildConfig.API_BASE_URL): SceneApi =
-        retrofit(baseUrl).create(SceneApi::class.java)
+    fun createScenes(
+        baseUrl: String = BuildConfig.API_BASE_URL,
+        tokenStore: TokenStore? = null,
+        onReloginRequired: () -> Unit = {},
+    ): SceneApi = retrofit(baseUrl, tokenStore, onReloginRequired).create(SceneApi::class.java)
 
     /**
      * 共享 Moshi：先注册 [Reported] 三态 adapter，再交给 Kotlin 反射 adapter。
@@ -29,7 +41,11 @@ object ApiClient {
         .add(KotlinJsonAdapterFactory())
         .build()
 
-    private fun retrofit(baseUrl: String): Retrofit {
+    private fun retrofit(
+        baseUrl: String,
+        tokenStore: TokenStore?,
+        onReloginRequired: () -> Unit,
+    ): Retrofit {
         val moshi = moshi()
 
         val logging = HttpLoggingInterceptor().apply {
@@ -40,11 +56,21 @@ object ApiClient {
             }
         }
 
-        val client = OkHttpClient.Builder()
+        val builder = OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(20, TimeUnit.SECONDS)
             .addInterceptor(logging)
-            .build()
+        if (tokenStore != null) {
+            // 401：先单飞刷新再重放；刷新失败才进入重新登录态（不自动匿名登录）。
+            builder.authenticator(
+                TokenRefreshAuthenticator(
+                    tokenStore = tokenStore,
+                    refresher = HttpSessionRefresher(baseUrl, tokenStore),
+                    onReloginRequired = onReloginRequired,
+                ),
+            )
+        }
+        val client = builder.build()
 
         return Retrofit.Builder()
             .baseUrl(baseUrl)

@@ -484,8 +484,10 @@ private fun SceneWithActions.toDomain(knownMacs: Set<String>): Scene {
         actions = actions,
         remoteId = scene.remoteId,
         syncState = SceneSyncState.parse(scene.syncState),
-        deviceMissing = referencedMac != null && referencedMac !in knownMacs,
+        // 服务端列的 deviceMissing 是跨设备的真实值；本地已知设备再做一次兜底重算。
+        deviceMissing = scene.deviceMissing || (referencedMac != null && referencedMac !in knownMacs),
         cooldownSeconds = scene.cooldownSeconds,
+        syncError = scene.syncError,
     )
 }
 

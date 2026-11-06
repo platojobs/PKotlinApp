@@ -17,6 +17,7 @@ import com.platojobs.pkotlinapp.ui.common.TimeFormat
 /** 反馈记录列表：真实服务端状态 + 时间；底部为游标加载更多。 */
 class FeedbackHistoryAdapter(
     private val onLoadMoreRetry: () -> Unit,
+    private val onItemClick: (FeedbackItem) -> Unit = {},
 ) : ListAdapter<FeedbackHistoryAdapter.Row, RecyclerView.ViewHolder>(DIFF) {
 
     init {
@@ -48,7 +49,7 @@ class FeedbackHistoryAdapter(
 
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         when (val row = getItem(position)) {
-            is Row.Item -> (holder as ItemHolder).bind(row.item)
+            is Row.Item -> (holder as ItemHolder).bind(row.item, onItemClick)
             is Row.FooterRow -> (holder as FooterHolder).bind(row.footer, onLoadMoreRetry)
         }
     }
@@ -72,8 +73,9 @@ class FeedbackHistoryAdapter(
         private val binding: ItemFeedbackHistoryBinding,
     ) : RecyclerView.ViewHolder(binding.root) {
 
-        fun bind(item: FeedbackItem) {
+        fun bind(item: FeedbackItem, onItemClick: (FeedbackItem) -> Unit) {
             val context = binding.root.context
+            binding.root.setOnClickListener { onItemClick(item) }
             val kind = context.getString(
                 when (item.kind) {
                     FeedbackKind.BUG -> R.string.feedback_category_bug

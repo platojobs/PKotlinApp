@@ -3,6 +3,8 @@ package com.platojobs.pkotlinapp.data.sync
 import com.platojobs.pkotlinapp.data.remote.AnonymousLoginResponse
 import com.platojobs.pkotlinapp.data.remote.DeletionRequestResponse
 import com.platojobs.pkotlinapp.data.remote.ExportTaskResponse
+import com.platojobs.pkotlinapp.data.remote.FeedbackCloseRequest
+import com.platojobs.pkotlinapp.data.remote.FeedbackDetailDto
 import com.platojobs.pkotlinapp.data.remote.PairingClaimRequest
 import com.platojobs.pkotlinapp.data.remote.PairingClaimResponse
 import com.platojobs.pkotlinapp.data.remote.PairingCodeResponse
@@ -10,6 +12,7 @@ import com.platojobs.pkotlinapp.data.remote.ReadingMetricsResponse
 import com.platojobs.pkotlinapp.data.remote.ReadingPageResponse
 import com.platojobs.pkotlinapp.data.remote.ReadingSeriesResponse
 import com.platojobs.pkotlinapp.data.remote.ReadingSummaryResponse
+import com.platojobs.pkotlinapp.data.remote.SessionListResponse
 import com.platojobs.pkotlinapp.data.remote.SyncApi
 import com.platojobs.pkotlinapp.data.remote.SyncChangesResponse
 import com.platojobs.pkotlinapp.data.remote.SyncDeviceDto
@@ -35,6 +38,12 @@ class RemoteSyncTokenTest {
 
     private class FakeTokenStore(var stored: String? = null) : TokenStore {
         var expiresAt: Long? = null
+        var relogin = false
+
+        override fun reloginRequired(): Boolean = relogin
+        override fun setReloginRequired(required: Boolean) {
+            relogin = required
+        }
 
         override fun token(): String? = stored
 
@@ -70,6 +79,26 @@ class RemoteSyncTokenTest {
             loginCalls += 1
             return loginResponse
         }
+
+        override suspend fun refreshToken(authorization: String): AnonymousLoginResponse {
+            loginCalls += 1
+            return loginResponse
+        }
+
+        override suspend fun logout(authorization: String) = Unit
+
+        override suspend fun listSessions(authorization: String): SessionListResponse = SessionListResponse()
+
+        override suspend fun revokeSession(authorization: String, id: String) = Unit
+
+        override suspend fun getMyFeedback(authorization: String, id: String): FeedbackDetailDto =
+            FeedbackDetailDto()
+
+        override suspend fun closeMyFeedback(
+            authorization: String,
+            id: String,
+            body: FeedbackCloseRequest,
+        ): FeedbackDetailDto = FeedbackDetailDto()
 
         override suspend fun changes(
             authorization: String,
@@ -278,6 +307,20 @@ class RemoteSyncTokenTest {
     private fun httpError(code: Int, body: String = "") = HttpException(
         Response.error<Any>(code, body.toResponseBody("application/json".toMediaType())),
     )
+
+    /** 刷新失败后 token 为空时必须进入重新登录态，而不是静默新建匿名账号。 */
+    @Test
+    fun `relogin required blocks silent anonymous login`() {
+        val tokenStore = FakeTokenStore(null).apply { relogin = true }
+        val api = FakeSyncApi()
+        val dataSource = RemoteSyncDataSource(api, tokenStore, "install-1")
+
+        assertThrows(AuthExpiredException::class.java) {
+            runBlocking { dataSource.pull(null) }
+        }
+        assertEquals(0, api.loginCalls)
+        assertNull(tokenStore.token())
+    }
 
     @Test
     fun `401 does not relogin and keeps existing token`() {

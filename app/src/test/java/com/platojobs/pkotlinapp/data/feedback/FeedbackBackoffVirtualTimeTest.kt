@@ -3,6 +3,7 @@ package com.platojobs.pkotlinapp.data.feedback
 import com.platojobs.pkotlinapp.data.local.FeedbackDao
 import com.platojobs.pkotlinapp.data.local.FeedbackDraftEntity
 import com.platojobs.pkotlinapp.domain.feedback.FeedbackContext
+import com.platojobs.pkotlinapp.domain.feedback.FeedbackDetail
 import com.platojobs.pkotlinapp.domain.feedback.FeedbackDraft
 import com.platojobs.pkotlinapp.domain.feedback.FeedbackErrorCodes
 import com.platojobs.pkotlinapp.domain.feedback.FeedbackKind
@@ -146,6 +147,10 @@ class FeedbackBackoffVirtualTimeTest {
 
         override suspend fun listMine(cursor: String?, limit: Int): FeedbackPage =
             FeedbackPage(items = emptyList(), nextCursor = null, hasMore = false)
+
+        override suspend fun detail(id: String): FeedbackDetail = throw UnsupportedOperationException()
+
+        override suspend fun close(id: String): FeedbackDetail = throw UnsupportedOperationException()
     }
 
     private class FakeFeedbackDao : FeedbackDao {

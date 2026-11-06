@@ -7,7 +7,9 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.platojobs.pkotlinapp.PKotlinApplication
 import com.platojobs.pkotlinapp.data.feedback.FeedbackStore
 import com.platojobs.pkotlinapp.data.remote.ApiLimits
+import com.platojobs.pkotlinapp.domain.feedback.FeedbackDetail
 import com.platojobs.pkotlinapp.domain.feedback.FeedbackItem
+import com.platojobs.pkotlinapp.domain.feedback.FeedbackStatus
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -46,6 +48,23 @@ class FeedbackHistoryViewModel(
 
     fun refresh() {
         load(reset = true)
+    }
+
+    /** `GET /feedback/{id}`：详情含状态说明。 */
+    suspend fun detail(id: String): FeedbackDetail = feedbackStore.detail(id)
+
+    /** `PATCH /feedback/{id}`：关闭本人反馈；409 由数据层抛 [FeedbackAlreadyClosedException]。 */
+    suspend fun close(id: String): FeedbackDetail = feedbackStore.close(id)
+
+    /** 关闭成功后本地列表立即反映新状态，避免等下一次刷新才更新。 */
+    fun applyClosed(id: String) {
+        _state.update { current ->
+            current.copy(
+                items = current.items.map { item ->
+                    if (item.feedbackId == id) item.copy(status = FeedbackStatus.CLOSED) else item
+                },
+            )
+        }
     }
 
     fun loadMore() {

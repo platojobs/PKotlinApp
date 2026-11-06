@@ -19,4 +19,6 @@ data class RemoteScene(
     val actionsJson: String,
     val trigger: SceneTrigger?,
     val actions: List<SceneAction>,
+    /** 服务端实时计算：触发条件引用的设备已不存在（不会级联删场景）。 */
+    val deviceMissing: Boolean = false,
 )

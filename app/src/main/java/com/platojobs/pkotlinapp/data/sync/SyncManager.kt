@@ -112,6 +112,8 @@ class SyncManager(
      * - 旧账号数据不会被删除或覆盖。
      */
     suspend fun relogin(): SyncOutcome = mutex.withLock {
+        // 用户明确选择「新建匿名账号」：先解除重新登录态，否则 token() 会直接拒绝。
+        tokenStore.setReloginRequired(false)
         tokenStore.clear()
         cursorStore.cursor = null
         dao.markAllPending()
@@ -141,6 +143,11 @@ class SyncManager(
     fun isLocalOnly(): Boolean = status.value.localOnly
 
     fun isAuthExpired(): Boolean = status.value.authExpired
+
+    /** 主动退出当前会话后，与刷新失败一样进入重新登录态；本地数据保持不变。 */
+    fun markReloginRequired() {
+        statusStore.recordAuthExpired()
+    }
 
     /**
      * 结构变更先落家庭仓库，再由 [syncHouseholdSafely] 拉全量基线。

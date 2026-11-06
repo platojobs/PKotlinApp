@@ -21,6 +21,7 @@ import com.platojobs.pkotlinapp.data.sync.SyncManager
 import com.platojobs.pkotlinapp.data.sync.TokenStore
 import com.platojobs.pkotlinapp.data.sync.classifySyncError
 import com.platojobs.pkotlinapp.domain.account.AccountDeletionBlockedException
+import com.platojobs.pkotlinapp.domain.account.AccountSession
 import com.platojobs.pkotlinapp.domain.account.DeletionTokenExpiredException
 import com.platojobs.pkotlinapp.domain.account.DeletionTokenInvalidException
 import com.platojobs.pkotlinapp.domain.account.PairingCode
@@ -742,6 +743,26 @@ class ProfileViewModel(
 
     /** 服务端签发的会话到期时间；只读展示，不提供续期入口。 */
     fun sessionExpiresAt(): Long? = tokenStore.sessionExpiresAt()
+
+    // ---- 设备会话 / 退出当前会话 ----
+
+    /** 读取设备会话列表；失败以异常上抛，由界面给可读提示并保留旧列表。 */
+    suspend fun fetchSessions(): List<AccountSession> = accountService.sessions()
+
+    /** 吊销指定会话（当前会话由服务端标记，界面不提供入口）。 */
+    suspend fun revokeSession(id: String) {
+        accountService.revokeSession(id)
+    }
+
+    /**
+     * 退出当前会话：远端尽量吊销，本地立即清理 token 并进入重新登录态；
+     * 本地设备、读数与场景全部保留。
+     */
+    suspend fun logout(): Boolean {
+        val revoked = accountService.logout()
+        syncManager.markReloginRequired()
+        return revoked
+    }
 
     private fun readPermissions() = PermissionStatus(
         scanGranted = BlePermissions.hasScan(appContext),

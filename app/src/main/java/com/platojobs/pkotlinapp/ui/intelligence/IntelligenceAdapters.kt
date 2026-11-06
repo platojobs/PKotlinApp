@@ -232,6 +232,9 @@ class SceneAdapter(
             // 设备被删不会级联删场景：列表明确标注，执行侧再跳过并记失败日志。
             binding.sceneLocalBadge.text = when {
                 scene.deviceMissing -> context.getString(R.string.scene_device_missing_badge)
+                // 4xx 终态：明确展示服务端拒绝原因，而不是笼统的「仅本机」。
+                scene.syncState == SceneSyncState.REJECTED ->
+                    SceneErrorText.of(context, scene.syncError)
                 scene.syncState != SceneSyncState.SYNCED ->
                     context.getString(R.string.scene_local_badge)
                 else -> null

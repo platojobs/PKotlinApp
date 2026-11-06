@@ -4,6 +4,7 @@ import com.platojobs.pkotlinapp.data.sync.TokenStore
 import com.platojobs.pkotlinapp.domain.account.AccountDeletionBlockedException
 import com.platojobs.pkotlinapp.domain.account.AccountExportTask
 import com.platojobs.pkotlinapp.domain.account.AccountRemote
+import com.platojobs.pkotlinapp.domain.account.AccountSession
 import com.platojobs.pkotlinapp.domain.account.ClaimedAccount
 import com.platojobs.pkotlinapp.domain.account.DeletionRequestToken
 import com.platojobs.pkotlinapp.domain.account.DeletionTokenExpiredException
@@ -25,10 +26,16 @@ class AccountServiceTest {
         private val events: MutableList<String> = mutableListOf(),
     ) : TokenStore {
         var stored: String? = "old-token"
+        var relogin = false
+
         override fun token(): String? = stored
         override fun saveToken(token: String) {
             events += "token.save"
             stored = token
+        }
+        override fun reloginRequired(): Boolean = relogin
+        override fun setReloginRequired(required: Boolean) {
+            relogin = required
         }
         override fun clear() {
             events += "token.clear"
@@ -50,6 +57,17 @@ class AccountServiceTest {
         var downloads = mutableListOf<String>()
         var downloadResults = mutableListOf<Result<String>>()
         var deletionError: Throwable? = null
+
+        override suspend fun sessions(): List<AccountSession> = emptyList()
+
+        override suspend fun revokeSession(id: String) {
+            events += "remote.revoke:$id"
+        }
+
+        override suspend fun logout(): Boolean {
+            events += "remote.logout"
+            return true
+        }
 
         override suspend fun createPairingCode(): PairingCode {
             events += "remote.create"
@@ -125,6 +143,52 @@ class AccountServiceTest {
             listOf("remote.claim:ABCD2345", "token.save", "mark.pending", "status.reset"),
             events,
         )
+    }
+
+    @Test
+    fun `领取配对码会解除重新登录态`() = runBlocking {
+        val tokenStore = FakeTokenStore().apply { relogin = true }
+        val service = service(FakeRemote(), tokenStore)
+
+        service.claim("abcd2345")
+
+        assertFalse(tokenStore.relogin)
+    }
+
+    @Test
+    fun `退出当前会话只清 token 不清本地数据并进入重新登录态`() = runBlocking {
+        val events = mutableListOf<String>()
+        val tokenStore = FakeTokenStore(events)
+        val remote = FakeRemote(events)
+        val service = service(remote, tokenStore, events)
+
+        val revoked = service.logout()
+
+        assertTrue(revoked)
+        assertNull(tokenStore.stored)
+        assertTrue(tokenStore.relogin)
+        assertEquals(listOf("remote.logout", "token.clear", "status.reset"), events)
+        // 与「删除账号」不同：本地设备/读数/场景一律保留。
+        assertFalse(events.contains("wipe.local"))
+    }
+
+    @Test
+    fun `导出失败展示服务端 failureReason`() = runBlocking {
+        val remote = FakeRemote().apply {
+            createdTask = AccountExportTask(id = "task-3", status = ExportTaskStatus.PENDING)
+            pollResults = mutableListOf(
+                AccountExportTask(
+                    id = "task-3",
+                    status = ExportTaskStatus.FAILED,
+                    failureReason = "导出任务因服务重启中断，请重新发起导出",
+                ),
+            )
+        }
+        val service = service(remote)
+
+        val error = runCatching { runBlocking { service.exportData() } }.exceptionOrNull()
+
+        assertEquals("导出任务因服务重启中断，请重新发起导出", error?.message)
     }
 
     @Test

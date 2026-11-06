@@ -609,14 +609,41 @@ interface SceneDao {
 
     @Query(
         "UPDATE scenes SET remoteId = :remoteId, version = :version, syncState = 'pending', " +
-            "syncError = NULL, serverUpdatedAt = :serverUpdatedAt WHERE id = :id",
+            "syncError = NULL, retryAfterAt = NULL, serverUpdatedAt = :serverUpdatedAt " +
+            "WHERE id = :id",
     )
     suspend fun linkRemote(id: Long, remoteId: String, version: Long, serverUpdatedAt: Long)
 
     @Query(
-        "UPDATE scenes SET syncState = :syncState, syncError = :reason WHERE id = :id",
+        "UPDATE scenes SET syncState = :syncState, syncError = :reason, retryAfterAt = NULL " +
+            "WHERE id = :id",
     )
     suspend fun markSyncState(id: Long, syncState: String, reason: String?)
+
+    /**
+     * 合并后仍保留本地 pending 内容：只刷新状态/原因，**保留** 429 的 retryAfterAt，
+     * 否则每次拉取基线都会把 Retry-After 清空、导致立即重试。
+     */
+    @Query("UPDATE scenes SET syncState = :syncState, syncError = :reason WHERE id = :id")
+    suspend fun markSyncStateKeepingRetry(id: Long, syncState: String, reason: String?)
+
+    /** 4xx 终态拒绝：不再自动重试，只有用户修改场景后编辑语句才会重置回 pending。 */
+    @Query(
+        "UPDATE scenes SET syncState = 'rejected', syncError = :code, retryAfterAt = NULL " +
+            "WHERE id = :id",
+    )
+    suspend fun markRejected(id: Long, code: String?)
+
+    /** 可重试失败：保持 pending，并按 429 的 Retry-After 延后下一次尝试。 */
+    @Query(
+        "UPDATE scenes SET syncState = 'pending', syncError = :reason, retryAfterAt = :retryAt " +
+            "WHERE id = :id",
+    )
+    suspend fun markRetry(id: Long, reason: String?, retryAt: Long?)
+
+    /** 同步成功或服务端合并后刷新 deviceMissing（真实值来自服务端，不再本地重算）。 */
+    @Query("UPDATE scenes SET deviceMissing = :missing WHERE id = :id")
+    suspend fun updateDeviceMissing(id: Long, missing: Boolean)
 
     /** 服务端快照合并：只覆盖本地没有更新的字段（字段级 LWW 的本地侧）。 */
     @Query(
@@ -649,15 +676,21 @@ interface SceneDao {
     )
 
     @Query(
-        "UPDATE scenes SET syncState = 'synced', syncError = NULL, serverUpdatedAt = :serverUpdatedAt " +
-            "WHERE id = :id",
+        "UPDATE scenes SET syncState = 'synced', syncError = NULL, retryAfterAt = NULL, " +
+            "serverUpdatedAt = :serverUpdatedAt WHERE id = :id",
     )
     suspend fun finishMerge(id: Long, serverUpdatedAt: Long)
 
-    @Query("UPDATE scenes SET deletedAt = :timestamp, syncState = 'pending', syncError = NULL WHERE id = :id")
+    @Query(
+        "UPDATE scenes SET deletedAt = :timestamp, syncState = 'pending', syncError = NULL, " +
+            "retryAfterAt = NULL WHERE id = :id",
+    )
     suspend fun tombstone(id: Long, timestamp: Long)
 
-    @Query("UPDATE scenes SET deletedAt = :timestamp, syncState = 'synced', syncError = NULL WHERE id = :id")
+    @Query(
+        "UPDATE scenes SET deletedAt = :timestamp, syncState = 'synced', syncError = NULL, " +
+            "retryAfterAt = NULL WHERE id = :id",
+    )
     suspend fun markServerDeleted(id: Long, timestamp: Long)
 
     /** 服务端快照重新出现：撤销本地 tombstone（仅当本地没有更新的 pending 删除时调用）。 */
@@ -666,33 +699,34 @@ interface SceneDao {
 
     // --- 本机编辑：更新字段值、字段时间戳与 pending 状态 ---
 
+    // 用户编辑即视为「修改内容后重新提交」：无论是 rejected 还是等待 Retry-After，都回到 pending。
     @Query(
         "UPDATE scenes SET name = :name, nameUpdatedAt = :updatedAt, syncState = 'pending', " +
-            "syncError = NULL WHERE id = :id",
+            "syncError = NULL, retryAfterAt = NULL WHERE id = :id",
     )
     suspend fun updateNameForSync(id: Long, name: String, updatedAt: Long)
 
     @Query(
         "UPDATE scenes SET enabled = :enabled, enabledUpdatedAt = :updatedAt, " +
-            "syncState = 'pending', syncError = NULL WHERE id = :id",
+            "syncState = 'pending', syncError = NULL, retryAfterAt = NULL WHERE id = :id",
     )
     suspend fun updateEnabledForSync(id: Long, enabled: Boolean, updatedAt: Long)
 
     @Query(
         "UPDATE scenes SET cooldownSeconds = :cooldown, cooldownUpdatedAt = :updatedAt, " +
-            "syncState = 'pending', syncError = NULL WHERE id = :id",
+            "syncState = 'pending', syncError = NULL, retryAfterAt = NULL WHERE id = :id",
     )
     suspend fun updateCooldownForSync(id: Long, cooldown: Int, updatedAt: Long)
 
     @Query(
         "UPDATE scenes SET triggerJson = :json, triggerUpdatedAt = :updatedAt, " +
-            "syncState = 'pending', syncError = NULL WHERE id = :id",
+            "syncState = 'pending', syncError = NULL, retryAfterAt = NULL WHERE id = :id",
     )
     suspend fun updateTriggerForSync(id: Long, json: String, updatedAt: Long)
 
     @Query(
         "UPDATE scenes SET actionsJson = :json, actionsUpdatedAt = :updatedAt, " +
-            "syncState = 'pending', syncError = NULL WHERE id = :id",
+            "syncState = 'pending', syncError = NULL, retryAfterAt = NULL WHERE id = :id",
     )
     suspend fun updateActionsForSync(id: Long, json: String, updatedAt: Long)
 

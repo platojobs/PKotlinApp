@@ -6,6 +6,20 @@
 
 ---
 
+## v0.23.0
+
+**主题：会话生命周期、场景错误分级与契约对账修补**
+
+- **P1 会话链路**：接 `POST /auth/refresh`（滚动刷新）、`GET /sessions`、`DELETE /sessions/{id}`、`POST /auth/logout`。新增 OkHttp `Authenticator`：请求 401 时先在锁内比较「响应里的旧 token」与 `TokenStore` 当前值——已被其它请求刷新过就直接用新 token 重放；否则只发起一次刷新（单飞）。刷新成功原子写入新 token + 到期时间；服务端明确 401/403 才清 token 并置 `reloginRequired`，网络/5xx 保留 token。只有刷新失败才进入「需要重新登录」态。
+- **不再静默新建匿名账号**：`withToken` 见 `reloginRequired` 时抛 `AuthExpiredException`，不调用 `/auth/anonymous`；本地设备/读数/场景与游标一律保留。重新登录有两个明确选项：配对码恢复原账号，或用户主动选择「新建匿名账号」（`relogin()` 先解除标记再清 token）。保留本地数据这一点由 `AccountService.logout` 测试与 `relogin required blocks silent anonymous login` 测试固定。
+- **退出当前会话 ≠ 删除账号**：「我的」新增设备会话管理与「退出当前会话」。会话列表标出当前会话（服务端 `current`），其它会话可单独吊销；退出只清本机 token、置重新登录态，不清账号与本地数据。
+- **场景错误码与重试分类**：映射 6 个 `SCENE_*`（名称/冷却/条件/动作/设备不存在/指标不支持）与 `NOT_FOUND` / `CONFLICT`，新增 `SceneErrorText` 中英文案并在场景列表展示拒绝原因。4xx（除 401/403/408/429）落 `rejected` 终态，永不自动重试；网络与 5xx 保持 pending；429 记录 `Retry-After` 到 `retryAfterAt`，到点前不重试。用户编辑任一字段（改名/启停/冷却/条件/动作）即重置回 pending 并清除重试时间。基线合并保留 rejected 与 Retry-After，避免拉取把用户被拒的修改覆盖掉或提前重试。
+- **导出失败原因**：`ExportTask.failureReason` 解析并透传，导出失败直接展示服务端原因，而不是笼统的「稍后重试」。
+- **反馈详情与关闭**：接 `GET /feedback/{id}` 与 `PATCH /feedback/{id}`（`status=closed`）。历史列表可点进详情查看状态、状态说明与更新时间；未关闭的反馈可关闭。已关闭再改返回 409，界面显示「该反馈已关闭，不能重复关闭」。
+- **单设备详情与列对齐**：确认 `GET /my/devices/{platform}/{externalId}` 用于单设备读取；`scenes` 增加 `deviceMissing`（服务端实时计算）与 `retryAfterAt`，Room v21（`MIGRATION_20_21`）。列表的 `deviceMissing` = 服务端值 OR 本地已知设备兜底重算。
+- 测试：`SessionRefreshTest`（真实本地 HTTP 服务 + OkHttp：401→刷新→原请求重放 200；刷新失败→重新登录且不再自动匿名；并发 5×401 仅 1 次刷新；刷新器成功/401/网络失败三种落盘行为）、`AccountServiceTest`（claim 解除重登、logout 保留数据、`failureReason` 文案）、`RemoteSyncTokenTest`（重登态禁止匿名）、`SceneSyncerTest`（4xx 终态不重试、编辑后重试、429 Retry-After 延后）、`SceneFailureTest`、`SceneErrorTextTest`（每个错误码到独立可读文案）、`SceneDeviceMissingMigrationTest`（真实 SQLite v20→v21 旧场景保留）。
+- 验证：`testDebugUnitTest` 357 项全绿、`lintDebug` 0 error（11 条既有 warning）、`assembleDebug` 通过、fixture e2e 全绿；tag `v0.23.0`（`versionCode = 31`）。
+
 ## v0.22.0
 
 **主题：自动化场景接服务端，配置跨设备可用**

@@ -171,6 +171,9 @@ enum class SceneSyncState {
     PENDING,
     SYNCED,
     LOCAL_ONLY,
+
+    /** 服务端 4xx 终态拒绝：不再自动重试，用户修改内容后才重新提交。 */
+    REJECTED,
     ;
 
     /**
@@ -198,6 +201,8 @@ data class Scene(
     /** 触发条件绑定的设备已不存在；列表标注「设备已移除」，执行时跳过。 */
     val deviceMissing: Boolean = false,
     val cooldownSeconds: Int = 300,
+    /** 服务端拒绝时的错误码（rejected 状态），界面映射为可读文案。 */
+    val syncError: String? = null,
 ) {
     fun invalidReason(): String? {
         if (name.isBlank()) return "场景名称不能为空"

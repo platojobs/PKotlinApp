@@ -104,6 +104,20 @@ data class FeedbackItem(
     val createdAt: Long,
 )
 
+/** `GET /feedback/{id}` 详情：含状态说明与更新时间，但不含 contact / diagnostics。 */
+data class FeedbackDetail(
+    val feedbackId: String,
+    val kind: FeedbackKind,
+    val description: String,
+    val status: FeedbackStatus,
+    val statusMessage: String?,
+    val createdAt: Long,
+    val updatedAt: Long,
+)
+
+/** 关闭自己的反馈时，若已经关闭（409 FEEDBACK_INVALID_TRANSITION）。 */
+class FeedbackAlreadyClosedException(message: String? = null) : RuntimeException(message)
+
 data class FeedbackPage(
     val items: List<FeedbackItem>,
     val nextCursor: String?,

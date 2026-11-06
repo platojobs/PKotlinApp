@@ -178,6 +178,21 @@ internal object RoomStructuralSyncMigrationSql {
     )
 }
 
+/**
+ * v16 -> v17：反馈草稿接入真实发送链路，新增同步状态机的重试/错误/远端 ID 列。
+ * 既有草稿原样保留，默认 pending、0 次重试、无远端 ID；旧 category 值由领域层回落为 other。
+ */
+internal object FeedbackSyncMigrationSql {
+    val V16_TO_V17 = listOf(
+        "ALTER TABLE feedback_drafts ADD COLUMN retryCount INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE feedback_drafts ADD COLUMN lastError TEXT",
+        "ALTER TABLE feedback_drafts ADD COLUMN lastErrorCode TEXT",
+        "ALTER TABLE feedback_drafts ADD COLUMN lastErrorRetryAfterSeconds INTEGER",
+        "ALTER TABLE feedback_drafts ADD COLUMN remoteFeedbackId TEXT",
+        "ALTER TABLE feedback_drafts ADD COLUMN lastAttemptAt INTEGER",
+    )
+}
+
 /** v15 -> v16：场景接入规则引擎，新增触发规则绑定、定时间隔、启停与执行记录表。 */
 internal object SceneEngineMigrationSql {
     val V15_TO_V16 = listOf(
@@ -222,7 +237,7 @@ internal object SceneEngineMigrationSql {
         HouseholdEntity::class,
         FeedbackDraftEntity::class,
     ],
-    version = 16,
+    version = 17,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -402,6 +417,13 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v16 -> v17：反馈草稿同步状态列；既有草稿保持 pending 且不伪造已发送。 */
+        val MIGRATION_16_17 = object : Migration(16, 17) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                FeedbackSyncMigrationSql.V16_TO_V17.forEach(db::execSQL)
+            }
+        }
+
         @Volatile
         private var instance: AppDatabase? = null
 
@@ -427,6 +449,7 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_13_14,
                     MIGRATION_14_15,
                     MIGRATION_15_16,
+                    MIGRATION_16_17,
                 )
                     .build()
                     .also { instance = it }

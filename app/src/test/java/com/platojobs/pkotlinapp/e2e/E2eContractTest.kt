@@ -1,6 +1,8 @@
 package com.platojobs.pkotlinapp.e2e
 
 import com.platojobs.pkotlinapp.data.remote.ApiClient
+import com.platojobs.pkotlinapp.data.remote.FeedbackContextDto
+import com.platojobs.pkotlinapp.data.remote.FeedbackCreateRequest
 import com.platojobs.pkotlinapp.data.remote.PushDeviceDto
 import com.platojobs.pkotlinapp.data.remote.PushReadingDto
 import com.platojobs.pkotlinapp.data.remote.ReadingMetricsResponse
@@ -89,6 +91,7 @@ class E2eContractTest {
     private val readingSummaryAdapter = moshi.adapter(ReadingSummaryResponse::class.java)
     private val readingSeriesAdapter = moshi.adapter(ReadingSeriesResponse::class.java)
     private val readingMetricsAdapter = moshi.adapter(ReadingMetricsResponse::class.java)
+    private val feedbackCreateAdapter = moshi.adapter(FeedbackCreateRequest::class.java)
 
     @Test
     fun `contract against local go backend`() {
@@ -1621,6 +1624,136 @@ class E2eContractTest {
 
         println("[E2E] SUMMARY: household contract cases passed")
 
+        // ---- 反馈（openapi 0.12.0 / 后端 v0.16.0） ----
+        fun feedbackBody(description: String) = feedbackCreateAdapter.toJson(
+            FeedbackCreateRequest(
+                kind = "bug",
+                body = description,
+                contact = "e2e@example.com",
+                context = FeedbackContextDto(
+                    appVersion = "0.19.0",
+                    buildType = "debug",
+                    osVersion = "Android 14 (API 34)",
+                    deviceModel = "E2E Pixel",
+                ),
+            ),
+        )
+
+        val feedbackKey = "e2e-feedback-${UUID.randomUUID()}"
+        val firstFeedbackBody = feedbackBody("e2e 反馈：同步偶发失败")
+        val firstFeedbackId = captureStep("feedback: submit returns 201 with feedbackId") {
+            val result = postFeedback("/feedback", firstFeedbackBody, user.token, feedbackKey)
+            assertEquals(201, result.code)
+            val body = parseMap(result.body)
+            val id = body["feedbackId"] as? String ?: error("missing feedbackId")
+            assertTrue(id.isNotBlank())
+            assertNotNull(Rfc3339.parse(body["createdAt"] as? String))
+            id
+        }
+
+        step("feedback: same key + same body replays the same id") {
+            val replay = postFeedback("/feedback", firstFeedbackBody, user.token, feedbackKey)
+            assertEquals(200, replay.code)
+            assertEquals("true", replay.headers["Idempotent-Replayed"])
+            assertEquals(firstFeedbackId, parseMap(replay.body)["feedbackId"])
+        }
+
+        step("feedback: same key + different body -> 409 IDEMPOTENCY_CONFLICT") {
+            val conflict = postFeedback(
+                "/feedback",
+                feedbackBody("e2e 反馈：内容已变更"),
+                user.token,
+                feedbackKey,
+            )
+            assertEquals(409, conflict.code)
+            val error = parseMap(conflict.body)["error"] as Map<*, *>
+            assertEquals("IDEMPOTENCY_CONFLICT", error["code"])
+        }
+
+        step("feedback: missing context is rejected with 400") {
+            val result = postFeedback(
+                "/feedback",
+                """{"kind":"bug","body":"缺少 context"}""",
+                user.token,
+                "e2e-feedback-invalid-${UUID.randomUUID()}",
+            )
+            assertEquals(400, result.code)
+        }
+
+        val secondFeedbackId = captureStep("feedback: second submission for pagination") {
+            val result = postFeedback(
+                "/feedback",
+                feedbackBody("e2e 反馈：第二条用于游标分页"),
+                user.token,
+                "e2e-feedback-${UUID.randomUUID()}",
+            )
+            assertEquals(201, result.code)
+            parseMap(result.body)["feedbackId"] as? String ?: error("missing feedbackId")
+        }
+
+        step("feedback: my list returns own items without contact/diagnostics") {
+            val result = getWithQuery(
+                "/feedback/mine",
+                token = user.token,
+                query = listOf("limit" to "50"),
+            )
+            assertEquals(200, result.code)
+            val page = parseMap(result.body)
+            val items = page["items"] as? List<*> ?: error("missing items")
+            val first = items.filterIsInstance<Map<String, Any?>>()
+                .firstOrNull { it["feedbackId"] == firstFeedbackId }
+                ?: error("submitted feedback missing from list")
+            assertEquals("submitted", first["status"])
+            assertEquals("bug", first["kind"])
+            // 契约明确列表不返回隐私字段。
+            assertFalse(first.containsKey("contact"))
+            assertFalse(first.containsKey("diagnostics"))
+        }
+
+        step("feedback: cursor pagination reads the next page") {
+            val firstPage = getWithQuery(
+                "/feedback/mine",
+                token = user.token,
+                query = listOf("limit" to "1"),
+            )
+            assertEquals(200, firstPage.code)
+            val page = parseMap(firstPage.body)
+            val items = (page["items"] as List<*>).filterIsInstance<Map<String, Any?>>()
+            assertEquals(1, items.size)
+            assertEquals(true, page["hasMore"])
+            val cursor = page["nextCursor"] as? String ?: error("missing nextCursor")
+            assertTrue(cursor.isNotBlank())
+
+            val nextPage = getWithQuery(
+                "/feedback/mine",
+                token = user.token,
+                query = listOf("limit" to "1", "cursor" to cursor),
+            )
+            assertEquals(200, nextPage.code)
+            val nextItems = (parseMap(nextPage.body)["items"] as List<*>)
+                .filterIsInstance<Map<String, Any?>>()
+            assertEquals(1, nextItems.size)
+            assertTrue(nextItems.single()["feedbackId"] != items.single()["feedbackId"])
+            assertTrue(
+                setOf(firstFeedbackId, secondFeedbackId)
+                    .contains(nextItems.single()["feedbackId"]),
+            )
+        }
+
+        step("feedback: another account cannot read my feedback") {
+            val result = getWithQuery(
+                "/feedback/mine",
+                token = lateMember.token,
+                query = listOf("limit" to "20"),
+            )
+            assertEquals(200, result.code)
+            val items = (parseMap(result.body)["items"] as List<*>)
+                .filterIsInstance<Map<String, Any?>>()
+            assertFalse(items.any { it["feedbackId"] == firstFeedbackId })
+        }
+
+        println("[E2E] SUMMARY: feedback contract cases passed")
+
         step("account: delete returns 204 and revokes every token of the account") {
             val deleted = delete("/me", claimed.token)
             assertEquals(204, deleted.code)
@@ -1847,6 +1980,19 @@ class E2eContractTest {
             token = token,
             idempotencyKey = idempotencyKey,
         )
+
+    private fun postFeedback(
+        path: String,
+        body: String,
+        token: String,
+        idempotencyKey: String,
+    ): HttpResult = execute(
+        "POST",
+        path,
+        body = body,
+        token = token,
+        idempotencyKey = idempotencyKey,
+    )
 
     private fun execute(
         method: String,

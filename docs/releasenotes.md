@@ -6,6 +6,20 @@
 
 ---
 
+## v0.19.0
+
+**主题：意见反馈从「本地待发」接成真实发送与可查询的真链路**
+
+- 对齐后端 PJGoIoT v0.16.0 / 契约 0.12.0：`POST /api/v1/feedback` 提交 `kind/body/contact/diagnostics/context` 返回 `201 {feedbackId, createdAt}`；`GET /api/v1/feedback/mine` 只返回本人，倒序游标分页 `{items,nextCursor,hasMore}`，状态 `submitted/received/closed`，响应不含 contact 与 diagnostics。
+- 草稿同步状态机：`feedback_drafts.state` 走 `pending → sending → sent / failed`，新增 `retryCount`、`lastError`、`lastErrorCode`、`lastErrorRetryAfterSeconds`、`remoteFeedbackId`、`lastAttemptAt`。**只有 2xx 且拿到非空 `feedbackId` 才标记 sent**；2xx 缺 ID、409、429、网络错误均保持未发送并记录真实原因，既不再「一律未发送」，也不伪装成功。
+- 幂等：每次提交/重试复用草稿本地 ID 作为 `Idempotency-Key`。同内容重放返回同一 `feedbackId` 且服务端带 `Idempotent-Replayed: true`；同 key 不同内容返回 `409 IDEMPOTENCY_CONFLICT`，客户端标记为不可自动重试。
+- 重试边界：前台手动重试不限次数；失败后后台最多安排一次有界指数退避（10s 起、5 分钟封顶、自动重试上限 5 次）。429 只读取 `Retry-After` 提示「建议 N 秒后再试」，不自动狂重试；达到上限后失败草稿永久保留，绝不静默删除。
+- 上下文自动填充：`appVersion ← BuildConfig.VERSION_NAME`、`buildType ← BuildConfig.BUILD_TYPE`、`osVersion ← Android 系统版本（含 API level）`、`deviceModel ← Build.MODEL`，平台固定 `android`。
+- 待发队列如实展示：状态由发送结果驱动，未发送显示「待发送」、失败显示「发送失败：<服务端可读原因>」、重试显示「待发送（第 N 次重试）」；弹出反馈页期间持续观察数据库，不依赖一次性快照。
+- 新增「我的反馈记录」：`FeedbackHistoryActivity` 调 `GET /feedback/mine`，`SwipeRefreshLayout` 下拉刷新、RecyclerView 触底游标加载更多，空/加载/错误复用 `ThreeStateHost`；行展示类型、正文、真实状态与时间，列表 DTO 不声明 contact/diagnostics。
+- Room v17（`MIGRATION_16_17`）：`feedback_drafts` 增加同步状态列；`FeedbackSyncMigrationTest` 用真实 SQLite 验证旧草稿内容与 state 保留、新增列默认值（0 次重试、无错误、无远端 ID）及可写性。
+- 测试：`FeedbackStoreTest`（pending→sending→sent、失败保留、幂等键复用、429 不自动重试、超过自动重试上限仍不删除、退避上限、上下文自动填充）、`FeedbackDtoContractTest`（请求/响应字段对齐、列表无隐私字段、旧分类回落 other）、`FeedbackSyncMigrationTest`（v16→v17）；fixture e2e 补提交 201、同 key 重放同 ID、同 key 不同内容 409、缺 context 400、本人列表、游标分页与跨账号不可见。单测全绿、`lintDebug` 0 issue、`assembleDebug` 与 fixture e2e 全绿；tag `v0.19.0`（`versionCode = 27`）。
+
 ## v0.18.0
 
 **主题：场景从配置变成引擎真正执行的闭环；首页改为真实聚合**

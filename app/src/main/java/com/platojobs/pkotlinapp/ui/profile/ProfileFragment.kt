@@ -39,8 +39,10 @@ import com.platojobs.pkotlinapp.data.collection.CollectionStatus
 import com.platojobs.pkotlinapp.data.prefs.ThemeMode
 import com.platojobs.pkotlinapp.databinding.FragmentProfileBinding
 import com.platojobs.pkotlinapp.domain.account.PairingCodeFormat
-import com.platojobs.pkotlinapp.domain.feedback.FeedbackCategory
 import com.platojobs.pkotlinapp.domain.feedback.FeedbackDraft
+import com.platojobs.pkotlinapp.domain.feedback.FeedbackErrorCodes
+import com.platojobs.pkotlinapp.domain.feedback.FeedbackKind
+import com.platojobs.pkotlinapp.domain.feedback.FeedbackState
 import com.platojobs.pkotlinapp.domain.household.Household
 import com.platojobs.pkotlinapp.domain.household.HouseholdInvitationInfo
 import com.platojobs.pkotlinapp.domain.household.HouseholdMember
@@ -115,6 +117,11 @@ class ProfileFragment : Fragment() {
             HelpCenterDialog.show(requireContext())
         }
         binding.feedbackButton.setOnClickListener { showFeedbackDialog() }
+        binding.feedbackHistoryButton.setOnClickListener {
+            startActivity(
+                android.content.Intent(context, FeedbackHistoryActivity::class.java),
+            )
+        }
         binding.aboutCard.licenseButton.setOnClickListener { openUrl(LICENSE_URL) }
         binding.aboutCard.privacyButton.setOnClickListener { openUrl(PRIVACY_URL) }
         binding.aboutCard.securityButton.setOnClickListener { openUrl(DATA_SAFETY_URL) }
@@ -768,11 +775,11 @@ class ProfileFragment : Fragment() {
 
     /**
      * 反馈表单：类型 + 描述 + 可选联系方式。
-     * 当前无远端接口，提交后草稿落库并如实标注「未发送」；列表提供重试与删除。
+     * 提交后按真实响应展示状态；失败草稿保留，列表展示真实重试次数与错误原因。
      */
     private fun showFeedbackDialog() {
         val context = requireContext()
-        val categories = FeedbackCategory.entries
+        val categories = FeedbackKind.entries
         val padding = resources.getDimensionPixelSize(R.dimen.card_padding)
         val gap = resources.getDimensionPixelSize(R.dimen.space_8)
         val touch = resources.getDimensionPixelSize(R.dimen.touch_min)
@@ -788,7 +795,7 @@ class ProfileFragment : Fragment() {
             adapter = ArrayAdapter(
                 context,
                 android.R.layout.simple_spinner_item,
-                categories.map(::feedbackCategoryLabel),
+                categories.map { feedbackKindLabel(it) },
             ).apply {
                 setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
             }
@@ -805,6 +812,8 @@ class ProfileFragment : Fragment() {
             minLines = 3
             gravity = android.view.Gravity.TOP or android.view.Gravity.START
             contentDescription = getString(R.string.feedback_description_label)
+            // 契约上限 4000，客户端提前截断，避免整单被服务端拒绝。
+            filters = arrayOf(android.text.InputFilter.LengthFilter(4000))
         }
         container.addView(descriptionInput)
 
@@ -814,6 +823,8 @@ class ProfileFragment : Fragment() {
             inputType = android.text.InputType.TYPE_CLASS_TEXT
             setSingleLine()
             contentDescription = getString(R.string.feedback_contact_label)
+            // 契约上限 200。
+            filters = arrayOf(android.text.InputFilter.LengthFilter(200))
         }
         container.addView(contactInput)
 
@@ -832,16 +843,34 @@ class ProfileFragment : Fragment() {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = android.view.Gravity.CENTER_VERTICAL
                 }
+                val textColumn = LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                }
                 val label = TextView(context).apply {
                     text = getString(
                         R.string.feedback_pending_row,
-                        feedbackCategoryLabel(draft.category),
+                        feedbackKindLabel(draft.kind),
                         TimeFormat.date(context, draft.createdAt),
                     )
                     setTextAppearance(
                         com.google.android.material.R.style.TextAppearance_Material3_BodyMedium,
                     )
                 }
+                // 状态与错误原因来自草稿真实字段，不推测、不伪报成功。
+                val status = TextView(context).apply {
+                    text = feedbackDraftStatusText(draft)
+                    setTextAppearance(
+                        com.google.android.material.R.style.TextAppearance_Material3_BodySmall,
+                    )
+                    setTextColor(
+                        ContextCompat.getColor(
+                            context,
+                            if (draft.state == FeedbackState.FAILED) R.color.danger else R.color.text_secondary,
+                        ),
+                    )
+                }
+                textColumn.addView(label)
+                textColumn.addView(status)
                 val retry = actionText(
                     getString(R.string.feedback_retry),
                     ContextCompat.getColor(context, R.color.primary_text),
@@ -853,10 +882,9 @@ class ProfileFragment : Fragment() {
                     ContextCompat.getColor(context, R.color.danger),
                 ) {
                     viewModel.discardFeedback(draft.id)
-                    renderPending(viewModel.pendingFeedback.value.filterNot { it.id == draft.id })
                 }
                 row.addView(
-                    label,
+                    textColumn,
                     LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
                 )
                 row.addView(retry)
@@ -864,7 +892,13 @@ class ProfileFragment : Fragment() {
                 pendingList.addView(row)
             }
         }
-        renderPending(viewModel.pendingFeedback.value)
+
+        // 弹窗存活期间持续观察真实队列；状态由发送结果驱动，不依赖一次性的本地快照。
+        val pendingJob = viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+                viewModel.pendingFeedback.collect { renderPending(it) }
+            }
+        }
 
         val submit = MaterialButton(context).apply {
             setText(R.string.feedback_submit)
@@ -879,6 +913,7 @@ class ProfileFragment : Fragment() {
             .setView(scroll)
             .setNegativeButton(R.string.action_close, null)
             .create()
+        dialog.setOnDismissListener { pendingJob.cancel() }
 
         submit.setOnClickListener {
             val description = descriptionInput.text?.toString().orEmpty()
@@ -919,14 +954,43 @@ class ProfileFragment : Fragment() {
             setOnClickListener { onClick() }
         }
 
-    private fun feedbackCategoryLabel(category: FeedbackCategory): String = getString(
-        when (category) {
-            FeedbackCategory.BUG -> R.string.feedback_category_bug
-            FeedbackCategory.CONNECTION -> R.string.feedback_category_connection
-            FeedbackCategory.SYNC -> R.string.feedback_category_sync
-            FeedbackCategory.OTHER -> R.string.feedback_category_other
+    private fun feedbackKindLabel(kind: FeedbackKind): String = getString(
+        when (kind) {
+            FeedbackKind.BUG -> R.string.feedback_category_bug
+            FeedbackKind.FEATURE -> R.string.feedback_category_feature
+            FeedbackKind.EXPERIENCE -> R.string.feedback_category_experience
+            FeedbackKind.OTHER -> R.string.feedback_category_other
         },
     )
+
+    /** 状态文案严格映射草稿字段：待发送、发送中、第 N 次重试、失败原因。 */
+    private fun feedbackDraftStatusText(draft: FeedbackDraft): String = when {
+        draft.state == FeedbackState.SENDING -> getString(R.string.feedback_draft_sending)
+
+        draft.state == FeedbackState.FAILED -> getString(
+            R.string.feedback_draft_failed,
+            feedbackDraftFailureReason(draft),
+        )
+
+        draft.retryCount > 0 -> getString(R.string.feedback_draft_retrying, draft.retryCount)
+
+        else -> getString(R.string.feedback_draft_pending)
+    }
+
+    private fun feedbackDraftFailureReason(draft: FeedbackDraft): String = when (draft.lastErrorCode) {
+        FeedbackErrorCodes.RATE_LIMITED -> draft.retryAfterSeconds?.let {
+            getString(R.string.feedback_rate_limited_seconds, it)
+        } ?: getString(R.string.feedback_rate_limited)
+
+        FeedbackErrorCodes.NETWORK -> getString(R.string.feedback_network_error)
+
+        FeedbackErrorCodes.UNAUTHORIZED -> getString(R.string.feedback_unauthorized)
+
+        FeedbackErrorCodes.IDEMPOTENCY_CONFLICT -> getString(R.string.feedback_conflict)
+
+        else -> draft.lastError?.takeIf { it.isNotBlank() }
+            ?: getString(R.string.feedback_failed_unknown)
+    }
 
     private fun renderSyncStatus(status: SyncStatus) {
         binding.syncLastAt.text = if (status.lastSyncAt == null) {

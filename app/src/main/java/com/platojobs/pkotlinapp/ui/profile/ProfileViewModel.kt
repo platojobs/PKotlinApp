@@ -23,8 +23,10 @@ import com.platojobs.pkotlinapp.domain.account.PairingCode
 import com.platojobs.pkotlinapp.domain.account.PairingCodeFormat
 import com.platojobs.pkotlinapp.domain.account.PairingCodeInvalidException
 import com.platojobs.pkotlinapp.domain.account.PairingRateLimitedException
-import com.platojobs.pkotlinapp.domain.feedback.FeedbackCategory
 import com.platojobs.pkotlinapp.domain.feedback.FeedbackDraft
+import com.platojobs.pkotlinapp.domain.feedback.FeedbackErrorCodes
+import com.platojobs.pkotlinapp.domain.feedback.FeedbackKind
+import com.platojobs.pkotlinapp.domain.feedback.FeedbackSubmission
 import com.platojobs.pkotlinapp.domain.household.Household
 import com.platojobs.pkotlinapp.domain.household.HouseholdErrorKind
 import com.platojobs.pkotlinapp.domain.household.HouseholdInvitation
@@ -310,17 +312,14 @@ class ProfileViewModel(
         }
     }
 
-    // ---- 意见反馈（本地待发队列） ----
+    // ---- 意见反馈（真实发送队列） ----
 
-    /** 待发反馈草稿：state=pending 即「未发送」，UI 直接展示真实条数。 */
-    val pendingFeedback: StateFlow<List<FeedbackDraft>> = feedbackStore.observePending()
+    /** 待发队列：pending / sending / failed；每条都带真实重试次数与上次错误。 */
+    val pendingFeedback: StateFlow<List<FeedbackDraft>> = feedbackStore.observeUnsent()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    /**
-     * 提交反馈：先落本地草稿再尝试发送。
-     * 当前版本没有远端接口，结果如实返回「未发送」，不伪装成功。
-     */
-    fun submitFeedback(category: FeedbackCategory, description: String, contact: String?) {
+    /** 提交反馈：先落本地草稿，再按真实响应更新状态；失败时草稿永久保留。 */
+    fun submitFeedback(kind: FeedbackKind, description: String, contact: String?) {
         if (description.isBlank()) {
             viewModelScope.launch {
                 _accountMessage.emit(appContext.getString(R.string.feedback_description_required))
@@ -328,29 +327,48 @@ class ProfileViewModel(
             return
         }
         viewModelScope.launch {
-            val result = feedbackStore.submit(category, description, contact)
-            _accountMessage.emit(
-                appContext.getString(
-                    if (result.sent) R.string.feedback_sent else R.string.feedback_queued_unsent,
-                ),
-            )
+            val result = feedbackStore.submit(kind, description, contact)
+            _accountMessage.emit(feedbackResultText(result))
         }
     }
 
-    /** 重试发送同一条草稿；失败时草稿仍保留在本地队列。 */
+    /** 前台手动重试：立即发送一次，失败原因如实展示。 */
     fun retryFeedback(id: Long) {
         viewModelScope.launch {
             val result = feedbackStore.retry(id)
-            _accountMessage.emit(
-                appContext.getString(
-                    if (result.sent) R.string.feedback_sent else R.string.feedback_retry_unsent,
-                ),
-            )
+            _accountMessage.emit(feedbackResultText(result))
         }
     }
 
     fun discardFeedback(id: Long) {
         viewModelScope.launch { feedbackStore.discard(id) }
+    }
+
+    /** 只有 sent 才报成功；429 提示稍后再试；其余失败给服务端可读原因。 */
+    private fun feedbackResultText(result: FeedbackSubmission): String = when {
+        result.sent -> appContext.getString(R.string.feedback_sent)
+
+        result.errorCode == FeedbackErrorCodes.RATE_LIMITED ->
+            result.retryAfterSeconds?.let {
+                appContext.getString(R.string.feedback_rate_limited_seconds, it)
+            } ?: appContext.getString(R.string.feedback_rate_limited)
+
+        result.errorCode == FeedbackErrorCodes.IDEMPOTENCY_CONFLICT ->
+            appContext.getString(R.string.feedback_conflict)
+
+        result.errorCode == FeedbackErrorCodes.NETWORK ->
+            appContext.getString(R.string.feedback_network_error)
+
+        result.errorCode == FeedbackErrorCodes.UNAUTHORIZED ->
+            appContext.getString(R.string.feedback_unauthorized)
+
+        !result.errorMessage.isNullOrBlank() ->
+            appContext.getString(R.string.feedback_failed_reason, result.errorMessage)
+
+        else -> appContext.getString(
+            R.string.feedback_queued_retry,
+            result.retryCount.coerceAtLeast(1),
+        )
     }
 
     // ---- 家庭 ----

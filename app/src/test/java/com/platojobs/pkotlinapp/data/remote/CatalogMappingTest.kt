@@ -216,6 +216,20 @@ class CatalogMappingTest {
             body: com.platojobs.pkotlinapp.data.remote.HouseholdRoomOrderRequest,
         ): com.platojobs.pkotlinapp.data.remote.HouseholdRoomListResponse =
             com.platojobs.pkotlinapp.data.remote.HouseholdRoomListResponse()
+
+        override suspend fun createFeedback(
+            authorization: String,
+            idempotencyKey: String,
+            body: com.platojobs.pkotlinapp.data.remote.FeedbackCreateRequest,
+        ): com.platojobs.pkotlinapp.data.remote.FeedbackCreatedDto =
+            com.platojobs.pkotlinapp.data.remote.FeedbackCreatedDto()
+
+        override suspend fun listMyFeedback(
+            authorization: String,
+            cursor: String?,
+            limit: Int,
+        ): com.platojobs.pkotlinapp.data.remote.FeedbackPageResponse =
+            com.platojobs.pkotlinapp.data.remote.FeedbackPageResponse()
     }
 
     private class FakeApi(

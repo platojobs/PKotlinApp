@@ -383,6 +383,55 @@ data class ExportPageResponse(
     val hasMore: Boolean? = null,
 )
 
+/** 反馈提交上下文（openapi 0.12.0 `FeedbackClientContext`），由客户端自动填充。 */
+data class FeedbackContextDto(
+    val platform: String = "android",
+    val appVersion: String,
+    val buildType: String,
+    val osVersion: String,
+    val deviceModel: String,
+)
+
+/** POST /feedback 请求体；字段与后端 `FeedbackCreate` 对齐。 */
+data class FeedbackCreateRequest(
+    val kind: String,
+    val body: String,
+    val contact: String? = null,
+    val context: FeedbackContextDto,
+    val diagnostics: String? = null,
+)
+
+/** POST /feedback 201 响应。 */
+data class FeedbackCreatedDto(
+    val feedbackId: String? = null,
+    val createdAt: String? = null,
+)
+
+/**
+ * GET /feedback/mine 列表项。
+ *
+ * 契约明确列表 **不返回** contact 与 diagnostics；这里刻意不声明这两个字段，
+ * 既避免误用，也让契约测试可以通过反射断言「列表 DTO 没有隐私字段」。
+ */
+data class FeedbackItemDto(
+    val feedbackId: String? = null,
+    val kind: String? = null,
+    val body: String? = null,
+    val platform: String? = null,
+    val appVersion: String? = null,
+    val buildType: String? = null,
+    val osVersion: String? = null,
+    val deviceModel: String? = null,
+    val status: String? = null,
+    val createdAt: String? = null,
+)
+
+data class FeedbackPageResponse(
+    val items: List<FeedbackItemDto>? = null,
+    val nextCursor: String? = null,
+    val hasMore: Boolean? = null,
+)
+
 interface SyncApi {
 
     /** 匿名登录请求体按契约可为空；installId 通过 clientId 放入 push 请求。 */
@@ -602,4 +651,22 @@ interface SyncApi {
         @Path("id") id: String,
         @Body body: HouseholdRoomOrderRequest,
     ): HouseholdRoomListResponse
+
+    // ---- 反馈（openapi 0.12.0 / 后端 v0.16.0） ----
+
+    /** 幂等键优先取 `Idempotency-Key` 头；重复内容重放会带 `Idempotent-Replayed: true`。 */
+    @POST("api/v1/feedback")
+    suspend fun createFeedback(
+        @Header("Authorization") authorization: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body body: FeedbackCreateRequest,
+    ): FeedbackCreatedDto
+
+    /** 只返回当前账号的反馈，按 createdAt 倒序游标分页。 */
+    @GET("api/v1/feedback/mine")
+    suspend fun listMyFeedback(
+        @Header("Authorization") authorization: String,
+        @Query("cursor") cursor: String?,
+        @Query("limit") limit: Int,
+    ): FeedbackPageResponse
 }

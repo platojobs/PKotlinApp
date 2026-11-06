@@ -63,6 +63,10 @@
             android:name=".ui.products.ProductDetailActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".ui.profile.FeedbackHistoryActivity"
+            android:exported="false" />
+
         <!-- 后台采集前台服务：仅由界面触发，连接断开时自动停止。 -->
         <service
             android:name=".data.collection.ReadingCollectionService"

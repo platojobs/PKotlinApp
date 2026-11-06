@@ -567,6 +567,16 @@
                     android:minHeight="@dimen/touch_min"
                     android:text="@string/profile_feedback" />
 
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/feedbackHistoryButton"
+                    style="?attr/materialButtonOutlinedStyle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/space_8"
+                    android:minHeight="@dimen/touch_min"
+                    android:contentDescription="@string/profile_feedback_history"
+                    android:text="@string/profile_feedback_history" />
+
                 <TextView
                     android:id="@+id/feedbackPending"
                     android:layout_width="match_parent"

@@ -692,24 +692,56 @@ interface SceneRunDao {
     suspend fun clear()
 }
 
-/** 本地反馈草稿：pending 即「未发送」，等待未来接入远端后重试。 */
+/** 本地反馈草稿与待发队列：状态机 pending → sending → sent / failed。 */
 @Dao
 interface FeedbackDao {
 
     @Insert
     suspend fun insert(draft: FeedbackDraftEntity): Long
 
+    /** 待发队列：pending / sending / failed；已送达的不再出现在队列里。 */
     @Query(
-        "SELECT * FROM feedback_drafts WHERE state = 'pending' " +
+        "SELECT * FROM feedback_drafts WHERE state IN ('pending', 'sending', 'failed') " +
             "ORDER BY createdAt DESC, id DESC",
     )
-    fun observePending(): Flow<List<FeedbackDraftEntity>>
+    fun observeUnsent(): Flow<List<FeedbackDraftEntity>>
 
     @Query("SELECT * FROM feedback_drafts WHERE id = :id LIMIT 1")
     suspend fun find(id: Long): FeedbackDraftEntity?
 
-    @Query("UPDATE feedback_drafts SET state = 'sent' WHERE id = :id")
-    suspend fun markSent(id: Long)
+    /** 只有尚未送达的草稿可以进入 sending；sent 状态不允许被覆盖。 */
+    @Query(
+        "UPDATE feedback_drafts SET state = 'sending', lastAttemptAt = :attemptedAt " +
+            "WHERE id = :id AND state != 'sent'",
+    )
+    suspend fun markSending(id: Long, attemptedAt: Long)
+
+    /** 2xx 且拿到 feedbackId 才调用；成功时清空历史错误。 */
+    @Query(
+        "UPDATE feedback_drafts SET state = 'sent', remoteFeedbackId = :feedbackId, " +
+            "lastError = NULL, lastErrorCode = NULL, lastErrorRetryAfterSeconds = NULL, " +
+            "lastAttemptAt = :attemptedAt WHERE id = :id",
+    )
+    suspend fun markSent(id: Long, feedbackId: String, attemptedAt: Long)
+
+    @Query(
+        "UPDATE feedback_drafts SET state = 'failed', retryCount = :retryCount, " +
+            "lastError = :error, lastErrorCode = :errorCode, " +
+            "lastErrorRetryAfterSeconds = :retryAfterSeconds, " +
+            "lastAttemptAt = :attemptedAt WHERE id = :id",
+    )
+    suspend fun markFailed(
+        id: Long,
+        retryCount: Int,
+        error: String?,
+        errorCode: String?,
+        retryAfterSeconds: Long?,
+        attemptedAt: Long,
+    )
+
+    /** 进程被杀导致卡在 sending 的草稿，下次启动回到 pending。 */
+    @Query("UPDATE feedback_drafts SET state = 'pending' WHERE state = 'sending'")
+    suspend fun resetInFlightToPending()
 
     @Query("DELETE FROM feedback_drafts WHERE id = :id")
     suspend fun delete(id: Long)

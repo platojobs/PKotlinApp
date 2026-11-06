@@ -9,4 +9,5 @@ object ApiLimits {
     const val READINGS_MAX = 500
     const val EXPORT_MAX = 5000
     const val CHANGES_MAX = 500
+    const val FEEDBACK_PAGE_MAX = 100
 }

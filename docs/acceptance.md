@@ -1,9 +1,9 @@
-# 真机验收清单（v0.18.0）
+# 真机验收清单（v0.19.0）
 
 本清单用于「执行人不在开发现场」时也能照着做完验收。每项都写明**操作步骤、预期现象、失败判定**。
 所有结果请记录到文末的「验收记录表」；未实际执行的项不要填 PASS。
 
-- 适用版本：`versionName = 0.18.0`（`versionCode = 26`）
+- 适用版本：`versionName = 0.19.0`（`versionCode = 27`）
 - 应用包名：`com.platojobs.pkotlinapp`
 - 主界面：`com.platojobs.pkotlinapp.ui.MainActivity`
 - 设备详情：`com.platojobs.pkotlinapp.ui.detail.DeviceDetailActivity`
@@ -539,6 +539,20 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
 - 预期：`user_version = 16`；旧规则/场景/设备原样保留；旧规则 `sceneId/intervalMinutes` 为 `NULL`，旧场景 `enabled = 1`；`scene_runs` 与 `index_scene_runs_timestamp` 存在。之后新建的场景触发规则 `sceneId` 非空。
 - 失败判定：版本不是 16、旧数据丢失、`scene_runs` 缺失、升级后打开「智能」崩溃。
 
+### M14 v16 → v17 反馈同步状态迁移（v0.19.0 新增）
+
+- 前置：v0.18.0 包（Room v16）已使用过，且至少提交过一条未发送反馈草稿。
+- 步骤：
+  1. 覆盖安装 v0.19.0，打开「我的」→「意见反馈」，确认旧草稿仍在列表；
+  2. 导出数据库查询：
+     ```bash
+     sqlite3 /tmp/device_dashboard.db "PRAGMA user_version;"
+     sqlite3 /tmp/device_dashboard.db "SELECT id, category, description, state, retryCount, lastError, lastErrorCode, remoteFeedbackId FROM feedback_drafts;"
+     ```
+  3. 联网后点旧草稿的「重试发送」。
+- 预期：`user_version = 17`；旧草稿的 `category/description/contact/createdAt/state` 原样保留；新增列默认 `retryCount = 0`、`lastError/lastErrorCode/remoteFeedbackId` 为 `NULL`；重试成功后 `state = sent` 且 `remoteFeedbackId` 非空，未成功则保持 `failed` 并写入真实错误。
+- 失败判定：版本不是 17、旧草稿丢失或被当成已发送、升级后打开反馈页崩溃。
+
 ### 7.9 场景执行闭环与首页聚合验收（v0.18.0 新增）
 
 - 前置：已登录、至少一台设备上报读数、后端可用。
@@ -554,6 +568,25 @@ adb shell dumpsys package com.platojobs.pkotlinapp | grep -E "versionName|versio
   9. 首页「最近活动」显示最近同步/告警/场景触发时间；当天没有告警或场景触发时显示「暂无」，不出现占位时间；
   10. 下拉刷新：**预期** 触发一次同步，完成后聚合数字刷新，列表不卡顿。
 - 失败判定：执行记录出现界面伪造的「成功」行、通知重复、冷却无效、停用后仍执行、首页出现硬编码数字、下拉刷新卡死。
+
+### 7.10 意见反馈真实链路验收（v0.19.0 新增）
+
+- 前置：已登录；后端为 PJGoIoT v0.16.0（fixture 或真实存储）；准备可断网的环境。
+- 步骤与预期：
+  1. 「我的」→「意见反馈」，选择类型、填写描述后提交：**预期** 弹出「反馈已发送」；后端记录新增一条，`kind` 与内容一致；
+  2. 打开「我的反馈记录」：**预期** 列表出现该条，状态为「已提交」，显示时间；下拉刷新后仍在；
+  3. 断网后提交第二条：**预期** 提示网络不可用；待发队列显示「待发送（第 1 次重试）」；草稿不被删除；
+  4. 恢复网络后点「重试发送」：**预期** 发送成功、队列中该草稿消失；后端只新增一条（同一 `Idempotency-Key` 重放不重复）；
+  5. 在等待自动退避期间不反复点重试：**预期** 自动重试次数不超过 5 次，间隔逐步变长；超过后草稿仍显示「发送失败：<原因>」，可继续手动重试；
+  6. 触发 429（可用脚本快速提交超过账号 10/min）：**预期** 提示「提交过于频繁，建议 N 秒后再试」，不自动连续重试；
+  7. 检查数据库：
+     ```bash
+     sqlite3 /tmp/device_dashboard.db "SELECT id, category, description, state, retryCount, lastErrorCode, remoteFeedbackId FROM feedback_drafts;"
+     ```
+     **预期** 成功草稿 `state = sent` 且 `remoteFeedbackId` 非空；失败草稿保留真实 `retryCount/lastErrorCode`，绝不出现「没有 feedbackId 却 sent」；
+  8. 200% 字号与 TalkBack：反馈表单与记录列表不截断，行可被完整朗读（类型/状态/时间），底部加载更多触控区 ≥48dp。
+- 失败判定：未发送却显示成功、拿到 2xx 但缺 `feedbackId` 仍标 sent、失败草稿被静默删除、429 后自动狂重试、列表出现 contact/diagnostics、加载更多重复项。
+- 记录：fixture e2e 已覆盖提交 201、同 key 重放、409、400、本人列表、游标分页与跨账号隔离；429 与真机断网/大字号需按上述步骤人工执行后填 PASS。
 
 
 ### 7.2 离线缓存与分组验收（v0.3.5 新增）

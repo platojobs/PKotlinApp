@@ -121,9 +121,20 @@ class AppContainer(context: Context) {
         )
     }
 
-    /** 意见反馈：当前无远端接口，提交如实落在本地待发队列。 */
+    /** 意见反馈：真实提交到后端，失败时本地草稿保留并按状态机重试。 */
     val feedbackStore: com.platojobs.pkotlinapp.data.feedback.FeedbackStore by lazy {
-        com.platojobs.pkotlinapp.data.feedback.FeedbackStore(database.feedbackDao())
+        com.platojobs.pkotlinapp.data.feedback.FeedbackStore(
+            dao = database.feedbackDao(),
+            remote = com.platojobs.pkotlinapp.data.feedback.RemoteFeedbackDataSource(
+                api = syncApi,
+                tokenStore = secureTokenStore,
+            ),
+            contextProvider = { com.platojobs.pkotlinapp.data.feedback.androidFeedbackContext() },
+            scope = ioScope,
+        ).also { store ->
+            // 进程被杀时可能停在 sending，启动后回到 pending 等待用户手动重试。
+            ioScope.launch { store.recoverInFlight() }
+        }
     }
 
     /** 本地场景仓库：仅本机，不参与云端同步。 */

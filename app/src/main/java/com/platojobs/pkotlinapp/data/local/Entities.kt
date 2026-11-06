@@ -213,18 +213,31 @@ data class SceneActionEntity(
 )
 
 /**
- * 本地意见反馈草稿：尚未接入反馈服务端时先落库排队。
- * state=pending 表示「未发送」，sent 仅在未来接入远端后使用。
+ * 本地意见反馈草稿与待发队列。
+ *
+ * state 为同步状态机：pending / sending / sent / failed；
+ * 只有服务端返回 2xx 且拿到 feedbackId 才会写入 [remoteFeedbackId] 并置为 sent。
+ * 失败草稿永久保留，[retryCount] / [lastError] 用于如实展示重试次数与原因。
  */
 @Entity(tableName = "feedback_drafts", indices = [Index("state")])
 data class FeedbackDraftEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    /** [com.platojobs.pkotlinapp.domain.feedback.FeedbackCategory] 名称。 */
+    /** [com.platojobs.pkotlinapp.domain.feedback.FeedbackKind] 名称。 */
     val category: String,
     val description: String,
     val contact: String? = null,
     val createdAt: Long,
     @ColumnInfo(defaultValue = "'pending'") val state: String = "pending",
+    @ColumnInfo(defaultValue = "0") val retryCount: Int = 0,
+    /** 服务端可读失败原因（或网络错误描述）。 */
+    val lastError: String? = null,
+    /** 机读错误码，例如 FEEDBACK_RATE_LIMITED / IDEMPOTENCY_CONFLICT。 */
+    val lastErrorCode: String? = null,
+    /** 429 响应 `Retry-After` 的秒数。 */
+    val lastErrorRetryAfterSeconds: Long? = null,
+    /** 服务端 feedbackId；只有它存在才代表真正送达。 */
+    val remoteFeedbackId: String? = null,
+    val lastAttemptAt: Long? = null,
 )
 
 @Entity(tableName = "scan_logs")

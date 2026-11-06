@@ -26,6 +26,12 @@ object ApiErrorCodes {
 
     /** 409：整段房间重排集合不一致（v0.14.0 起可作为机读判定，无需解析 message）。 */
     const val ROOM_SET_MISMATCH = "ROOM_SET_MISMATCH"
+
+    /** 429：反馈提交超过账号或 IP 维度额度（契约 0.12.0）。 */
+    const val FEEDBACK_RATE_LIMITED = "FEEDBACK_RATE_LIMITED"
+
+    /** 413：反馈请求体超过 256 KiB。 */
+    const val PAYLOAD_TOO_LARGE = "PAYLOAD_TOO_LARGE"
 }
 
 data class ApiErrorDto(
@@ -41,12 +47,15 @@ data class ApiErrorEnvelope(
  * 读取一次错误响应体里的 `code`；body 只能消费一次，因此必须在抛出异常时调用，
  * 不能等到 UI 分类时再读。
  */
-internal fun HttpException.apiErrorCode(): String? = runCatching {
+internal fun HttpException.apiErrorCode(): String? = apiErrorDetails()?.code
+
+/** 错误体里的 code 与 message 一次读取；body 只能消费一次。 */
+internal fun HttpException.apiErrorDetails(): ApiErrorDto? = runCatching {
     val raw = response()?.errorBody()?.string().orEmpty()
     if (raw.isBlank()) {
         null
     } else {
-        ApiClient.moshi().adapter(ApiErrorEnvelope::class.java).fromJson(raw)?.error?.code
+        ApiClient.moshi().adapter(ApiErrorEnvelope::class.java).fromJson(raw)?.error
     }
 }.getOrNull()
 

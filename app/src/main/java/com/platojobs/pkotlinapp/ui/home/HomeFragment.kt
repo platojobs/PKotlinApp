@@ -270,20 +270,39 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         }
 
         val context = requireContext()
+        val largeFont = resources.configuration.fontScale >= LARGE_FONT_SCALE
         val content = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(8), dp(20), dp(8))
         }
         content.addView(TextView(context).apply {
-            text = getString(
-                R.string.room_detail_summary,
-                detail.total,
-                detail.onlineCount,
-                detail.offlineCount,
-                detail.markedCount,
-            )
+            // 200% 字号下汇总行会把「已标记」拆到两行，改为按语义换行。
+            text = if (largeFont) {
+                getString(
+                    R.string.room_detail_summary_large,
+                    detail.total,
+                    detail.onlineCount,
+                    detail.offlineCount,
+                    detail.markedCount,
+                )
+            } else {
+                getString(
+                    R.string.room_detail_summary,
+                    detail.total,
+                    detail.onlineCount,
+                    detail.offlineCount,
+                    detail.markedCount,
+                )
+            }
             setTextAppearance(R.style.TextAppearance_App_Caption)
             setTextColor(context.getColor(R.color.text_secondary))
+        })
+        // 契约明确：UserDevice / PushDevice 没有 markedAt 字段，标记不会进入同步或 change_log。
+        content.addView(TextView(context).apply {
+            setText(R.string.room_detail_mark_local_hint)
+            setTextAppearance(R.style.TextAppearance_App_Caption)
+            setTextColor(context.getColor(R.color.text_secondary))
+            setPadding(0, dp(4), 0, 0)
         })
 
         val selection = LinkedHashMap<String, CheckBox>()
@@ -298,14 +317,15 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             content.addView(row)
         }
 
+        // 200% 字号下「断开连接」在横排里会折成两行，大字号改为整行竖排按钮。
         val actions = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
+            orientation = if (largeFont) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.END
             setPadding(0, dp(8), 0, 0)
         }
         fun selectedMacs(): List<String> =
             selection.filterValues { it.isChecked }.keys.toList()
-        actions.addView(batchButton(R.string.room_detail_mark) {
+        actions.addView(batchButton(R.string.room_detail_mark, largeFont) {
             val macs = selectedMacs()
             if (macs.isEmpty()) {
                 toast(getString(R.string.room_detail_select_none))
@@ -313,7 +333,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                 viewModel.markDevices(macs)
             }
         })
-        actions.addView(batchButton(R.string.room_detail_disconnect) {
+        actions.addView(batchButton(R.string.room_detail_disconnect, largeFont) {
             val macs = selectedMacs()
             if (macs.isEmpty()) {
                 toast(getString(R.string.room_detail_select_none))
@@ -344,10 +364,16 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         return getString(R.string.room_detail_device_title, entry.name, status) + "\n" + meta
     }
 
-    private fun batchButton(textRes: Int, onClick: () -> Unit): MaterialButton =
+    private fun batchButton(textRes: Int, fullWidth: Boolean, onClick: () -> Unit): MaterialButton =
         MaterialButton(requireContext(), null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
             setText(textRes)
             minHeight = dp(48)
+            layoutParams = LinearLayout.LayoutParams(
+                if (fullWidth) LinearLayout.LayoutParams.MATCH_PARENT else LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                if (fullWidth) topMargin = dp(8)
+            }
             setOnClickListener { onClick() }
         }
 

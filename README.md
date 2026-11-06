@@ -659,6 +659,17 @@ Debug / Release 都可通过 `apiBaseUrl` 切换；发布前请传入正式域�
 - **Room v17（`MIGRATION_16_17`）**：`feedback_drafts` 增加上述 6 列（缺省值保证旧草稿保持 pending）；`FeedbackSyncMigrationTest` 在真实 SQLite 上验证旧草稿内容/state 保留、新增列默认值与可写性。
 - **测试**：`FeedbackStoreTest`（pending→sending→sent、失败保留、幂等键复用、429 不自动重试、超过重试上限仍不删除、退避上限、上下文自动填充）、`FeedbackDtoContractTest`（请求/响应字段对齐、列表 DTO 无隐私字段、旧分类回落 other）、`FeedbackSyncMigrationTest`（v16→v17 真实 SQLite）；fixture e2e 补提交 201、同 key 重放同 ID、同 key 不同内容 409、缺 context 400、本人列表、游标分页与跨账号不可见。单测全绿、`lintDebug` 0 issue、`assembleDebug`、fixture e2e 全绿，tag `v0.19.0`（`versionCode = 27`）。
 
+### 6.18 推送令牌注册生命周期（v0.29.0）
+
+- **后端契约（PJGoIoT v0.23.0 / openapi 0.18.0）**：`POST /api/v1/push/devices` 接收 `{platform:"android", token, appVersion?, deviceModel?}`，Bearer 鉴权，按 `(user_id, token)` 幂等 upsert 并把 `inactive` 重置为 `active`；缺 platform/token 返回 `400 PUSH_DEVICE_INVALID`。`DELETE /api/v1/push/devices/{deviceId}` 只置 `inactive` 不硬删，404（不存在或属于他人）按已清理处理。
+- **触发点**：匿名登录/会话就绪后注册（`RemoteSyncDataSource` 写入新 session 后回调）；配对码领取成功（`AccountService.claimPairing`）后注册；应用启动在 `coldStartPull` 之后对未注册成功项补齐；FCM token 刷新预留 `onTokenChanged()`；登出与删除账号前先调 `unregisterAll()`（逐条 DELETE 再清本地），DELETE 失败不阻塞本地退出。
+- **本地表 / 迁移**：Room v22（`MIGRATION_21_22`）新增 `push_devices(id, token UNIQUE, remoteDeviceId, status, lastError, retryCount, nextRetryAt, platform, createdAt, updatedAt)`，按 `token` 唯一、按 `status` 索引；`PushDeviceMigrationTest` 在真实 SQLite 上验证旧设备/场景数据原样保留、新表默认值与可写性。状态为 `unconfigured/pending/registered/rejected/inactive`；token 轮换时旧行注销后置 `inactive`。
+- **失败路径**：网络/5xx 指数退避（30s 起、每次翻倍、6h 封顶），`retryCount/nextRetryAt/lastError` 落库，重启后由启动补齐继续；400 与其它明确拒绝为终态，记录可读原因且不自动重试；401/403 保留 pending、等待重新登录后由会话就绪再次注册；空 token / 取 token 失败同样不虚构、不进服务端；注销 404 视为已不存在。
+- **权限与注册解耦**：Android 13+ `POST_NOTIFICATIONS` 运行时申请只影响通知展示，注册流程不读取权限结果；用户拒绝时仍会完成服务端注册，界面如实提示「未授权通知，告警与推送都不会展示」。
+- **未配置推送服务**：工程没有 `google-services.json`，默认 `UnavailablePushTokenProvider` 返回 `NotConfigured`，注册停在「未配置」且用空 token 占位行记录原因；界面显示「未配置推送服务，告警目前只在本机提醒」，不会显示成「已开启」。接入点集中在 `AppContainer.createPushTokenProvider()`，放入 google-services.json 并接 Firebase Messaging 后替换即可。
+- **接收与跳转预留**：`PushMessageHandler` 解析 data 中的 `alertId/kind/severity/mac`，设备类告警（`device_*`/`rule_*`/`metric_*`/`low_rssi`）跳设备详情，场景类（`scene_*`）跳场景页，未知 kind 带 mac 仍可进设备详情；`PushIntentRouter` 生成对应 Intent，当前无真实推送，解析与路由由单测覆盖。
+- **测试**：`PushRegistrationRepositoryTest`（注册、幂等重注册、token 轮换、网络退避、400 终态、权限拒绝、注销、注销失败仍清本地、空 token、provider 失败、未登录跳过、状态恢复）、`PushMessageHandlerTest`（解析、设备/场景路由与回落）、`PushDeviceMigrationTest`（v21→v22）；fixture 与真 Postgres e2e 均补「注册 → 同 token 幂等 → 跨用户 404 → 注销 204 幂等 → inactive 重置 active」，并覆盖缺 token/platform 的 400 `PUSH_DEVICE_INVALID`。
+
 ---
 
 ## 7. 构建与运行
@@ -668,7 +679,7 @@ export JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk-21.jdk/Contents/Home
 
 ./gradlew assembleDebug        # Debug APK
 ./gradlew lintDebug            # Lint
-./gradlew testDebugUnitTest    # 单元测试：294 个（含规则防抖/恢复/迁移、图表命中、推荐模板、双语/无障碍/200% 字号、家庭结构同步/未知 entity、市场洞察、场景引擎闭环、首页聚合、反馈状态机/幂等/429/契约/迁移）
+./gradlew testDebugUnitTest    # 单元测试：406 个（含规则防抖/恢复/迁移、图表命中、推荐模板、双语/无障碍/200% 字号、家庭结构同步/未知 entity、市场洞察、场景引擎闭环、首页聚合、反馈状态机/幂等/429/契约/迁移、推送注册生命周期/路由/迁移）
 ./gradlew assembleRelease      # 签名 Release APK
 ./gradlew bundleRelease        # 签名 Release AAB
 
@@ -1040,6 +1051,7 @@ v0.27.0 截图走查修复了四个问题：**导出按钮遮挡正文**——�
 
 ## 17. 版本记录
 
+- `v0.29.0`：接入后端 v0.23.0（契约 0.18.0）的推送令牌注册。新增 `PushTokenProvider` + `PushRegistrationRepository`：会话就绪/配对码领取后注册、token 变化重注册并注销旧 token、启动补齐未注册项、登出与删号前先 DELETE 再清本地。Room v22（`MIGRATION_21_22`）新增 `push_devices`（token 唯一、status/lastError/retryCount/nextRetryAt），`PushDeviceMigrationTest` 用真实 SQLite 验证旧数据保留。网络/5xx 指数退避（30s 起、6h 封顶）并保留 pending；400 终态记录可读原因不重试；401/403 等重新登录后由会话就绪再注册；注销 404 视为已不存在。Android 13+ 通知权限与注册完全解耦：拒绝权限仍完成注册，界面如实提示「未授权通知，告警与推送都不会展示」。工程无 `google-services.json`，默认 `UnavailablePushTokenProvider` 不虚构 token，界面显示「未配置推送服务，告警目前只在本机提醒」，接入点集中在 `AppContainer.createPushTokenProvider()`。预留 `PushMessageHandler`/`PushIntentRouter`：解析 `alertId/kind/mac`，设备类跳详情、场景类跳场景页。单测 406 全绿、`lintDebug` 0 error、fixture 与真 Postgres e2e（注册/幂等/跨用户 404/注销/400）全绿，tag `v0.29.0`（`versionCode = 38`）。
 - `v0.28.1`：截图构图收口（不改功能）。**首页** `home.png` 重截为 scroll 0，从「首页」标题开始，今日概览（2400 条读数、峰值 23 点 100 条）与设备状态（10 在线 / 2 离线 / 0 未分配房间 / 0 低电量）完整可见；底部裁剪到 2073，切点落在「设备状态」卡底 2060 与「最近活动」卡顶 2081 之间。**家庭区** `profile_household.png` 停点保持「家庭」卡顶部（top=394），裁剪到 2020，最后完整元素为「加入家庭」按钮，卡片底边下保留留白，不再露出「迁移到新设备」的半句。两张图断言：`home.png`「今日概览」卡 top=1014 / 视口 top=993（间隙 21px），`profile_household.png`「家庭」卡 top=394 / 视口 top=394（间隙 0px），均 PASS。单测 385 全绿、`lintDebug` 0 error、fixture e2e 与真 Postgres e2e 全绿，tag `v0.28.1`（`versionCode = 37`）。
 - `v0.28.0`：截图层收口。**停点**：首页原停点让「今日概览」只剩「今日读数按小时分布…」一行、家庭区原停点让「后台采集」只剩「断开自动停止。」一句；改为整卡顶部/区块标题（首页「客厅温湿度计」卡、家庭区「家庭」卡），并新增 `scripts/check-screenshot-top.py` 用 uiautomator 节点树自动断言（首个可见 `text` 节点须以 `--expect-top` 开头，其 `CardView` top 不高于视口 top，容差 2dp），不靠肉眼。**峰值口径**：`maxByOrNull` 并列取首个导致均匀数据下「峰值 0 点」；新增 `List<HourCount>.peakHour()` 并列取最晚小时，今日显示「峰值 22 点 100 条」，补 `HourlyPeakTest`（并列/单峰/无数据）。重截 `home.png`、`profile_household.png`。单测 385 全绿、`lintDebug` 0 error、fixture e2e 与真 Postgres e2e 全绿，tag `v0.28.0`（`versionCode = 36`）。
 - `v0.27.0`：截图验收四项修复。**导出遮挡**：设备详情导出说明与按钮改为纵向布局，滚动容器底部 padding = 48dp + `systemBars.bottom`，正文与按钮不再落在手势条下方；确认全仓无 `FloatingActionButton`。**连接状态**：新增 `ConnectionUi` 单一状态源，连接中/已连接/已断开分别对应「正在连接… + 取消」「已连接 + 断开连接 + RSSI」「未连接 + 重新连接」，「设备信息」提示同源派生，补 `ConnectionUiTest` 覆盖三态与跨设备状态。**截图切字**：逐页滚动到关键卡片完整可见再截，重截首页、设备详情、场景、家庭区、扫描日志、产品列表、产品详情（GATT 末行）、市场明细、房间管理、会话与两张 200% 字号截图。**MAC**：seed 设备 MAC 改为 `C8:47:8C:` 开头的假地址，`seed-local-db.py` 按设备名匹配，不再复制 MAC。单测、lint、fixture e2e 与真 Postgres e2e 全绿，tag `v0.27.0`（`versionCode = 35`）。

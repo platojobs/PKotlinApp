@@ -458,6 +458,10 @@ class HomeAdapter(
                     if (connected) R.color.success else R.color.text_tertiary,
                 ),
             )
+            // RSSI 只有本机 BLE 连接时才有意义；云端 presence 设备没有本地信号，
+            // 隐藏图标，把整行宽度留给「云端读数暂不可用」这类长文案。
+            binding.signal.visibility =
+                if (connected) View.VISIBLE else View.GONE
             binding.signal.setRssi(device.lastRssi)
 
             fun renderReading(text: CharSequence, primary: Boolean, label: CharSequence?) {

@@ -156,7 +156,7 @@
     <string name="detail_never_scanned">本机从未扫描到</string>
     <string name="detail_cloud_status">云端状态</string>
     <string name="detail_cloud_last_seen">云端最近上报</string>
-    <string name="detail_cloud_last_seen_value">%1$s（服务端接收读数时间）</string>
+    <string name="detail_cloud_last_seen_value">%1$s\n（服务端接收读数时间）</string>
     <string name="detail_cloud_never_reported">从未上报过读数</string>
     <string name="detail_compatibility">兼容性</string>
     <string name="detail_offline_hint">网络不可用，以下为本地缓存数据。</string>
@@ -631,11 +631,12 @@
     <!-- 服务端 presence 只说「最近 15 分钟有没有读数上报」，不能写成不加限定的「在线」。 -->
     <string name="home_device_cloud_recent">云端 15 分钟内有上报</string>
     <!-- 超时档必须带出最近一次上报时间，与「15 分钟内有上报」明确区分。 -->
-    <string name="home_device_cloud_stale">云端上报已超时 · 最近上报 %1$s</string>
+    <string name="home_device_cloud_stale">云端上报已超时\n最近上报 %1$s</string>
     <string name="home_device_cloud_unknown">云端从未收到上报</string>
     <string name="home_device_cloud_never">无记录</string>
-    <!-- 跨平台设备（非 Android）本机无法直连，作为四档状态后的附加说明。 -->
-    <string name="device_local_unavailable">%1$s · 本机不可连接（来自 %2$s）</string>
+    <!-- 跨平台设备（非 Android）本机无法直连，独立成行；
+         200% 字号下整句仍会在「来自」处断行，平台说明再分一行，保证短语不被拆开。 -->
+    <string name="device_local_unavailable">%1$s\n本机不可连接\n（来自 %2$s）</string>
     <string name="home_device_last_reading">最近读数</string>
     <string name="home_device_cloud_reading">云端读数</string>
     <string name="home_device_cloud_loading">正在读取云端读数…</string>
@@ -863,9 +864,13 @@
     <string name="room_unsynced_meta">%1$s · 未同步</string>
 
     <!-- 房间详情：聚合视图与批量操作 -->
-    <string name="room_detail_summary">共 %1$d 台 · 本机已连接 %2$d · 15 分钟内有上报 %3$d · 超时未上报 %4$d · 从未上报 %5$d · 已标记 %6$d</string>
-    <string name="room_detail_summary_large">共 %1$d 台 · 本机已连接 %2$d\n15 分钟内有上报 %3$d · 超时未上报 %4$d\n从未上报 %5$d · 已标记 %6$d</string>
-    <string name="room_detail_device_title">%1$s · %2$s</string>
+    <!-- 100% 字号下总览也会折行：按「本机 / 云端两档 / 其余」分组换行，
+         避免把「超时未上报」拆到词中间。 -->
+    <string name="room_detail_summary">共 %1$d 台 · 本机已连接 %2$d\n15 分钟内有上报 %3$d · 超时未上报 %4$d\n从未上报 %5$d · 已标记 %6$d</string>
+    <!-- 200% 字号下一行只放一个计数，避免「超时未上/报」这类拆词。 -->
+    <string name="room_detail_summary_large">共 %1$d 台 · 本机已连接 %2$d\n15 分钟内有上报 %3$d\n超时未上报 %4$d\n从未上报 %5$d\n已标记 %6$d</string>
+    <!-- 名称与状态分行：状态含「超时 + 最近上报 + 本机不可连接」后，同一行会把短语拆开。 -->
+    <string name="room_detail_device_title">%1$s\n%2$s</string>
     <string name="room_detail_device_meta">%1$s %2$s</string>
     <string name="room_detail_last_seen">最近上报 %1$s（%2$s，服务端接收时间）</string>
     <string name="room_detail_no_reading">暂无读数</string>

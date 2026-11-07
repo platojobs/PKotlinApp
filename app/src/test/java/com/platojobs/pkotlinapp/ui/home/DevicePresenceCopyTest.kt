@@ -51,9 +51,10 @@ class DevicePresenceCopyTest {
         )
 
         // 超时档不能只写「云端最近上报」：必须明确已超时，并带出最近一次上报时间。
+        // 「已超时」与「最近上报」分行，避免窄卡片把短语拆到两行中间。
         val staleAt = System.currentTimeMillis() - 21 * 60_000L
         val stale = deviceLinkStatusText(context, DeviceLinkStatus.CLOUD_STALE, staleAt)
-        assertTrue(stale, stale.startsWith("云端上报已超时 · 最近上报 "))
+        assertTrue(stale, stale.startsWith("云端上报已超时\n最近上报 "))
         assertTrue(stale, stale.contains("21 分钟前"))
     }
 
@@ -73,7 +74,8 @@ class DevicePresenceCopyTest {
             WINDOW_EDGE,
             "ios",
         )
-        assertEquals("云端 15 分钟内有上报 · 本机不可连接（来自 iOS）", ios)
+        // 平台说明再分一行：200% 字号下整句会在「来自」处断行。
+        assertEquals("云端 15 分钟内有上报\n本机不可连接\n（来自 iOS）", ios)
 
         // 平台说明只是附加维度，不能改变四档本身的文案。
         assertTrue(ios.startsWith(android))

@@ -626,10 +626,10 @@
     <string name="home_device_connected">Connected on this phone</string>
     <!-- Server presence only means "a reading was reported in the last 15 minutes"; never a plain "online". -->
     <string name="home_device_cloud_recent">Reported within 15 min</string>
-    <string name="home_device_cloud_stale">Cloud report timed out · last reported %1$s</string>
+    <string name="home_device_cloud_stale">Cloud report timed out\nLast reported %1$s</string>
     <string name="home_device_cloud_unknown">Never reported to cloud</string>
     <string name="home_device_cloud_never">no record</string>
-    <string name="device_local_unavailable">%1$s · Not connectable on this phone (%2$s)</string>
+    <string name="device_local_unavailable">%1$s\nNot connectable on this phone\n(%2$s)</string>
     <string name="home_device_last_reading">Latest reading</string>
     <string name="home_device_cloud_reading">Cloud reading</string>
     <string name="home_device_cloud_loading">Loading cloud reading…</string>
@@ -857,9 +857,9 @@
     <string name="room_unsynced_meta">%1$s · Not synced</string>
 
     <!-- Room detail: aggregate view and batch actions -->
-    <string name="room_detail_summary">Total: %1$d · connected here: %2$d · reported in 15 min: %3$d · reported earlier: %4$d · never reported: %5$d · marked: %6$d</string>
-    <string name="room_detail_summary_large">Total: %1$d · connected here: %2$d\nreported in 15 min: %3$d · reported earlier: %4$d\nnever reported: %5$d · marked: %6$d</string>
-    <string name="room_detail_device_title">%1$s · %2$s</string>
+    <string name="room_detail_summary">Total: %1$d · connected here: %2$d\nreported in 15 min: %3$d · reported earlier: %4$d\nnever reported: %5$d · marked: %6$d</string>
+    <string name="room_detail_summary_large">Total: %1$d · connected here: %2$d\nreported in 15 min: %3$d\nreported earlier: %4$d\nnever reported: %5$d\nmarked: %6$d</string>
+    <string name="room_detail_device_title">%1$s\n%2$s</string>
     <string name="room_detail_device_meta">%1$s %2$s</string>
     <string name="room_detail_last_seen">Last reported %1$s (%2$s, server receive time)</string>
     <string name="room_detail_no_reading">No reading yet</string>

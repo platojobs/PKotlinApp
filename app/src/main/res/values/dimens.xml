@@ -23,6 +23,8 @@
     <dimen name="row_h_2line">72dp</dimen>
     <dimen name="row_h_3line">88dp</dimen>
     <dimen name="nav_bar_h">56dp</dimen>
+    <!-- 底部导航需要 icon + label 两行，按 Material 规范至少 80dp；顶部栏仍是 56dp。 -->
+    <dimen name="bottom_nav_h">80dp</dimen>
     <dimen name="header_h_expanded">96dp</dimen>
     <dimen name="tab_bar_h">56dp</dimen>
 

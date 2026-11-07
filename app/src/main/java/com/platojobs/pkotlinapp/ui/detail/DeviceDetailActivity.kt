@@ -15,6 +15,8 @@ import android.text.TextUtils
 import android.view.View
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
@@ -22,6 +24,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.view.children
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -62,6 +65,7 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.roundToInt
 
 class DeviceDetailActivity : AppCompatActivity() {
 
@@ -150,6 +154,9 @@ class DeviceDetailActivity : AppCompatActivity() {
         binding.root.applyHorizontalInsets()
         binding.toolbar.applyTopInset()
         binding.scrollContent.applyBottomInsetPadding()
+        // 200% 字号下标签与值并排会把「云端从未收到上报」这类短语拆到词中间，
+        // 大字号时这几行改为标签在上、值整行在下。
+        applyLargeFontRows()
 
         binding.toolbar.setNavigationOnClickListener {
             onBackPressedDispatcher.onBackPressed()
@@ -813,11 +820,44 @@ class DeviceDetailActivity : AppCompatActivity() {
         Snackbar.make(binding.root, messageRes, Snackbar.LENGTH_LONG).show()
     }
 
+    /**
+     * 大字号下把设备信息里的「标签 + 值」改成竖排：
+     * 横向时标签各占 100dp，值列只剩半屏，
+     * 「云端从未收到上报」「未识别的型号」都会被拆到词中间。
+     */
+    private fun applyLargeFontRows() {
+        if (resources.configuration.fontScale < LARGE_FONT_SCALE) return
+        val rows = binding.infoContent.children
+            .filterIsInstance<LinearLayout>()
+            .filter { it.childCount == 2 }
+        rows.forEach { row ->
+            row.orientation = LinearLayout.VERTICAL
+            val label = row.getChildAt(0) as TextView
+            val value = row.getChildAt(1) as TextView
+            (label.layoutParams as LinearLayout.LayoutParams).apply {
+                width = LinearLayout.LayoutParams.WRAP_CONTENT
+                marginEnd = 0
+                bottomMargin = dp(2)
+            }
+            label.minWidth = 0
+            (value.layoutParams as LinearLayout.LayoutParams).apply {
+                width = LinearLayout.LayoutParams.MATCH_PARENT
+                weight = 0f
+            }
+        }
+    }
+
+    private fun dp(value: Int): Int =
+        (value * resources.displayMetrics.density).roundToInt()
+
     companion object {
         private const val EXTRA_MAC = "extra_mac"
         private const val EXTRA_NAME = "extra_name"
         private const val EXTRA_RSSI = "extra_rssi"
         private const val EXPORT_MAX_ROWS = 50_000
+
+        /** 与首页一致：达到该倍率按大字号处理布局。 */
+        private const val LARGE_FONT_SCALE = 1.5f
 
         fun createIntent(
             context: Context,

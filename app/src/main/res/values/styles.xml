@@ -62,6 +62,21 @@
         <item name="android:lineSpacingMultiplier">1.0</item>
     </style>
 
+    <!-- 底部导航标签：Material 规范 12sp；选中态同时用字重与颜色区分，避免只靠颜色变淡。 -->
+    <style name="TextAppearance.App.NavLabelActive" parent="@android:style/TextAppearance">
+        <item name="android:textSize">12sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:lineSpacingExtra">0dp</item>
+        <item name="android:lineSpacingMultiplier">1.0</item>
+    </style>
+
+    <style name="TextAppearance.App.NavLabelInactive" parent="@android:style/TextAppearance">
+        <item name="android:textSize">12sp</item>
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:lineSpacingExtra">0dp</item>
+        <item name="android:lineSpacingMultiplier">1.0</item>
+    </style>
+
     <style name="TextAppearance.App.NumericXL" parent="@android:style/TextAppearance">
         <item name="android:textSize">40sp</item>
         <item name="android:textColor">@color/text_primary</item>

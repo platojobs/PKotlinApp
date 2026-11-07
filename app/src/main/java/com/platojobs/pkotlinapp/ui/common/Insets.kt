@@ -54,20 +54,3 @@ fun View.applyBottomInsetPadding() {
     }
 }
 
-/**
- * 给高度固定为 [baseHeight] 的控件（如 BottomNavigationView）补足底部系统栏安全区：
- * 控件整体高度增加 bars.bottom，同时把这段高度作为 padding，内容区仍是 baseHeight。
- */
-fun View.applyBottomInsetHeight(baseHeight: Int) {
-    ViewCompat.setOnApplyWindowInsetsListener(this) { view, insets ->
-        val bars = insets.getInsets(
-            WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout(),
-        )
-        val target = baseHeight + bars.bottom
-        if (view.layoutParams?.height != target) {
-            view.layoutParams = view.layoutParams.apply { height = target }
-            view.updatePadding(bottom = bars.bottom)
-        }
-        insets
-    }
-}

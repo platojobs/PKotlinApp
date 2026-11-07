@@ -308,6 +308,8 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                 isChecked = true
                 minimumHeight = dp(48)
                 setTextAppearance(R.style.TextAppearance_App_Body)
+                // 多行文案时复选框默认垂直居中，勾选框会落在文字中间；顶对齐到设备名首行。
+                gravity = android.view.Gravity.TOP or android.view.Gravity.START
             }
             selection[entry.mac] = row
             content.addView(row)

@@ -211,6 +211,9 @@ class DeviceDetailViewModel(
         viewModelScope.launch { ruleEngine.refresh() }
         observeReadings()
         refreshMetrics()
+        // 云端/跨平台设备没有本机 BLE 连接，不能只在连上后才加载信息，
+        // 否则「云端状态」与最近上报在详情页永远看不到。
+        loadInfo()
 
         viewModelScope.launch {
             connectionState.collectLatest { state ->

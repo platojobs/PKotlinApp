@@ -99,14 +99,15 @@
     <com.google.android.material.bottomnavigation.BottomNavigationView
         android:id="@+id/bottomNav"
         android:layout_width="match_parent"
-        android:layout_height="@dimen/nav_bar_h"
+        android:layout_height="wrap_content"
+        android:minHeight="@dimen/bottom_nav_h"
         android:background="@color/canvas"
         app:elevation="@dimen/elevation_0"
         app:itemActiveIndicatorStyle="@null"
         app:itemIconTint="@color/bottom_nav_item"
         app:itemRippleColor="@color/overlay_pressed"
-        app:itemTextAppearanceActive="@style/TextAppearance.App.Footnote"
-        app:itemTextAppearanceInactive="@style/TextAppearance.App.Footnote"
+        app:itemTextAppearanceActive="@style/TextAppearance.App.NavLabelActive"
+        app:itemTextAppearanceInactive="@style/TextAppearance.App.NavLabelInactive"
         app:itemTextColor="@color/bottom_nav_item"
         app:labelVisibilityMode="labeled"
         app:menu="@menu/bottom_nav_menu" />

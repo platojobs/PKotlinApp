@@ -27,8 +27,11 @@ import com.platojobs.pkotlinapp.data.remote.SyncPushResponse
 import com.platojobs.pkotlinapp.data.remote.SyncScanRecordDto
 import com.platojobs.pkotlinapp.data.remote.SyncApi
 import com.platojobs.pkotlinapp.data.scene.RemoteSceneDataSource
+import com.platojobs.pkotlinapp.data.sync.ENTITY_DEVICE
 import com.platojobs.pkotlinapp.data.sync.RemoteSyncDataSource
+import com.platojobs.pkotlinapp.data.sync.SyncChangeEntry
 import com.platojobs.pkotlinapp.data.sync.TokenStore
+import com.platojobs.pkotlinapp.data.sync.toSyncChangeEntry
 import com.platojobs.pkotlinapp.data.sync.toDomain
 import com.platojobs.pkotlinapp.data.sync.toPushDto
 import com.platojobs.pkotlinapp.domain.sync.Rfc3339
@@ -2194,13 +2197,61 @@ class E2eContractTest {
             assertEquals(2, response.appliedReadings)
         }
 
-        val cursorAfterPush = captureStep("pg: changes returns >0 cursor") {
+        val cursorAfterPush = captureStep("pg: sync changes carries presence and advances cursor") {
             val result = get("/sync/changes?cursor=0&limit=500", user.token)
             assertEquals(200, result.code)
             val response = changesResponseAdapter.fromJson(result.body) ?: error("empty body")
-            assertTrue(response.changes.orEmpty().isNotEmpty())
+            val changes = response.changes.orEmpty()
+            assertTrue(changes.isNotEmpty())
             val next = response.nextCursor ?: 0L
             assertTrue("nextCursor=$next", next > 0L)
+            val maxSeq = changes.mapNotNull { it.seq }.maxOrNull() ?: 0L
+            assertTrue("nextCursor=$next maxSeq=$maxSeq", next >= maxSeq)
+
+            // 增量路径也必须带出服务端推导的 presence / lastSeenAt，而不只是 /my/devices。
+            // change_log 的 entity_id 是 "userId:platform:externalId" 复合键；
+            // 同一设备本次既有设备 upsert 又有读数触发的 presence 推进，
+            // 取序号最大的一条才是最终服务端状态。
+            val deviceEntityPrefix = "${user.userId}:android:"
+            val deviceChanges = changes.filter { it.entity == ENTITY_DEVICE }
+            fun latestChangeOf(entityId: String): SyncChangeDto? =
+                deviceChanges.filter { it.entityId == entityId }.maxByOrNull { it.seq ?: 0L }
+
+            val reported = latestChangeOf("$deviceEntityPrefix$externalId")
+                ?: error("missing change for $externalId")
+            assertEquals("online", reported.payload?.presence)
+            assertNotNull(reported.payload?.lastSeenAt?.value)
+            val reportedRecord = (reported.toSyncChangeEntry() as SyncChangeEntry.Device).record
+            assertTrue(reportedRecord.hasLastSeenAt)
+            assertNotNull(reportedRecord.lastSeenAt)
+
+            val neverChange = latestChangeOf("${deviceEntityPrefix}AA:BB:CC:00:00:45")
+                ?: error("missing change for never-reported device")
+            assertEquals("unknown", neverChange.payload?.presence)
+            assertNull(neverChange.payload?.lastSeenAt?.value)
+            val neverRecord = (neverChange.toSyncChangeEntry() as SyncChangeEntry.Device).record
+            assertTrue(neverRecord.hasLastSeenAt)
+            assertNull(neverRecord.lastSeenAt)
+
+            // 未知 entity 由生产映射直接跳过，不影响已知条目解析与游标推进。
+            val injected = changes + SyncChangeDto(
+                seq = maxSeq + 1,
+                entity = "unknown_entity",
+                entityId = "unknown-${UUID.randomUUID()}",
+                op = "upsert",
+                payload = null,
+                serverTs = Rfc3339.format(now),
+            )
+            val mapped = injected.mapNotNull { it.toSyncChangeEntry() }
+            assertEquals(
+                deviceChanges.size,
+                mapped.filterIsInstance<SyncChangeEntry.Device>().size,
+            )
+            assertEquals(
+                changes.mapNotNull { it.toSyncChangeEntry() }.size,
+                mapped.size,
+            )
+
             next.toString()
         }
 

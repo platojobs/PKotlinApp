@@ -401,6 +401,29 @@
                                 android:layout_height="wrap_content"
                                 android:minWidth="100dp"
                                 android:layout_marginEnd="8dp"
+                                android:text="@string/detail_cloud_status"
+                                android:textAppearance="@style/TextAppearance.App.Body"
+                                android:textColor="@color/text_secondary" />
+
+                            <TextView
+                                android:id="@+id/cloudStatusValue"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:textAppearance="@style/TextAppearance.App.Body" />
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:minWidth="100dp"
+                                android:layout_marginEnd="8dp"
                                 android:text="@string/detail_cloud_last_seen"
                                 android:textAppearance="@style/TextAppearance.App.Body"
                                 android:textColor="@color/text_secondary" />

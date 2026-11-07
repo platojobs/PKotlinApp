@@ -152,6 +152,7 @@
     <string name="detail_group_empty">No group</string>
     <string name="detail_last_seen">Last seen here</string>
     <string name="detail_never_scanned">Never scanned here</string>
+    <string name="detail_cloud_status">Cloud status</string>
     <string name="detail_cloud_last_seen">Last cloud report</string>
     <string name="detail_cloud_last_seen_value">%1$s (server receive time)</string>
     <string name="detail_cloud_never_reported">No reading ever reported</string>
@@ -625,9 +626,10 @@
     <string name="home_device_connected">Connected on this phone</string>
     <!-- Server presence only means "a reading was reported in the last 15 minutes"; never a plain "online". -->
     <string name="home_device_cloud_recent">Reported within 15 min</string>
-    <string name="home_device_cloud_stale">Last reported %1$s</string>
+    <string name="home_device_cloud_stale">Cloud report timed out · last reported %1$s</string>
     <string name="home_device_cloud_unknown">Never reported to cloud</string>
     <string name="home_device_cloud_never">no record</string>
+    <string name="device_local_unavailable">%1$s · Not connectable on this phone (%2$s)</string>
     <string name="home_device_last_reading">Latest reading</string>
     <string name="home_device_cloud_reading">Cloud reading</string>
     <string name="home_device_cloud_loading">Loading cloud reading…</string>
@@ -859,10 +861,6 @@
     <string name="room_detail_summary_large">Total: %1$d · connected here: %2$d\nreported in 15 min: %3$d · reported earlier: %4$d\nnever reported: %5$d · marked: %6$d</string>
     <string name="room_detail_device_title">%1$s · %2$s</string>
     <string name="room_detail_device_meta">%1$s %2$s</string>
-    <string name="room_detail_local_connected">Connected on this phone</string>
-    <string name="room_detail_cloud_recent">Reported within 15 min</string>
-    <string name="room_detail_cloud_stale">Last report expired</string>
-    <string name="room_detail_cloud_unknown">Never reported to cloud</string>
     <string name="room_detail_last_seen">Last reported %1$s (%2$s, server receive time)</string>
     <string name="room_detail_no_reading">No reading yet</string>
     <string name="room_detail_cloud_meta">Cloud reading %1$s · %2$s</string>

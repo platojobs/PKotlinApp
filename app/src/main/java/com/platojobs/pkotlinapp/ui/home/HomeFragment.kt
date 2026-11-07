@@ -29,7 +29,6 @@ import com.platojobs.pkotlinapp.diagnostics.StartupDiagnostics
 import com.platojobs.pkotlinapp.diagnostics.StartupStage
 import com.platojobs.pkotlinapp.domain.household.householdRolePermissions
 import com.platojobs.pkotlinapp.domain.model.Device
-import com.platojobs.pkotlinapp.domain.model.DeviceLinkStatus
 import com.platojobs.pkotlinapp.domain.model.displayName
 import com.platojobs.pkotlinapp.domain.reading.CloudReadingState
 import com.platojobs.pkotlinapp.ui.MainActivity
@@ -38,6 +37,7 @@ import com.platojobs.pkotlinapp.ui.common.PermissionRationale
 import com.platojobs.pkotlinapp.ui.common.ThreeStateHost
 import com.platojobs.pkotlinapp.ui.common.TimeFormat
 import com.platojobs.pkotlinapp.ui.common.applyBottomInsetPadding
+import com.platojobs.pkotlinapp.ui.common.deviceLinkStatusText
 import com.platojobs.pkotlinapp.ui.detail.DeviceDetailActivity
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -405,7 +405,13 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         }
 
     private fun roomDeviceText(entry: RoomDeviceEntry): String {
-        val status = getString(roomDeviceStatusTextRes(entry.status))
+        // 与首页卡片、详情页共用同一份四档文案；跨平台设备同样标注本机不可连接。
+        val status = deviceLinkStatusText(
+            requireContext(),
+            entry.status,
+            entry.lastSeenAt,
+            entry.platform,
+        )
         val readingText = when {
             entry.reading != null -> formatReading(entry.reading)
             else -> when (val cloud = entry.cloudReading) {
@@ -752,14 +758,6 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         _binding = null
         super.onDestroyView()
     }
-}
-
-/** 房间详情设备行状态：与首页四档完全一致，避免同一设备两处口径不同。 */
-internal fun roomDeviceStatusTextRes(status: DeviceLinkStatus): Int = when (status) {
-    DeviceLinkStatus.LOCAL_CONNECTED -> R.string.room_detail_local_connected
-    DeviceLinkStatus.CLOUD_RECENT -> R.string.room_detail_cloud_recent
-    DeviceLinkStatus.CLOUD_STALE -> R.string.room_detail_cloud_stale
-    DeviceLinkStatus.CLOUD_UNKNOWN -> R.string.room_detail_cloud_unknown
 }
 
 /** 服务端 `lastSeenAt` 的具体时刻（MM-dd HH:mm），配合相对时间一起展示。 */

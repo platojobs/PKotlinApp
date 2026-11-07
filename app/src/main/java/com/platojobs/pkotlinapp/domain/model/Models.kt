@@ -140,14 +140,27 @@ enum class DeviceLinkStatus {
 
 /** 本机 BLE 连接优先于服务端 presence；[connectedMac] 为空表示当前没有连接。 */
 fun deviceLinkStatus(device: Device, connectedMac: String?, now: Long): DeviceLinkStatus =
-    when {
-        device.mac == connectedMac -> DeviceLinkStatus.LOCAL_CONNECTED
-        else -> when (presenceOf(device.lastSeenAt, now)) {
-            DevicePresence.ONLINE -> DeviceLinkStatus.CLOUD_RECENT
-            DevicePresence.OFFLINE -> DeviceLinkStatus.CLOUD_STALE
-            DevicePresence.UNKNOWN -> DeviceLinkStatus.CLOUD_UNKNOWN
-        }
+    deviceLinkStatus(
+        lastSeenAt = device.lastSeenAt,
+        locallyConnected = connectedMac != null && connectedMac.equals(device.mac, ignoreCase = true),
+        now = now,
+    )
+
+/**
+ * 详情页等只有 `lastSeenAt` 与连接状态的场景：与列表共用同一条推导规则。
+ */
+fun deviceLinkStatus(
+    lastSeenAt: Long?,
+    locallyConnected: Boolean,
+    now: Long,
+): DeviceLinkStatus = when {
+    locallyConnected -> DeviceLinkStatus.LOCAL_CONNECTED
+    else -> when (presenceOf(lastSeenAt, now)) {
+        DevicePresence.ONLINE -> DeviceLinkStatus.CLOUD_RECENT
+        DevicePresence.OFFLINE -> DeviceLinkStatus.CLOUD_STALE
+        DevicePresence.UNKNOWN -> DeviceLinkStatus.CLOUD_UNKNOWN
     }
+}
 
 /** 本机房间：remoteId 为空表示仅存本机、尚未同步。 */
 data class Room(
@@ -231,6 +244,8 @@ data class DeviceInfo(
     val lastSeenTimestamp: Long = 0L,
     /** 服务端最近一次接受读数上报的时间；null 表示从未上报（不拿 updatedAt 冒充）。 */
     val lastSeenAt: Long? = null,
+    /** 设备所属平台；非 Android 设备本机无法直连，只能看云端状态。 */
+    val platform: String? = null,
     val compatibility: Compatibility? = null,
     val fromLocalCache: Boolean = false,
 )
@@ -262,6 +277,7 @@ fun Device.toOfflineDeviceInfo(): DeviceInfo = DeviceInfo(
     advertisedName = advertisedName.orEmpty(),
     group = group.orEmpty(),
     lastSeenAt = lastSeenAt,
+    platform = platform,
     compatibility = compatibility?.takeIf { it.isNotBlank() }?.let {
         Compatibility(protocol = it)
     },

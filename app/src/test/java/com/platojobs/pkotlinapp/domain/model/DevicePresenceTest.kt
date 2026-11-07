@@ -55,4 +55,31 @@ class DevicePresenceTest {
         val other = device("EE:FF", lastSeenAt = null)
         assertEquals(DeviceLinkStatus.CLOUD_UNKNOWN, deviceLinkStatus(other, "AA:BB", now))
     }
+
+    @Test
+    fun `detail overload follows the same four-state rule`() {
+        // 详情页只有 lastSeenAt 与连接状态，必须与列表/房间得到同一档位。
+        assertEquals(
+            DeviceLinkStatus.CLOUD_RECENT,
+            deviceLinkStatus(now - PRESENCE_WINDOW_MS, locallyConnected = false, now = now),
+        )
+        assertEquals(
+            DeviceLinkStatus.CLOUD_STALE,
+            deviceLinkStatus(now - PRESENCE_WINDOW_MS - 1, locallyConnected = false, now = now),
+        )
+        assertEquals(
+            DeviceLinkStatus.CLOUD_UNKNOWN,
+            deviceLinkStatus(null, locallyConnected = false, now = now),
+        )
+        assertEquals(
+            DeviceLinkStatus.LOCAL_CONNECTED,
+            deviceLinkStatus(null, locallyConnected = true, now = now),
+        )
+    }
+
+    @Test
+    fun `connected mac comparison ignores case`() {
+        val device = device("aa:bb", lastSeenAt = null)
+        assertEquals(DeviceLinkStatus.LOCAL_CONNECTED, deviceLinkStatus(device, "AA:BB", now))
+    }
 }

@@ -92,6 +92,7 @@ class DeviceInfoRepositoryImpl(
             group = myDevice?.group.orEmpty(),
             lastSeenTimestamp = lastSeen,
             lastSeenAt = myDevice?.lastSeenAt?.value?.takeIf { it.isNotBlank() }?.let(Rfc3339::parse),
+            platform = myDevice?.platform ?: PLATFORM_ANDROID,
             compatibility = compatibility,
         )
 

@@ -681,7 +681,7 @@ export JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk-21.jdk/Contents/Home
 
 ./gradlew assembleDebug        # Debug APK
 ./gradlew lintDebug            # Lint
-./gradlew testDebugUnitTest    # 单元测试：461 个（含规则防抖/恢复/迁移、图表命中、推荐模板、双语/无障碍/200% 字号、家庭结构同步/未知 entity、市场洞察、场景引擎闭环、首页聚合、反馈状态机/幂等/429/契约/迁移、推送注册生命周期/路由/迁移、presence 三态与文案）
+./gradlew testDebugUnitTest    # 单元测试：463 个（含规则防抖/恢复/迁移、图表命中、推荐模板、双语/无障碍/200% 字号、家庭结构同步/未知 entity、市场洞察、场景引擎闭环、首页聚合、反馈状态机/幂等/429/契约/迁移、推送注册生命周期/路由/迁移、presence 三态与四档共享文案、本机不可连接维度）
 ./gradlew assembleRelease      # 签名 Release APK
 ./gradlew bundleRelease        # 签名 Release AAB
 

@@ -38,6 +38,7 @@ import com.platojobs.pkotlinapp.databinding.DialogDeviceEditBinding
 import com.platojobs.pkotlinapp.databinding.ItemReadingBinding
 import com.platojobs.pkotlinapp.domain.model.displayDeviceTypeName
 import com.platojobs.pkotlinapp.domain.model.displayName
+import com.platojobs.pkotlinapp.domain.model.deviceLinkStatus
 import com.platojobs.pkotlinapp.domain.model.Room
 import com.platojobs.pkotlinapp.domain.model.unrecognizedDeviceTypeKey
 import com.platojobs.pkotlinapp.domain.reading.Reading
@@ -53,6 +54,7 @@ import com.platojobs.pkotlinapp.ui.common.applyBottomInsetPadding
 import com.platojobs.pkotlinapp.ui.common.applyHorizontalInsets
 import com.platojobs.pkotlinapp.ui.common.TimeFormat
 import com.platojobs.pkotlinapp.ui.common.applyTopInset
+import com.platojobs.pkotlinapp.ui.common.deviceLinkStatusText
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
@@ -413,6 +415,18 @@ class DeviceDetailActivity : AppCompatActivity() {
                     ?.let { TimeFormat.relative(this, it) }
                     ?: getString(R.string.detail_never_scanned)
                 // 服务端只读的最近上报时间：口径是「最近一次读数被服务端接收」。
+                // 状态档位与首页/房间共用同一份文案，超时档同时给出最近上报时间。
+                val linkStatus = deviceLinkStatus(
+                    lastSeenAt = info.lastSeenAt,
+                    locallyConnected = connectionUi?.phase == ConnectionPhase.CONNECTED,
+                    now = System.currentTimeMillis(),
+                )
+                binding.cloudStatusValue.text = deviceLinkStatusText(
+                    this,
+                    linkStatus,
+                    info.lastSeenAt,
+                    info.platform,
+                )
                 binding.cloudLastSeenValue.text = info.lastSeenAt
                     ?.let { getString(R.string.detail_cloud_last_seen_value, TimeFormat.relative(this, it)) }
                     ?: getString(R.string.detail_cloud_never_reported)

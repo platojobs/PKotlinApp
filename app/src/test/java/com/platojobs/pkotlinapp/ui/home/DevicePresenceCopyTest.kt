@@ -3,6 +3,7 @@ package com.platojobs.pkotlinapp.ui.home
 import com.platojobs.pkotlinapp.R
 import com.platojobs.pkotlinapp.domain.model.DeviceLinkStatus
 import com.platojobs.pkotlinapp.ui.common.TimeFormat
+import com.platojobs.pkotlinapp.ui.common.deviceLinkStatusText
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -19,8 +20,8 @@ import java.util.TimeZone
 /**
  * 锁住四档 presence 文案与 `lastSeenAt` 时间显示。
  *
- * 首页与房间详情必须使用同一套四档口径；超时档必须带出最近一次上报时间，
- * 服务端接收时间要以 `MM-dd HH:mm` 具体时刻展示，避免只剩「在线/离线」的模糊判断。
+ * 首页卡片、房间设备行、设备详情共用 [deviceLinkStatusText]，超时档必须带出最近一次
+ * 上报时间；非 Android 平台还要追加「本机不可连接」，作为四档之外的附加维度。
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [33], qualifiers = "zh-rCN")
@@ -35,45 +36,47 @@ class DevicePresenceCopyTest {
     }
 
     @Test
-    fun `home status copy tells the four tiers apart`() {
+    fun `four tiers share one mapping and tell stale from recent`() {
         assertEquals(
             "本机已连接",
-            homeDeviceStatusText(context, DeviceLinkStatus.LOCAL_CONNECTED, null),
+            deviceLinkStatusText(context, DeviceLinkStatus.LOCAL_CONNECTED, null),
         )
         assertEquals(
             "云端 15 分钟内有上报",
-            homeDeviceStatusText(context, DeviceLinkStatus.CLOUD_RECENT, WINDOW_EDGE),
+            deviceLinkStatusText(context, DeviceLinkStatus.CLOUD_RECENT, WINDOW_EDGE),
         )
         assertEquals(
             "云端从未收到上报",
-            homeDeviceStatusText(context, DeviceLinkStatus.CLOUD_UNKNOWN, null),
+            deviceLinkStatusText(context, DeviceLinkStatus.CLOUD_UNKNOWN, null),
         )
 
-        // 超时档不能只写「离线」：必须带出最近一次上报的相对时间。
+        // 超时档不能只写「云端最近上报」：必须明确已超时，并带出最近一次上报时间。
         val staleAt = System.currentTimeMillis() - 21 * 60_000L
-        val stale = homeDeviceStatusText(context, DeviceLinkStatus.CLOUD_STALE, staleAt)
-        assertTrue(stale, stale.startsWith("云端最近上报 "))
+        val stale = deviceLinkStatusText(context, DeviceLinkStatus.CLOUD_STALE, staleAt)
+        assertTrue(stale, stale.startsWith("云端上报已超时 · 最近上报 "))
         assertTrue(stale, stale.contains("21 分钟前"))
     }
 
     @Test
-    fun `room detail tiers reuse the same four-state copy`() {
-        assertEquals(
-            "本机已连接",
-            context.getString(roomDeviceStatusTextRes(DeviceLinkStatus.LOCAL_CONNECTED)),
+    fun `non android platform adds the local-connection note`() {
+        val android = deviceLinkStatusText(
+            context,
+            DeviceLinkStatus.CLOUD_RECENT,
+            WINDOW_EDGE,
+            "android",
         )
-        assertEquals(
-            "云端 15 分钟内有上报",
-            context.getString(roomDeviceStatusTextRes(DeviceLinkStatus.CLOUD_RECENT)),
+        assertEquals("云端 15 分钟内有上报", android)
+
+        val ios = deviceLinkStatusText(
+            context,
+            DeviceLinkStatus.CLOUD_RECENT,
+            WINDOW_EDGE,
+            "ios",
         )
-        assertEquals(
-            "云端上报已超时",
-            context.getString(roomDeviceStatusTextRes(DeviceLinkStatus.CLOUD_STALE)),
-        )
-        assertEquals(
-            "云端从未收到上报",
-            context.getString(roomDeviceStatusTextRes(DeviceLinkStatus.CLOUD_UNKNOWN)),
-        )
+        assertEquals("云端 15 分钟内有上报 · 本机不可连接（来自 iOS）", ios)
+
+        // 平台说明只是附加维度，不能改变四档本身的文案。
+        assertTrue(ios.startsWith(android))
     }
 
     @Test
@@ -96,7 +99,7 @@ class DevicePresenceCopyTest {
     }
 
     private companion object {
-        /** 900 秒窗口的右端点：仍应算 online。 */
+        /** 窗口内的一个固定时刻，仅用于文案分支，不参与时间差计算。 */
         const val WINDOW_EDGE = 1_762_000_000_000L
     }
 }

@@ -18,6 +18,8 @@ data class RoomDeviceEntry(
     val status: DeviceLinkStatus,
     /** 服务端最近一次接受读数上报的时间；null 表示从未上报。 */
     val lastSeenAt: Long?,
+    /** 设备所属平台；非 Android 设备本机无法直连。 */
+    val platform: String,
     val marked: Boolean,
     /** 标记尚在本机等待上传（离线/未登录）；用于界面说明当前状态。 */
     val pending: Boolean,
@@ -29,6 +31,10 @@ data class RoomDeviceEntry(
 /**
  * 房间聚合视图：数量全部由传入的设备列表计算，不额外伪造任何统计。
  * 四个状态互斥，加起来等于 [total]。
+ *
+ * 「本机不可连接」是平台属性（非 Android），与 presence 三态正交，不单列第五档，
+ * 否则同一台 iOS 设备会同时计入「本机不可连接」和 online/offline/unknown，汇总无法解释。
+ * 首页统计与这里使用同一份四档计数。
  */
 data class RoomDetail(
     val roomId: Long,
@@ -77,6 +83,7 @@ object RoomDetailBuilder {
                     name = device.displayName()?.takeIf(String::isNotBlank) ?: unknownName,
                     status = deviceLinkStatus(device, connectedMac, now),
                     lastSeenAt = device.lastSeenAt,
+                    platform = device.platform,
                     marked = device.markedAt != null,
                     pending = device.syncState == SyncState.PENDING,
                     reading = localReading,

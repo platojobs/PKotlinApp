@@ -126,8 +126,11 @@ data class SyncDeviceDto(
     // openapi 0.21.0 服务端推导的在线三态（unknown/online/offline），响应时重算、不落库。
     // 客户端只读展示；/sync/push 上报该字段会被服务端忽略。
     val presence: String? = null,
-    // 服务端最后一次接受读数上报的接收时间（RFC3339）；null 表示从未上报。
-    val lastSeenAt: String? = null,
+    // 服务端最后一次接受读数上报的接收时间（RFC3339）。三态：
+    // - 属性为 null：老后端未携带该字段，保留本地已存值；
+    // - `NullableReported(null)`：服务端明确「从未上报」，清空本地值；
+    // - `NullableReported("...")`：覆盖本地值。
+    val lastSeenAt: NullableReported? = null,
     // openapi 0.3.2 enrich 字段；未注册型号时为 null。
     val deviceType: String? = null,
     val vendor: String? = null,

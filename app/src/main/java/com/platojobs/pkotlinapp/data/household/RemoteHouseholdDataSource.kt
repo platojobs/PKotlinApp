@@ -269,6 +269,8 @@ class RemoteHouseholdDataSource(
     private fun SyncDeviceDto.toDeviceRef(): RemoteDeviceRef? {
         val platformValue = platform?.takeIf { it.isNotBlank() } ?: return null
         val externalValue = externalId?.takeIf { it.isNotBlank() } ?: return null
+        // 三态：属性缺失=老后端（保留本地值）；显式 JSON null=从未上报（清空）。
+        val seenField = lastSeenAt
         return RemoteDeviceRef(
             platform = platformValue,
             externalId = externalValue,
@@ -276,7 +278,8 @@ class RemoteHouseholdDataSource(
             roomRemoteId = roomId?.takeIf { it.isNotBlank() },
             alias = alias?.takeIf { it.isNotBlank() },
             updatedAt = Rfc3339.parse(updatedAt) ?: 0L,
-            lastSeenAt = lastSeenAt?.takeIf { it.isNotBlank() }?.let(Rfc3339::parse),
+            lastSeenAt = seenField?.value?.takeIf { it.isNotBlank() }?.let(Rfc3339::parse),
+            hasLastSeenAt = seenField != null,
         )
     }
 }

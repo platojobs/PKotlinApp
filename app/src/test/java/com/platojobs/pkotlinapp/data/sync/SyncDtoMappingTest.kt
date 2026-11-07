@@ -292,7 +292,7 @@ class SyncDtoMappingTest {
     }
 
     @Test
-    fun `pull parses presence and lastSeenAt but push never reports them`() {
+    fun `pull distinguishes absent lastSeenAt from explicit null`() {
         val adapter = ApiClient.moshi().adapter(SyncDeviceDto::class.java)
         val pulled = adapter.fromJson(
             """{"externalId":"AA:BB:CC:DD:EE:FF","platform":"android",""" +
@@ -304,16 +304,27 @@ class SyncDtoMappingTest {
             Rfc3339.parse("2025-09-30T12:34:56.789Z"),
             pulled.lastSeenAt,
         )
-        // 从未上报：null 保持 null，不能退化成 updatedAt。
-        val never = adapter.fromJson(
+        assertTrue(pulled.hasLastSeenAt)
+
+        // 字段缺失（老后端）：没有携带标志，调用方必须保留本地值。
+        val absent = adapter.fromJson(
             """{"externalId":"AA:BB:CC:DD:EE:FF","platform":"android",""" +
                 """"updatedAt":"2025-10-01T00:00:00Z","presence":"unknown"}""",
         )!!.toDomain()!!
-        assertNull(never.lastSeenAt)
+        assertNull(absent.lastSeenAt)
+        assertFalse(absent.hasLastSeenAt)
 
-        // 服务端只读：present/lastSeenAt 不参与 push，也不会在 payload 里出现。
+        // 显式 JSON null：服务端明确「从未上报」，标志为 true，调用方必须清空本地值。
+        val explicitNull = adapter.fromJson(
+            """{"externalId":"AA:BB:CC:DD:EE:FF","platform":"android",""" +
+                """"updatedAt":"2025-10-01T00:00:00Z","presence":"unknown","lastSeenAt":null}""",
+        )!!.toDomain()!!
+        assertNull(explicitNull.lastSeenAt)
+        assertTrue(explicitNull.hasLastSeenAt)
+
+        // 服务端只读：presence/lastSeenAt 不参与 push，也不会在 payload 里出现。
         val pushJson = ApiClient.moshi().adapter(SyncPushRequest::class.java)
-            .toJson(SyncPushRequest("test", listOf(never.toPushDto())))
+            .toJson(SyncPushRequest("test", listOf(explicitNull.toPushDto())))
         assertFalse(pushJson.contains("presence"))
         assertFalse(pushJson.contains("lastSeenAt"))
     }

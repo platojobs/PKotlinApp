@@ -228,7 +228,7 @@ app/src/main/java/com/platojobs/pkotlinapp/
 - **WorkManager**：`SyncWorker` 在 `NetworkType.CONNECTED` 约束下批量 push，成功后置 `synced`；失败按指数退避重试。
 - **冷启动**：`PKotlinApplication.onCreate` 只做容器装配与主题恢复；`MainActivity` 不再等待网络，直接渲染首页骨架/空态；同步、保留清理与周期调度在首帧之后由 `startBackgroundWork()` 投递到 IO 线程（详见 §12 的真实测量数字）。
 - **降级**：连续失败 3 次进入纯本地模式并持久化，主界面顶部横幅与「我的」页同步卡片都会提示；本地 Room 功能不受影响，用户可手动同步恢复。
-- **测试**：`SyncEngineTest` 覆盖幂等重试、未上报字段不参与幂等键、冲突落败上报、tombstone 删除与拉取合并；`Rfc3339Test` 覆盖 Go 纳秒时间与带时区偏移的解析；`SyncDtoMappingTest` 覆盖三态序列化（absent/空串/值）、别名与广播名隔离、absent 解析、push DTO 字段归一化、iOS 无 MAC、tombstone 与非法 id 回退；`SyncErrorKindTest` 覆盖网络/超时/401/403/409/500/未知分类；`RemoteSyncTokenTest` 覆盖「401 不自动重登、保留 token、其它错误原样抛出」；`OfflineDeviceInfoTest` 覆盖展示优先级与离线分组；`DeviceAliasPersistenceTest` 覆盖显式清空别名落库、扫描不覆盖别名/不置脏；`DeviceMigrationTest` 用真实 SQLite 验证 v3→v4、v4→v5、v5→v6 不丢数据；`DevicePresenceTest` 覆盖 unknown/online/offline 三态、900s 窗口边界与本机连接优先；`RoomDetailTest` 覆盖四档汇总与设备行状态；`DeviceMarkSyncIsolationTest` / `DeviceLastSeenMigrationTest` 验证 `lastSeenAt` 写入不置脏、不推进 `updatedAt`，迁移后历史行保持 `NULL`。
+- **测试**：`SyncEngineTest` 覆盖幂等重试、未上报字段不参与幂等键、冲突落败上报、tombstone 删除与拉取合并；`Rfc3339Test` 覆盖 Go 纳秒时间与带时区偏移的解析；`SyncDtoMappingTest` 覆盖三态序列化（absent/空串/值）、别名与广播名隔离、absent 解析、push DTO 字段归一化、iOS 无 MAC、tombstone 与非法 id 回退；`SyncErrorKindTest` 覆盖网络/超时/401/403/409/500/未知分类；`RemoteSyncTokenTest` 覆盖「401 不自动重登、保留 token、其它错误原样抛出」；`OfflineDeviceInfoTest` 覆盖展示优先级与离线分组；`DeviceAliasPersistenceTest` 覆盖显式清空别名落库、扫描不覆盖别名/不置脏；`DeviceMigrationTest` 用真实 SQLite 验证 v3→v4、v4→v5、v5→v6 不丢数据；`DevicePresenceTest` 覆盖 unknown/online/offline 三态、900s 窗口边界与本机连接优先；`RoomDetailTest` 覆盖四档汇总与设备行状态；`DeviceMarkSyncIsolationTest` / `DeviceLastSeenMigrationTest` 验证 `lastSeenAt` 写入不置脏、不推进 `updatedAt`，迁移后历史行保持 `NULL`；`RoomSyncLocalStorePresenceTest` 锁住「字段缺失保留 / 显式 null 清空」两条分支；`DevicePresenceCopyTest` 校验四档文案与服务端接收时间显示。
 
 同步往返样例（与 `openapi.yaml` 一致）：
 
@@ -681,7 +681,7 @@ export JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk-21.jdk/Contents/Home
 
 ./gradlew assembleDebug        # Debug APK
 ./gradlew lintDebug            # Lint
-./gradlew testDebugUnitTest    # 单元测试：406 个（含规则防抖/恢复/迁移、图表命中、推荐模板、双语/无障碍/200% 字号、家庭结构同步/未知 entity、市场洞察、场景引擎闭环、首页聚合、反馈状态机/幂等/429/契约/迁移、推送注册生命周期/路由/迁移）
+./gradlew testDebugUnitTest    # 单元测试：461 个（含规则防抖/恢复/迁移、图表命中、推荐模板、双语/无障碍/200% 字号、家庭结构同步/未知 entity、市场洞察、场景引擎闭环、首页聚合、反馈状态机/幂等/429/契约/迁移、推送注册生命周期/路由/迁移、presence 三态与文案）
 ./gradlew assembleRelease      # 签名 Release APK
 ./gradlew bundleRelease        # 签名 Release AAB
 

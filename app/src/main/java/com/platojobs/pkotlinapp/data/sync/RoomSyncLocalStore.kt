@@ -47,8 +47,8 @@ class RoomSyncLocalStore(
                 group = record.group ?: existing?.group,
                 // 字段缺失=保持本地标记；显式 null/空串=取消；RFC3339=覆盖。
                 markedAt = if (record.markedAtDirty) record.markedAt else existing?.markedAt,
-                // lastSeenAt 只会前进；老后端不返回该字段时保留本地值，避免降级丢心跳。
-                lastSeenAt = record.lastSeenAt ?: existing?.lastSeenAt,
+                // 字段缺失=老后端，保留本地值；显式 null=服务端从未上报，必须清空。
+                lastSeenAt = if (record.hasLastSeenAt) record.lastSeenAt else existing?.lastSeenAt,
             ).toEntity(
                 macOverride = localMac,
                 createdAt = existing?.createdAt?.takeIf { it > 0 }
@@ -58,9 +58,15 @@ class RoomSyncLocalStore(
         )
     }
 
-    override suspend fun applyServerPresence(externalId: String, lastSeenAt: Long?) {
-        if (lastSeenAt == null) return
+    override suspend fun applyServerPresence(
+        externalId: String,
+        hasLastSeenAt: Boolean,
+        lastSeenAt: Long?,
+    ) {
+        // 老后端缺省该字段：保留本地值，不能当成「从未上报」清空。
+        if (!hasLastSeenAt) return
         val entity = dao.findByExternalId(externalId) ?: return
+        // 显式 null 也写回：此时服务端语义是「从未上报」，本地旧值已失效。
         dao.applyLastSeenAt(entity.mac, lastSeenAt)
     }
 

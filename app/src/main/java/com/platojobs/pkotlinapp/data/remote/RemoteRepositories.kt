@@ -91,7 +91,7 @@ class DeviceInfoRepositoryImpl(
             advertisedName = myDevice?.advertisedName.orEmpty(),
             group = myDevice?.group.orEmpty(),
             lastSeenTimestamp = lastSeen,
-            lastSeenAt = myDevice?.lastSeenAt?.takeIf { it.isNotBlank() }?.let(Rfc3339::parse),
+            lastSeenAt = myDevice?.lastSeenAt?.value?.takeIf { it.isNotBlank() }?.let(Rfc3339::parse),
             compatibility = compatibility,
         )
 

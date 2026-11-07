@@ -105,6 +105,8 @@ data class RemoteDeviceRef(
     val updatedAt: Long = 0,
     /** 服务端最近一次接受读数上报的时间；null 表示从未上报。 */
     val lastSeenAt: Long? = null,
+    /** 服务端是否携带了 `lastSeenAt` 字段：false=老后端缺省，保留本地值。 */
+    val hasLastSeenAt: Boolean = false,
 )
 
 data class HouseholdSyncStatus(

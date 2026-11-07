@@ -379,7 +379,9 @@ internal fun SyncDeviceDto.toDomain(): SyncRecord? {
     val latestScan = scans.maxByOrNull { Rfc3339.parse(it.at) ?: Long.MIN_VALUE }
     // 本机扫描证据只来自 scanRecords；不再拿 updatedAt 冒充心跳。
     val seenAt = latestScan?.let { Rfc3339.parse(it.at) } ?: 0L
-    val serverLastSeenAt = lastSeenAt?.takeIf { it.isNotBlank() }?.let(Rfc3339::parse)
+    // 三态：属性缺失=老后端（保持本地值）；显式 JSON null/空串=从未上报（清空）。
+    val lastSeenField = lastSeenAt
+    val serverLastSeenAt = lastSeenField?.value?.takeIf { it.isNotBlank() }?.let(Rfc3339::parse)
 
     // markedAt 三态：属性缺失=保持；JSON null 或空串=取消；合法 RFC3339=标记。
     val markField = markedAt
@@ -407,6 +409,7 @@ internal fun SyncDeviceDto.toDomain(): SyncRecord? {
         markedAt = parsedMark,
         markedAtDirty = markReported,
         lastSeenAt = serverLastSeenAt,
+        hasLastSeenAt = lastSeenField != null,
     )
 }
 

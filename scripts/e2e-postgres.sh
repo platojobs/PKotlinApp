@@ -72,6 +72,92 @@ STATUS=$?
 set -e
 [[ "$STATUS" -eq 0 ]] || fail "Postgres 契约套件未通过（exit=${STATUS}）"
 
+echo "[E2E:pg] ---- presence 在线 / 离线 / 从未上报 ----"
+presence_login="$(curl -fsS -X POST "$BASE_URL/api/v1/auth/anonymous")" || fail "presence 匿名登录失败"
+PRESENCE_TOKEN="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])' <<<"$presence_login")"
+PRESENCE_USER_ID="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["userId"])' <<<"$presence_login")"
+ONLINE_MAC="AA:BB:CC:00:00:0B"
+ONLINE_MAC_LOWER="$(printf '%s' "$ONLINE_MAC" | tr '[:upper:]' '[:lower:]')"
+NEVER_MAC="AA:BB:CC:00:00:0C"
+
+presence_payload="$(python3 - "$ONLINE_MAC" "$NEVER_MAC" <<'PY'
+import datetime as dt
+import json
+import sys
+import uuid
+
+now = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+online, never = sys.argv[1], sys.argv[2]
+devices = [
+    {
+        "id": str(uuid.uuid4()),
+        "platform": "android",
+        "externalId": mac,
+        "mac": mac.lower(),
+        "updatedAt": now,
+    }
+    for mac in (online, never)
+]
+readings = [
+    {
+        "id": str(uuid.uuid4()),
+        "platform": "android",
+        "externalId": online,
+        "metric": "temperature",
+        "value": 21.0,
+        "unit": "°C",
+        "recordedAt": now,
+    }
+]
+print(json.dumps({"devices": devices, "readings": readings}))
+PY
+)" || fail "构造 presence 载荷失败"
+
+presence_push="$(curl -sS -w '\n%{http_code}' -X POST "$BASE_URL/api/v1/sync/push" \
+    -H "Authorization: Bearer $PRESENCE_TOKEN" \
+    -H "Content-Type: application/json" \
+    -H "Idempotency-Key: e2e-pg-presence-$(date +%s)" \
+    -d "$presence_payload")"
+PRESENCE_PUSH_CODE="${presence_push##*$'\n'}"
+[[ "$PRESENCE_PUSH_CODE" == "200" ]] || fail "presence push 失败（HTTP ${PRESENCE_PUSH_CODE}）"
+
+# 断言 /my/devices 中指定设备的 presence 与 lastSeenAt 形态。
+assert_presence() {
+    local body="$1" mac="$2" expected="$3" seen="$4"
+    python3 -c '
+import json, sys
+body, mac, expected, seen = sys.argv[1:5]
+items = (json.loads(body).get("items") or [])
+device = next((d for d in items if d.get("externalId") == mac), None)
+if device is None:
+    raise SystemExit("缺少设备 %s" % mac)
+if device.get("presence") != expected:
+    raise SystemExit("%s presence 期望 %s，实际 %r" % (mac, expected, device.get("presence")))
+last = device.get("lastSeenAt")
+if seen == "not-null" and not last:
+    raise SystemExit("%s lastSeenAt 期望非空，实际 %r" % (mac, last))
+if seen == "null" and last is not None:
+    raise SystemExit("%s lastSeenAt 期望 null，实际 %r" % (mac, last))
+print("%s presence=%s lastSeenAt=%r" % (mac, device.get("presence"), last))
+' "$body" "$mac" "$expected" "$seen" || fail "presence 断言失败：${mac}"
+}
+
+presence_devices="$(curl -fsS "$BASE_URL/api/v1/my/devices" \
+    -H "Authorization: Bearer $PRESENCE_TOKEN")" || fail "读取 /my/devices 失败"
+assert_presence "$presence_devices" "$ONLINE_MAC" online not-null
+assert_presence "$presence_devices" "$NEVER_MAC" unknown null
+
+# 把 last_seen_at 回拨 20 分钟（超出 900s 窗口）：presence 必须变 offline，
+# 但 lastSeenAt 仍保留，供客户端展示「最近上报 X」。
+docker exec "$PG_CONTAINER" psql -U pjgoiot -d pjgoiot_e2e -c \
+    "UPDATE user_devices SET last_seen_at = now() - interval '20 minutes' WHERE user_id = '${PRESENCE_USER_ID}' AND mac = '${ONLINE_MAC_LOWER}'" \
+    >/dev/null || fail "回拨 last_seen_at 失败"
+
+presence_devices="$(curl -fsS "$BASE_URL/api/v1/my/devices" \
+    -H "Authorization: Bearer $PRESENCE_TOKEN")" || fail "回拨后读取 /my/devices 失败"
+assert_presence "$presence_devices" "$ONLINE_MAC" offline not-null
+echo "[E2E:pg] presence 校验通过：online → offline（超窗）/ 从未上报 unknown"
+
 echo "[E2E:pg] ---- 410 RESYNC_REQUIRED 分支 ----"
 login="$(curl -fsS -X POST "$BASE_URL/api/v1/auth/anonymous")" || fail "匿名登录失败"
 TOKEN="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])' <<<"$login")"
@@ -179,4 +265,4 @@ print("cursor=0 changes=%d nextCursor=%s entities=%r" % (
 echo "[E2E:pg] cursor=0 从未返回 410，剩余结构变更已拉回"
 
 echo "[E2E:pg] 通过：postgres @ ${BASE_URL}"
-echo "[E2E:pg] 覆盖：匿名登录/expiresAt → push 设备+读数 → changes/limit → 结构缺口 410 全量重拉（household/room）→ series/metrics → export/limit → 注销 401"
+echo "[E2E:pg] 覆盖：匿名登录/expiresAt → push 设备+读数 → changes/limit → presence 三态（online/offline/unknown）→ 结构缺口 410 全量重拉（household/room）→ series/metrics → export/limit → 注销 401"

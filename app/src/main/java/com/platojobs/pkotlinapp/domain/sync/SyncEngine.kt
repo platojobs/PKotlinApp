@@ -47,6 +47,11 @@ data class SyncRecord(
      * 服务端只读：不参与 push、幂等哈希与 LWW，写入本地也不推进 updatedAt / 置脏。
      */
     val lastSeenAt: Long? = null,
+    /**
+     * 服务端响应是否携带了 `lastSeenAt`：[false] 表示老后端缺省，本地保留旧值；
+     * [true] 且 [lastSeenAt] 为 null 表示服务端明确「从未上报」，必须清空本地值。
+     */
+    val hasLastSeenAt: Boolean = false,
 )
 
 data class SyncPullPage(
@@ -100,8 +105,15 @@ interface SyncLocalStore {
     /**
      * 服务端只读字段：即使本地待同步版本胜出（LWW）也要写入，避免新代码的 presence
      * 被本机未上传的修改永远挡住。默认空实现便于既有测试替身。
+     *
+     * [hasLastSeenAt] 为 false 时必须 no-op（老后端缺省，保留本地值）；
+     * 为 true 时按 [lastSeenAt] 覆盖，null 表示清空。
      */
-    suspend fun applyServerPresence(externalId: String, lastSeenAt: Long?) {}
+    suspend fun applyServerPresence(
+        externalId: String,
+        hasLastSeenAt: Boolean,
+        lastSeenAt: Long?,
+    ) {}
 
     suspend fun deleteByExternalId(externalId: String)
 }
@@ -242,7 +254,11 @@ class SyncEngine(
                     localRecord.updatedAt > change.updatedAt
                 if (localUnsyncedWins) {
                     // 本地改动胜出，但服务端只读的最近上报时间仍然要落地。
-                    local.applyServerPresence(change.externalId, change.lastSeenAt)
+                    local.applyServerPresence(
+                        change.externalId,
+                        change.hasLastSeenAt,
+                        change.lastSeenAt,
+                    )
                 } else {
                     local.replaceWithServer(change)
                 }

@@ -141,6 +141,7 @@ data class UserDeviceDto(
     val compatibility: CompatibilityDto? = null,
     // openapi 0.21.0：服务端在响应时实时推导的在线三态（unknown/online/offline）。
     val presence: String? = null,
-    // 服务端最后一次接受读数上报的接收时间；null 表示从未上报。
-    val lastSeenAt: String? = null,
+    // 服务端最后一次接受读数上报的接收时间。三态：
+    // 属性缺失=老后端，保持本地值；显式 JSON null=从未上报，清空本地值。
+    val lastSeenAt: NullableReported? = null,
 )

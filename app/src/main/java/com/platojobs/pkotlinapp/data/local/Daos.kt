@@ -91,12 +91,9 @@ interface DeviceDao {
 
     /**
      * 服务端只读的最近上报时间：单独写列，不置脏、不推进 updatedAt。
-     * null 表示老后端未返回该字段，保留本地值。
+     * 是否调用由上层决定：字段缺失时上层 no-op（保留本地值）；显式 null 时调用即清空。
      */
-    @Query(
-        "UPDATE devices SET lastSeenAt = CASE WHEN :lastSeenAt IS NULL THEN lastSeenAt " +
-            "ELSE :lastSeenAt END WHERE mac = :mac",
-    )
+    @Query("UPDATE devices SET lastSeenAt = :lastSeenAt WHERE mac = :mac")
     suspend fun applyLastSeenAt(mac: String, lastSeenAt: Long?)
 
     @Query("DELETE FROM devices WHERE mac IN (:macs)")

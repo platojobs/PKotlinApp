@@ -102,14 +102,15 @@ class DeviceMarkSyncIsolationTest {
     }
 
     @Test
-    fun `null lastSeenAt keeps the previous value`() = runBlocking {
+    fun `null lastSeenAt clears the column when the caller decides to write it`() = runBlocking {
         val dao = db.deviceDao()
         dao.insertOrUpdate(device(OWN_MAC, shared = false).copy(lastSeenAt = LAST_SEEN_AT))
 
-        // 老后端不返回该字段：不能把已缓存的心跳清空。
+        // DAO 只负责写列；「字段缺失时保留」由 RoomSyncLocalStore 在调用前判断。
+        // 服务端显式 null = 从未上报，必须真正清空旧值。
         dao.applyLastSeenAt(OWN_MAC, null)
 
-        assertEquals(LAST_SEEN_AT, requireNotNull(dao.find(OWN_MAC)).lastSeenAt)
+        assertNull(requireNotNull(dao.find(OWN_MAC)).lastSeenAt)
     }
 
     @Test

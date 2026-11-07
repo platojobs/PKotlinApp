@@ -642,8 +642,10 @@ class HouseholdRepository(
                 )
             } else {
                 deviceDao.applyServerMeta(existing.mac, row.id, ref.roomRemoteId, roomLocalId)
-                // 只读心跳：单独写列，不置脏、不推进 updatedAt。
-                deviceDao.applyLastSeenAt(existing.mac, ref.lastSeenAt)
+                // 只读心跳：单独写列，不置脏、不推进 updatedAt；字段缺失时保留本地值。
+                if (ref.hasLastSeenAt) {
+                    deviceDao.applyLastSeenAt(existing.mac, ref.lastSeenAt)
+                }
             }
         }
         // 服务端已不再返回的共享设备（被移除/退出家庭）同步清理，避免列表残留。

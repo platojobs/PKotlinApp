@@ -405,14 +405,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         }
 
     private fun roomDeviceText(entry: RoomDeviceEntry): String {
-        val status = getString(
-            when (entry.status) {
-                DeviceLinkStatus.LOCAL_CONNECTED -> R.string.room_detail_local_connected
-                DeviceLinkStatus.CLOUD_RECENT -> R.string.room_detail_cloud_recent
-                DeviceLinkStatus.CLOUD_STALE -> R.string.room_detail_cloud_stale
-                DeviceLinkStatus.CLOUD_UNKNOWN -> R.string.room_detail_cloud_unknown
-            },
-        )
+        val status = getString(roomDeviceStatusTextRes(entry.status))
         val readingText = when {
             entry.reading != null -> formatReading(entry.reading)
             else -> when (val cloud = entry.cloudReading) {
@@ -439,19 +432,13 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                     getString(
                         R.string.room_detail_last_seen,
                         TimeFormat.relative(requireContext(), at),
-                        formatLastSeen(at),
+                        formatLastSeenTimestamp(requireContext(), at),
                     ),
                 )
             }
         }
         return getString(R.string.room_detail_device_title, entry.name, status) + "\n" + meta
     }
-
-    /** 服务端 lastSeenAt 的具体时刻（MM-dd HH:mm），与相对时间一起展示。 */
-    private fun formatLastSeen(timestamp: Long): String = SimpleDateFormat(
-        getString(R.string.time_format),
-        Locale.getDefault(),
-    ).format(Date(timestamp))
 
     private fun batchButton(textRes: Int, fullWidth: Boolean, onClick: () -> Unit): MaterialButton =
         MaterialButton(requireContext(), null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
@@ -766,3 +753,16 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         super.onDestroyView()
     }
 }
+
+/** 房间详情设备行状态：与首页四档完全一致，避免同一设备两处口径不同。 */
+internal fun roomDeviceStatusTextRes(status: DeviceLinkStatus): Int = when (status) {
+    DeviceLinkStatus.LOCAL_CONNECTED -> R.string.room_detail_local_connected
+    DeviceLinkStatus.CLOUD_RECENT -> R.string.room_detail_cloud_recent
+    DeviceLinkStatus.CLOUD_STALE -> R.string.room_detail_cloud_stale
+    DeviceLinkStatus.CLOUD_UNKNOWN -> R.string.room_detail_cloud_unknown
+}
+
+/** 服务端 `lastSeenAt` 的具体时刻（MM-dd HH:mm），配合相对时间一起展示。 */
+internal fun formatLastSeenTimestamp(context: Context, timestamp: Long): String =
+    SimpleDateFormat(context.getString(R.string.time_format), Locale.getDefault())
+        .format(Date(timestamp))

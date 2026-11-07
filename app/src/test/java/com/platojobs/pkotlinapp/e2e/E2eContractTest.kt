@@ -807,9 +807,9 @@ class E2eContractTest {
             assertEquals(3, response.skippedReadings)
         }
 
-        // fixture 后端只做 DerivePresence、不维护 last_seen_at（真实值由 postgres 实跑覆盖），
-        // 这里校验契约字段存在且 unknown 是独立一档、lastSeenAt 为 null。
-        step("readings: presence field is exposed and unknown stays unknown") {
+        // fixture 后端只做 DerivePresence、不维护 last_seen_at，因此 fixture 链只校验
+        // 字段存在与 unknown 独立成档；online/offline 的真实派生断言放在 Postgres 链。
+        step("readings: presence is derived from server receive time") {
             val backfillExternalId = "AA:BB:CC:00:00:08"
             val neverExternalId = "AA:BB:CC:00:00:09"
             // 补录 2 小时前的旧读数：presence 只按服务端接收时间推导，不看 recordedAt。
@@ -857,23 +857,32 @@ class E2eContractTest {
 
             val reported = devices.firstOrNull { it?.get("externalId") == externalId }
                 ?: error("missing reported device")
-            assertTrue(
-                "presence must be present in payload",
-                reported["presence"] in setOf("unknown", "online", "offline"),
-            )
-
             val backfilled = devices.firstOrNull { it?.get("externalId") == backfillExternalId }
                 ?: error("missing backfill device")
-            assertTrue(
-                "backfill presence must be present in payload",
-                backfilled["presence"] in setOf("unknown", "online", "offline"),
-            )
+
+            if (store == "postgres") {
+                // 刚被接受的读数：窗口内 → online；lastSeenAt 必然非空。
+                assertEquals("online", reported["presence"])
+                assertNotNull(reported["lastSeenAt"])
+                // 补录旧 recordedAt 不影响：服务端按接收时间判 online。
+                assertEquals("online", backfilled["presence"])
+                assertNotNull(backfilled["lastSeenAt"])
+            } else {
+                assertTrue(
+                    "presence must be present in payload",
+                    reported["presence"] in setOf("unknown", "online", "offline"),
+                )
+                assertTrue(
+                    "backfill presence must be present in payload",
+                    backfilled["presence"] in setOf("unknown", "online", "offline"),
+                )
+            }
 
             // 从未上报：unknown 是独立一档，不能并进 offline；lastSeenAt 必须为 null。
             val never = devices.firstOrNull { it?.get("externalId") == neverExternalId }
                 ?: error("missing never-reported device")
             assertEquals("unknown", never["presence"])
-            assertTrue(never["lastSeenAt"] == null)
+            assertNull(never["lastSeenAt"])
         }
 
         step("readings: list is newest first and filterable") {

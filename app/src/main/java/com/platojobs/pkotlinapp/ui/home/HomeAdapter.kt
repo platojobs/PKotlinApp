@@ -450,22 +450,8 @@ class HomeAdapter(
             // 状态行与房间详情保持同一口径：本机连接 > 服务端 15 分钟内有上报 >
             // 有上报但已超时 > 从未上报。不出现不加限定的「在线」。
             val connected = item.status == DeviceLinkStatus.LOCAL_CONNECTED
-            binding.connectionStatus.text = when (item.status) {
-                DeviceLinkStatus.LOCAL_CONNECTED ->
-                    context.getString(R.string.home_device_connected)
-
-                DeviceLinkStatus.CLOUD_RECENT ->
-                    context.getString(R.string.home_device_cloud_recent)
-
-                DeviceLinkStatus.CLOUD_STALE -> context.getString(
-                    R.string.home_device_cloud_stale,
-                    device.lastSeenAt?.let { TimeFormat.relative(context, it) }
-                        ?: context.getString(R.string.home_device_cloud_never),
-                )
-
-                DeviceLinkStatus.CLOUD_UNKNOWN ->
-                    context.getString(R.string.home_device_cloud_unknown)
-            }
+            binding.connectionStatus.text =
+                homeDeviceStatusText(context, item.status, device.lastSeenAt)
             binding.connectionStatus.setTextColor(
                 ContextCompat.getColor(
                     context,
@@ -667,4 +653,29 @@ fun sceneActionLabel(context: Context, action: SceneAction): String = when (acti
     SceneActionType.NOTIFY -> context.getString(R.string.scene_action_notify)
     SceneActionType.RECORD_LOG -> context.getString(R.string.scene_action_record_log)
     SceneActionType.MARK_DEVICE -> context.getString(R.string.scene_action_mark_device)
+}
+
+/**
+ * 首页设备状态行：四档各用独立文案，超时档必须带上最近一次上报时间，
+ * 让「云端 15 分钟内有上报」与「上报已超时」的区别一直可见。
+ */
+internal fun homeDeviceStatusText(
+    context: Context,
+    status: DeviceLinkStatus,
+    lastSeenAt: Long?,
+): String = when (status) {
+    DeviceLinkStatus.LOCAL_CONNECTED ->
+        context.getString(R.string.home_device_connected)
+
+    DeviceLinkStatus.CLOUD_RECENT ->
+        context.getString(R.string.home_device_cloud_recent)
+
+    DeviceLinkStatus.CLOUD_STALE -> context.getString(
+        R.string.home_device_cloud_stale,
+        lastSeenAt?.let { TimeFormat.relative(context, it) }
+            ?: context.getString(R.string.home_device_cloud_never),
+    )
+
+    DeviceLinkStatus.CLOUD_UNKNOWN ->
+        context.getString(R.string.home_device_cloud_unknown)
 }

@@ -1,6 +1,7 @@
 package com.platojobs.pkotlinapp.ui.home
 
 import com.platojobs.pkotlinapp.domain.model.Device
+import com.platojobs.pkotlinapp.domain.model.DeviceLinkStatus
 import com.platojobs.pkotlinapp.domain.model.PLATFORM_ANDROID
 import com.platojobs.pkotlinapp.domain.model.Room
 import com.platojobs.pkotlinapp.domain.model.SyncState
@@ -16,7 +17,7 @@ import org.junit.Test
 
 /**
  * 房间详情由本机设备缓存聚合：
- * 连接状态用「本机在线/本机离线/本机不可连接」三档，不冒充服务端在线；
+ * 状态本机连接优先，其次服务端 presence（15 分钟窗口），unknown 单独一档；
  * 读数本机优先，缺失时才展示云端四态。
  */
 class RoomDetailTest {
@@ -32,6 +33,7 @@ class RoomDetailTest {
         syncState: SyncState = SyncState.SYNCED,
         platform: String = PLATFORM_ANDROID,
         externalId: String = "",
+        lastSeenAt: Long? = null,
     ) = Device(
         mac = mac,
         name = name,
@@ -43,6 +45,7 @@ class RoomDetailTest {
         syncState = syncState,
         platform = platform,
         externalId = externalId,
+        lastSeenAt = lastSeenAt,
     )
 
     private fun reading(mac: String, value: Double = 26.5): Reading = Reading(
@@ -84,26 +87,52 @@ class RoomDetailTest {
     }
 
     @Test
-    fun `link state is local only - connected, offline, unreachable`() {
+    fun `status prefers local connection then server presence`() {
         val devices = listOf(
-            device(CONNECTED_MAC),
-            device("cc:dd"),
-            // 其他平台设备本机无法直连，不能算离线。
-            device("ios-uuid", platform = "ios", externalId = "ios-uuid"),
+            // 本机已连接：即使服务端最近上报已超时，也以本机连接为准。
+            device(CONNECTED_MAC, lastSeenAt = NOW - 10 * 60_000L),
+            device("recent", lastSeenAt = NOW - 60_000L),
+            device("stale", lastSeenAt = NOW - 16 * 60_000L),
+            device("never", lastSeenAt = null),
         )
 
         val detail = RoomDetailBuilder.build(
-            room, devices, emptyMap(), emptyMap(), CONNECTED_MAC, "未知设备",
+            room, devices, emptyMap(), emptyMap(), CONNECTED_MAC, "未知设备", NOW,
         )
 
-        assertEquals(3, detail.total)
-        assertEquals(1, detail.onlineCount)
-        assertEquals(1, detail.offlineCount)
-        assertEquals(1, detail.unreachableCount)
+        assertEquals(4, detail.total)
+        assertEquals(1, detail.localConnectedCount)
+        assertEquals(1, detail.cloudRecentCount)
+        assertEquals(1, detail.cloudStaleCount)
+        assertEquals(1, detail.cloudUnknownCount)
         assertEquals(
-            listOf(LocalLinkState.ONLINE, LocalLinkState.OFFLINE, LocalLinkState.UNREACHABLE),
-            detail.entries.map { it.link },
+            listOf(
+                DeviceLinkStatus.LOCAL_CONNECTED,
+                DeviceLinkStatus.CLOUD_RECENT,
+                DeviceLinkStatus.CLOUD_STALE,
+                DeviceLinkStatus.CLOUD_UNKNOWN,
+            ),
+            detail.entries.map { it.status },
         )
+        assertEquals(
+            listOf(NOW - 10 * 60_000L, NOW - 60_000L, NOW - 16 * 60_000L, null),
+            detail.entries.map { it.lastSeenAt },
+        )
+    }
+
+    @Test
+    fun `presence window boundary is inclusive at 900 seconds`() {
+        val devices = listOf(
+            device("edge", lastSeenAt = NOW - 900_000L),
+            device("over", lastSeenAt = NOW - 900_001L),
+        )
+
+        val detail = RoomDetailBuilder.build(
+            room, devices, emptyMap(), emptyMap(), null, "未知设备", NOW,
+        )
+
+        assertEquals(DeviceLinkStatus.CLOUD_RECENT, detail.entries[0].status)
+        assertEquals(DeviceLinkStatus.CLOUD_STALE, detail.entries[1].status)
     }
 
     @Test

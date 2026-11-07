@@ -103,6 +103,8 @@ data class RemoteDeviceRef(
     val roomRemoteId: String?,
     val alias: String? = null,
     val updatedAt: Long = 0,
+    /** 服务端最近一次接受读数上报的时间；null 表示从未上报。 */
+    val lastSeenAt: Long? = null,
 )
 
 data class HouseholdSyncStatus(

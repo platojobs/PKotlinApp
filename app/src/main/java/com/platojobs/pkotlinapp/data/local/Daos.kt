@@ -89,6 +89,16 @@ interface DeviceDao {
     @Query("SELECT * FROM devices WHERE shared = 1 AND householdId = :householdId")
     suspend fun sharedDevicesForHousehold(householdId: Long): List<DeviceEntity>
 
+    /**
+     * 服务端只读的最近上报时间：单独写列，不置脏、不推进 updatedAt。
+     * null 表示老后端未返回该字段，保留本地值。
+     */
+    @Query(
+        "UPDATE devices SET lastSeenAt = CASE WHEN :lastSeenAt IS NULL THEN lastSeenAt " +
+            "ELSE :lastSeenAt END WHERE mac = :mac",
+    )
+    suspend fun applyLastSeenAt(mac: String, lastSeenAt: Long?)
+
     @Query("DELETE FROM devices WHERE mac IN (:macs)")
     suspend fun deleteByMacs(macs: List<String>)
 

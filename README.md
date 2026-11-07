@@ -160,13 +160,13 @@ app/src/main/java/com/platojobs/pkotlinapp/
 
 ## 6. 数据层与多设备同步
 
-### Room 与迁移（当前 v16）
+### Room 与迁移（当前 v25）
 
-数据库 `device_dashboard.db` 当前版本 **16**，共含设备、读数、规则、规则事件、扫描日志、场景、场景动作、房间与场景执行记录等表：
+数据库 `device_dashboard.db` 当前版本 **25**，共含设备、读数、规则、规则事件、扫描日志、场景、场景动作、房间与场景执行记录等表：
 
 | 表 | 关键字段 |
 | --- | --- |
-| `devices` | `mac` 主键、`name`（用户别名）、`aliasDirty`（用户是否显式编辑过别名，默认 0）、`advertisedName`（广播名）、`lastRssi`、`lastSeenTimestamp`、`id`（客户端 UUID）、`platform`、`externalId`、`updatedAt`、`deletedAt`、`syncState(pending/synced)`、`deviceType/vendor/firmwareVersion/compatibility`（enrich 缓存）、`deviceTypeName`（catalog 展示名）、`deviceGroup`（云端分组，`NULL`=未上报/未知，`""`=已显式清空）、`roomId`（本机房间归属，`NULL`=未分配）、`markedAt`（场景「标记设备」写入，`NULL`=未标记） |
+| `devices` | `mac` 主键、`name`（用户别名）、`aliasDirty`（用户是否显式编辑过别名，默认 0）、`advertisedName`（广播名）、`lastRssi`、`lastSeenTimestamp`、`id`（客户端 UUID）、`platform`、`externalId`、`updatedAt`、`deletedAt`、`syncState(pending/synced)`、`deviceType/vendor/firmwareVersion/compatibility`（enrich 缓存）、`deviceTypeName`（catalog 展示名）、`deviceGroup`（云端分组，`NULL`=未上报/未知，`""`=已显式清空）、`roomId`（本机房间归属，`NULL`=未分配）、`markedAt`（场景「标记设备」写入，`NULL`=未标记）、`lastSeenAt`（服务端最后一次接受读数上报的时间，`NULL`=从未上报；服务端只读，不参与 LWW / 上报） |
 | `rooms` | 自增 id、`name`、`sortOrder`、`createdAt`；仅本机维护，不参与云端同步 |
 | `rules` | 自增 id、`type`、`threshold`（RSSI 规则）、`enabled`、`createdAt`、`lastTriggeredTimestamp`；v10 新增 `metric`、`comparator`、`thresholdValue`、`consecutive`（指标规则；旧规则为 NULL/默认值）；v16 新增 `sceneId`（非空表示场景触发规则）与 `intervalMinutes`（定时场景间隔） |
 | `rule_events` | 规则触发记录；v10 新增 `metric`、`value`、`thresholdValue`、`unit`，保存指标命中的触发值与阈值证据 |
@@ -179,7 +179,7 @@ app/src/main/java/com/platojobs/pkotlinapp/
 - `MIGRATION_9_10` 为 `rules` 增加 `metric/comparator/thresholdValue/consecutive`，为 `rule_events` 增加 `metric/value/thresholdValue/unit`。旧 RSSI 规则的 `type` 与 `threshold` **原样保留**（仍走 `rssi < threshold`），只回填 `comparator='<'` 与 `thresholdValue=threshold` 作为语义副本；其它旧规则保持默认值。`RuleMigrationTest` 用真实 SQLite 验证列、回填与旧规则字段不变。
 - `MIGRATION_10_11` 新增本机 `rooms` 表，并给 `devices` 增加可空 `roomId`。旧设备全部为 `NULL`（未分配），`deviceGroup` 原样保留；`RoomMigrationTest` 用真实 SQLite 验证设备数量/字段不变与 `roomId` 为 null。
 - `MIGRATION_15_16`（场景引擎）：`rules` 增加可空 `sceneId/intervalMinutes`，`scenes` 增加 `enabled INTEGER NOT NULL DEFAULT 1`，`devices` 增加可空 `markedAt`，新建 `scene_runs` 与 `index_scene_runs_timestamp`。旧规则、场景、设备数据原样保留；`SceneEngineMigrationTest` 用真实 SQLite 验证列、默认值与新表写入。
-- 迁移后 schema 输出在 `app/schemas/com.platojobs.pkotlinapp.data.local.AppDatabase/16.json`。
+- 迁移后 schema 输出在 `app/schemas/com.platojobs.pkotlinapp.data.local.AppDatabase/25.json`。
 - 别名与广播名隔离：扫描只写 `advertisedName`，详情页编辑只写 `name`（alias），两者互不覆盖；列表/详情展示优先级为「用户别名 → 广播名 → catalog 型号名 → 未知设备」。
 - **别名清空语义**：`aliasDirty` 只在详情页保存且别名相对初始值发生变化时置 1（一旦置位保持），扫描路径永远不置位。置位后即使 `name` 为空，推送也会显式上报 `"alias":""`；未置位时不报空别名。服务端返回空别名时按「已清空」写回本地（`name=""`），展示层回退到广播名，旧别名不会被拉回复活。
 - `DeviceDao` 使用 `@Upsert insertOrUpdate`、`suspend getAllDevices`，并提供待同步查询、待同步计数、按 externalId 标记 synced 等同步专用方法。
@@ -223,10 +223,12 @@ app/src/main/java/com/platojobs/pkotlinapp/
 - **幂等推送**：`IdempotencyKeys.forBatch` 只对**实际会上报**的字段（含 alias/广播名/型号/分组、RSSI、时间）生成稳定的 SHA-256 key；未上报字段不参与哈希，避免同内容重试被算成不同请求而 409。同一 key + 同一请求体重放会命中服务端幂等缓存（`Idempotent-Replayed: true`），同一 key + 不同请求体返回 `409 IDEMPOTENCY_CONFLICT`。
 - **冲突处理**：服务端按 LWW 返回 `conflicts`（如 `server_newer`）时以服务端版本覆盖本地，但结果会通过 `SyncOutcome.conflicts` 上报，并显示在「我的」页，**不静默覆盖**。
 - **拉取合并**：若本地记录为 `pending` 且 `updatedAt` 更新，则不被较旧的服务端版本覆盖；服务端 tombstone 直接删除本地记录。
+- **在线口径（openapi 0.21.0）**：服务端 `presence`（`unknown/online/offline`）由「最后一次被接受的读数上报接收时间」推导，`now - lastSeenAt <= 900s` 为 `online`，与 `recordedAt` 无关；`unknown`（从未上报）单独一档。客户端展示优先级为「本机 BLE 已连接 > 服务端 15 分钟内有上报 > 上报已超时 > 从未上报」，**不写不加限定的「在线」**：首页统计、设备卡片、房间详情汇总与设备行统一使用「本机已连接 / 15 分钟内有上报 / 超时未上报 / 从未上报」，房间详情与设备详情额外给出 `lastSeenAt` 的具体时间（服务端接收时间）。
+- **`lastSeenAt` 落库**：随 `/sync/changes` 与 `/my/devices` 增量写入本机 Room（`DeviceDao.applyLastSeenAt` 单列更新）。它是服务端只读字段：即使本地 `pending` 版本在 LWW 中胜出也会单独写入；写它**不置脏、不推进本地 `updatedAt`**，老后端缺该字段时保留本地值。`presence` 只在响应中实时推导，不落库、不参与上报。
 - **WorkManager**：`SyncWorker` 在 `NetworkType.CONNECTED` 约束下批量 push，成功后置 `synced`；失败按指数退避重试。
 - **冷启动**：`PKotlinApplication.onCreate` 只做容器装配与主题恢复；`MainActivity` 不再等待网络，直接渲染首页骨架/空态；同步、保留清理与周期调度在首帧之后由 `startBackgroundWork()` 投递到 IO 线程（详见 §12 的真实测量数字）。
 - **降级**：连续失败 3 次进入纯本地模式并持久化，主界面顶部横幅与「我的」页同步卡片都会提示；本地 Room 功能不受影响，用户可手动同步恢复。
-- **测试**：`SyncEngineTest` 覆盖幂等重试、未上报字段不参与幂等键、冲突落败上报、tombstone 删除与拉取合并；`Rfc3339Test` 覆盖 Go 纳秒时间与带时区偏移的解析；`SyncDtoMappingTest` 覆盖三态序列化（absent/空串/值）、别名与广播名隔离、absent 解析、push DTO 字段归一化、iOS 无 MAC、tombstone 与非法 id 回退；`SyncErrorKindTest` 覆盖网络/超时/401/403/409/500/未知分类；`RemoteSyncTokenTest` 覆盖「401 不自动重登、保留 token、其它错误原样抛出」；`OfflineDeviceInfoTest` 覆盖展示优先级与离线分组；`DeviceAliasPersistenceTest` 覆盖显式清空别名落库、扫描不覆盖别名/不置脏；`DeviceMigrationTest` 用真实 SQLite 验证 v3→v4、v4→v5、v5→v6 不丢数据。
+- **测试**：`SyncEngineTest` 覆盖幂等重试、未上报字段不参与幂等键、冲突落败上报、tombstone 删除与拉取合并；`Rfc3339Test` 覆盖 Go 纳秒时间与带时区偏移的解析；`SyncDtoMappingTest` 覆盖三态序列化（absent/空串/值）、别名与广播名隔离、absent 解析、push DTO 字段归一化、iOS 无 MAC、tombstone 与非法 id 回退；`SyncErrorKindTest` 覆盖网络/超时/401/403/409/500/未知分类；`RemoteSyncTokenTest` 覆盖「401 不自动重登、保留 token、其它错误原样抛出」；`OfflineDeviceInfoTest` 覆盖展示优先级与离线分组；`DeviceAliasPersistenceTest` 覆盖显式清空别名落库、扫描不覆盖别名/不置脏；`DeviceMigrationTest` 用真实 SQLite 验证 v3→v4、v4→v5、v5→v6 不丢数据；`DevicePresenceTest` 覆盖 unknown/online/offline 三态、900s 窗口边界与本机连接优先；`RoomDetailTest` 覆盖四档汇总与设备行状态；`DeviceMarkSyncIsolationTest` / `DeviceLastSeenMigrationTest` 验证 `lastSeenAt` 写入不置脏、不推进 `updatedAt`，迁移后历史行保持 `NULL`。
 
 同步往返样例（与 `openapi.yaml` 一致）：
 

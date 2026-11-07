@@ -292,6 +292,33 @@ class SyncDtoMappingTest {
     }
 
     @Test
+    fun `pull parses presence and lastSeenAt but push never reports them`() {
+        val adapter = ApiClient.moshi().adapter(SyncDeviceDto::class.java)
+        val pulled = adapter.fromJson(
+            """{"externalId":"AA:BB:CC:DD:EE:FF","platform":"android",""" +
+                """"updatedAt":"2025-10-01T00:00:00Z",""" +
+                """"presence":"online","lastSeenAt":"2025-09-30T12:34:56.789Z"}""",
+        )!!.toDomain()!!
+
+        assertEquals(
+            Rfc3339.parse("2025-09-30T12:34:56.789Z"),
+            pulled.lastSeenAt,
+        )
+        // 从未上报：null 保持 null，不能退化成 updatedAt。
+        val never = adapter.fromJson(
+            """{"externalId":"AA:BB:CC:DD:EE:FF","platform":"android",""" +
+                """"updatedAt":"2025-10-01T00:00:00Z","presence":"unknown"}""",
+        )!!.toDomain()!!
+        assertNull(never.lastSeenAt)
+
+        // 服务端只读：present/lastSeenAt 不参与 push，也不会在 payload 里出现。
+        val pushJson = ApiClient.moshi().adapter(SyncPushRequest::class.java)
+            .toJson(SyncPushRequest("test", listOf(never.toPushDto())))
+        assertFalse(pushJson.contains("presence"))
+        assertFalse(pushJson.contains("lastSeenAt"))
+    }
+
+    @Test
     fun `push json maps markedAt tri-state`() {
         val adapter = ApiClient.moshi().adapter(SyncPushRequest::class.java)
         val record = SyncRecord(

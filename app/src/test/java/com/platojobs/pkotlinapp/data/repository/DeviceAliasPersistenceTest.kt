@@ -263,6 +263,11 @@ class DeviceAliasPersistenceTest {
             rows.values.filter { it.externalId == externalId }.forEach { rows.remove(it.mac) }
         }
 
+        override suspend fun applyLastSeenAt(mac: String, lastSeenAt: Long?) {
+            if (lastSeenAt == null) return
+            rows[mac]?.let { rows[mac] = it.copy(lastSeenAt = lastSeenAt) }
+        }
+
         private fun getAllDevicesSync(): List<DeviceEntity> =
             rows.values.filter { it.deletedAt == null }.sortedByDescending { it.lastSeenTimestamp }
 

@@ -356,5 +356,7 @@ class RoomRepositoryTest {
         override suspend fun markAllPending() = Unit
 
         override suspend fun deleteByExternalId(externalId: String) = Unit
+
+        override suspend fun applyLastSeenAt(mac: String, lastSeenAt: Long?) = Unit
     }
 }

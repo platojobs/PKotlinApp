@@ -1,6 +1,7 @@
 package com.platojobs.pkotlinapp.ui.home
 
 import com.platojobs.pkotlinapp.domain.model.cloudReadingKey
+import com.platojobs.pkotlinapp.domain.model.deviceLinkStatus
 
 /**
  * 首页列表构建（纯 Kotlin，便于 JVM 压测）：
@@ -55,7 +56,7 @@ object HomeListBuilder {
                             } else {
                                 null
                             },
-                            connected = state.connectedMac == device.mac,
+                            status = deviceLinkStatus(device, state.connectedMac, state.now),
                         )
                     }
                 }

@@ -55,6 +55,8 @@ data class DeviceEntity(
     val markedAt: Long? = null,
     // 本机标记是否待上报；服务端已确认后清零，避免无关更新重复上报 markedAt。
     @ColumnInfo(defaultValue = "0") val markedAtDirty: Boolean = false,
+    // 服务端最后一次接受读数上报的接收时间；null 表示从未上报。只读，不参与上报/LWW。
+    val lastSeenAt: Long? = null,
 )
 
 /** 本地家庭：remoteId 为服务端 UUID；id 为本地自增，供房间/设备外键引用。 */

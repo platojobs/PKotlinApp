@@ -21,7 +21,7 @@ import com.platojobs.pkotlinapp.databinding.ItemHomeScenesBinding
 import com.platojobs.pkotlinapp.databinding.ItemHomeSectionBinding
 import com.platojobs.pkotlinapp.databinding.ItemSceneCardBinding
 import com.platojobs.pkotlinapp.domain.model.Device
-import com.platojobs.pkotlinapp.domain.model.PLATFORM_ANDROID
+import com.platojobs.pkotlinapp.domain.model.DeviceLinkStatus
 import com.platojobs.pkotlinapp.domain.model.displayName
 import com.platojobs.pkotlinapp.domain.reading.CloudReadingState
 import com.platojobs.pkotlinapp.domain.reading.Reading
@@ -72,7 +72,8 @@ sealed interface HomeItem {
         val device: Device,
         val reading: Reading?,
         val cloudReading: CloudReadingState?,
-        val connected: Boolean,
+        /** 本机连接优先，其次服务端 presence 三态。 */
+        val status: DeviceLinkStatus,
     ) : HomeItem {
         override val span: Int get() = 1
     }
@@ -224,15 +225,15 @@ class HomeAdapter(
             bindCell(
                 binding.statusOnline,
                 binding.statusOnlineCount,
-                context.getString(R.string.home_status_online),
-                overview.onlineCount,
-            ) { onStatusClick(HomeStatusFilter.ONLINE) }
+                context.getString(R.string.home_status_local_connected),
+                overview.localConnectedCount,
+            ) { onStatusClick(HomeStatusFilter.LOCAL_CONNECTED) }
             bindCell(
                 binding.statusOffline,
                 binding.statusOfflineCount,
-                context.getString(R.string.home_status_offline),
-                overview.offlineCount,
-            ) { onStatusClick(HomeStatusFilter.OFFLINE) }
+                context.getString(R.string.home_status_cloud_recent),
+                overview.cloudRecentCount,
+            ) { onStatusClick(HomeStatusFilter.CLOUD_RECENT) }
             bindCell(
                 binding.statusUnassigned,
                 binding.statusUnassignedCount,
@@ -253,14 +254,20 @@ class HomeAdapter(
             val filter = item.filter
             binding.statusFilterHint.visibility = View.VISIBLE
             if (filter == null) {
+                // 口径说明：服务端 presence 只代表「最近 15 分钟有没有读数上报」。
                 binding.statusFilterHint.text = context.getString(
-                    R.string.home_status_online_hint,
-                    overview.unreachableCount,
+                    R.string.home_status_presence_hint,
+                    overview.cloudStaleCount,
+                    overview.cloudUnknownCount,
                 )
             } else {
                 val label = when (filter) {
-                    HomeStatusFilter.ONLINE -> context.getString(R.string.home_status_online)
-                    HomeStatusFilter.OFFLINE -> context.getString(R.string.home_status_offline)
+                    HomeStatusFilter.LOCAL_CONNECTED ->
+                        context.getString(R.string.home_status_local_connected)
+
+                    HomeStatusFilter.CLOUD_RECENT ->
+                        context.getString(R.string.home_status_cloud_recent)
+
                     HomeStatusFilter.UNASSIGNED -> context.getString(R.string.home_status_unassigned)
                     HomeStatusFilter.LOW_BATTERY -> context.getString(
                         R.string.home_status_low_battery,
@@ -268,8 +275,8 @@ class HomeAdapter(
                     )
                 }
                 val count = when (filter) {
-                    HomeStatusFilter.ONLINE -> overview.onlineCount
-                    HomeStatusFilter.OFFLINE -> overview.offlineCount
+                    HomeStatusFilter.LOCAL_CONNECTED -> overview.localConnectedCount
+                    HomeStatusFilter.CLOUD_RECENT -> overview.cloudRecentCount
                     HomeStatusFilter.UNASSIGNED -> overview.unassignedCount
                     HomeStatusFilter.LOW_BATTERY -> overview.lowBatteryCount
                 }
@@ -440,15 +447,25 @@ class HomeAdapter(
             binding.deviceName.text = device.displayName() ?: unknownName
             binding.markedBadge.visibility =
                 if (device.markedAt != null) View.VISIBLE else View.GONE
-            val connected = item.connected
-            val unreachable = device.platform != PLATFORM_ANDROID
-            binding.connectionStatus.setText(
-                when {
-                    connected -> R.string.home_device_connected
-                    unreachable -> R.string.home_device_unreachable
-                    else -> R.string.home_device_disconnected
-                },
-            )
+            // 状态行与房间详情保持同一口径：本机连接 > 服务端 15 分钟内有上报 >
+            // 有上报但已超时 > 从未上报。不出现不加限定的「在线」。
+            val connected = item.status == DeviceLinkStatus.LOCAL_CONNECTED
+            binding.connectionStatus.text = when (item.status) {
+                DeviceLinkStatus.LOCAL_CONNECTED ->
+                    context.getString(R.string.home_device_connected)
+
+                DeviceLinkStatus.CLOUD_RECENT ->
+                    context.getString(R.string.home_device_cloud_recent)
+
+                DeviceLinkStatus.CLOUD_STALE -> context.getString(
+                    R.string.home_device_cloud_stale,
+                    device.lastSeenAt?.let { TimeFormat.relative(context, it) }
+                        ?: context.getString(R.string.home_device_cloud_never),
+                )
+
+                DeviceLinkStatus.CLOUD_UNKNOWN ->
+                    context.getString(R.string.home_device_cloud_unknown)
+            }
             binding.connectionStatus.setTextColor(
                 ContextCompat.getColor(
                     context,

@@ -29,15 +29,20 @@ import com.platojobs.pkotlinapp.diagnostics.StartupDiagnostics
 import com.platojobs.pkotlinapp.diagnostics.StartupStage
 import com.platojobs.pkotlinapp.domain.household.householdRolePermissions
 import com.platojobs.pkotlinapp.domain.model.Device
+import com.platojobs.pkotlinapp.domain.model.DeviceLinkStatus
 import com.platojobs.pkotlinapp.domain.model.displayName
 import com.platojobs.pkotlinapp.domain.reading.CloudReadingState
 import com.platojobs.pkotlinapp.ui.MainActivity
 import com.platojobs.pkotlinapp.ui.common.BlePermissions
 import com.platojobs.pkotlinapp.ui.common.PermissionRationale
 import com.platojobs.pkotlinapp.ui.common.ThreeStateHost
+import com.platojobs.pkotlinapp.ui.common.TimeFormat
 import com.platojobs.pkotlinapp.ui.common.applyBottomInsetPadding
 import com.platojobs.pkotlinapp.ui.detail.DeviceDetailActivity
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class HomeFragment : Fragment(R.layout.fragment_home) {
 
@@ -265,6 +270,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             cloudReadings = state.cloudReadings,
             connectedMac = state.connectedMac,
             unknownName = getString(R.string.device_unknown),
+            now = state.now,
         )
         if (detail.isEmpty) {
             openScanDialog()
@@ -362,6 +368,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                         cloudReadings = latest.cloudReadings,
                         connectedMac = latest.connectedMac,
                         unknownName = getString(R.string.device_unknown),
+                        now = latest.now,
                     )
                     summaryView.text = roomSummary(fresh, largeFont)
                     val freshEntries = fresh.entries.associateBy { it.mac }
@@ -379,28 +386,31 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             getString(
                 R.string.room_detail_summary_large,
                 detail.total,
-                detail.onlineCount,
-                detail.offlineCount,
-                detail.unreachableCount,
+                detail.localConnectedCount,
+                detail.cloudRecentCount,
+                detail.cloudStaleCount,
+                detail.cloudUnknownCount,
                 detail.markedCount,
             )
         } else {
             getString(
                 R.string.room_detail_summary,
                 detail.total,
-                detail.onlineCount,
-                detail.offlineCount,
-                detail.unreachableCount,
+                detail.localConnectedCount,
+                detail.cloudRecentCount,
+                detail.cloudStaleCount,
+                detail.cloudUnknownCount,
                 detail.markedCount,
             )
         }
 
     private fun roomDeviceText(entry: RoomDeviceEntry): String {
         val status = getString(
-            when (entry.link) {
-                LocalLinkState.ONLINE -> R.string.room_detail_online
-                LocalLinkState.OFFLINE -> R.string.room_detail_offline
-                LocalLinkState.UNREACHABLE -> R.string.room_detail_unreachable
+            when (entry.status) {
+                DeviceLinkStatus.LOCAL_CONNECTED -> R.string.room_detail_local_connected
+                DeviceLinkStatus.CLOUD_RECENT -> R.string.room_detail_cloud_recent
+                DeviceLinkStatus.CLOUD_STALE -> R.string.room_detail_cloud_stale
+                DeviceLinkStatus.CLOUD_UNKNOWN -> R.string.room_detail_cloud_unknown
             },
         )
         val readingText = when {
@@ -420,9 +430,28 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         }
         val marked = if (entry.marked) getString(R.string.room_detail_marked_suffix) else ""
         // 名称/状态与读数分两行：长名称或 100% 字号下也不会在词中间换行。
-        val meta = getString(R.string.room_detail_device_meta, readingText, marked)
+        val meta = buildString {
+            append(getString(R.string.room_detail_device_meta, readingText, marked))
+            // presence 只说明「最近一次上报」；给出服务端记录的具体时间，避免被读成绿灯。
+            entry.lastSeenAt?.let { at ->
+                append('\n')
+                append(
+                    getString(
+                        R.string.room_detail_last_seen,
+                        TimeFormat.relative(requireContext(), at),
+                        formatLastSeen(at),
+                    ),
+                )
+            }
+        }
         return getString(R.string.room_detail_device_title, entry.name, status) + "\n" + meta
     }
+
+    /** 服务端 lastSeenAt 的具体时刻（MM-dd HH:mm），与相对时间一起展示。 */
+    private fun formatLastSeen(timestamp: Long): String = SimpleDateFormat(
+        getString(R.string.time_format),
+        Locale.getDefault(),
+    ).format(Date(timestamp))
 
     private fun batchButton(textRes: Int, fullWidth: Boolean, onClick: () -> Unit): MaterialButton =
         MaterialButton(requireContext(), null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {

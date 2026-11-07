@@ -624,7 +624,8 @@ class HouseholdRepository(
                         mac = mac,
                         name = ref.alias ?: "共享设备",
                         lastRssi = 0,
-                        lastSeenTimestamp = timestamp,
+                        // 本机从未扫描过共享设备，不拿 updatedAt 冒充心跳。
+                        lastSeenTimestamp = 0L,
                         id = ref.externalId,
                         platform = ref.platform,
                         externalId = ref.externalId,
@@ -636,10 +637,13 @@ class HouseholdRepository(
                         remoteRoomId = ref.roomRemoteId,
                         roomId = roomLocalId,
                         shared = true,
+                        lastSeenAt = ref.lastSeenAt,
                     ),
                 )
             } else {
                 deviceDao.applyServerMeta(existing.mac, row.id, ref.roomRemoteId, roomLocalId)
+                // 只读心跳：单独写列，不置脏、不推进 updatedAt。
+                deviceDao.applyLastSeenAt(existing.mac, ref.lastSeenAt)
             }
         }
         // 服务端已不再返回的共享设备（被移除/退出家庭）同步清理，避免列表残留。

@@ -152,7 +152,11 @@
     <string name="detail_alias">别名</string>
     <string name="detail_group">分组</string>
     <string name="detail_group_empty">未分组</string>
-    <string name="detail_last_seen">最后出现</string>
+    <string name="detail_last_seen">本机最后出现</string>
+    <string name="detail_never_scanned">本机从未扫描到</string>
+    <string name="detail_cloud_last_seen">云端最近上报</string>
+    <string name="detail_cloud_last_seen_value">%1$s（服务端接收读数时间）</string>
+    <string name="detail_cloud_never_reported">从未上报过读数</string>
     <string name="detail_compatibility">兼容性</string>
     <string name="detail_offline_hint">网络不可用，以下为本地缓存数据。</string>
     <string name="detail_security_title">Android 16 安全事件</string>
@@ -622,9 +626,12 @@
     <string name="scene_action_index" translatable="false">%1$d</string>
     <string name="home_devices_title">我的设备</string>
     <string name="home_devices_count">共 %1$d 台设备 · %2$d 个分组</string>
-    <string name="home_device_connected">已连接</string>
-    <string name="home_device_disconnected">未连接</string>
-    <string name="home_device_unreachable">本机不可连接</string>
+    <string name="home_device_connected">本机已连接</string>
+    <!-- 服务端 presence 只说「最近 15 分钟有没有读数上报」，不能写成不加限定的「在线」。 -->
+    <string name="home_device_cloud_recent">云端 15 分钟内有上报</string>
+    <string name="home_device_cloud_stale">云端最近上报 %1$s</string>
+    <string name="home_device_cloud_unknown">云端从未收到上报</string>
+    <string name="home_device_cloud_never">无记录</string>
     <string name="home_device_last_reading">最近读数</string>
     <string name="home_device_cloud_reading">云端读数</string>
     <string name="home_device_cloud_loading">正在读取云端读数…</string>
@@ -818,11 +825,11 @@
     <string name="home_today_metric_row">%1$s %2$d</string>
     <string name="home_today_hourly_desc">今日读数按小时分布，峰值 %1$d 点 %2$d 条</string>
     <string name="home_device_status_title">设备状态</string>
-    <string name="home_status_online">本机在线</string>
-    <string name="home_status_offline">本机离线</string>
+    <string name="home_status_local_connected">本机已连接</string>
+    <string name="home_status_cloud_recent">15 分钟内上报</string>
     <string name="home_status_unassigned">未分配房间</string>
     <string name="home_status_low_battery">电量低于 %1$d</string>
-    <string name="home_status_online_hint">本机在线仅指本机蓝牙已连接；另有 %1$d 台本机不可连接</string>
+    <string name="home_status_presence_hint">「15 分钟内上报」由服务端按最近一次读数接收时间推导，不代表设备一定在线；%1$d 台已超时，%2$d 台从未上报</string>
     <string name="home_status_filter_active">%1$s · %2$d 台</string>
     <string name="home_status_filter_clear">清除筛选</string>
     <string name="home_activity_title">最近活动</string>
@@ -852,13 +859,15 @@
     <string name="room_unsynced_meta">%1$s · 未同步</string>
 
     <!-- 房间详情：聚合视图与批量操作 -->
-    <string name="room_detail_summary">共 %1$d 台 · 本机在线 %2$d · 本机离线 %3$d · 本机不可连接 %4$d · 已标记 %5$d</string>
-    <string name="room_detail_summary_large">共 %1$d 台 · 本机在线 %2$d · 本机离线 %3$d\n本机不可连接 %4$d · 已标记 %5$d</string>
+    <string name="room_detail_summary">共 %1$d 台 · 本机已连接 %2$d · 15 分钟内有上报 %3$d · 超时未上报 %4$d · 从未上报 %5$d · 已标记 %6$d</string>
+    <string name="room_detail_summary_large">共 %1$d 台 · 本机已连接 %2$d\n15 分钟内有上报 %3$d · 超时未上报 %4$d\n从未上报 %5$d · 已标记 %6$d</string>
     <string name="room_detail_device_title">%1$s · %2$s</string>
     <string name="room_detail_device_meta">%1$s %2$s</string>
-    <string name="room_detail_online">本机在线</string>
-    <string name="room_detail_offline">本机离线</string>
-    <string name="room_detail_unreachable">本机不可连接</string>
+    <string name="room_detail_local_connected">本机已连接</string>
+    <string name="room_detail_cloud_recent">云端 15 分钟内有上报</string>
+    <string name="room_detail_cloud_stale">云端上报已超时</string>
+    <string name="room_detail_cloud_unknown">云端从未收到上报</string>
+    <string name="room_detail_last_seen">最近上报 %1$s（%2$s，服务端接收时间）</string>
     <string name="room_detail_no_reading">暂无读数</string>
     <string name="room_detail_cloud_meta">云端读数 %1$s · %2$s</string>
     <string name="room_detail_cloud_loading">正在读取云端读数…</string>

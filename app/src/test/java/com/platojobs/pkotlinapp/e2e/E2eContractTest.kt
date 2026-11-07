@@ -807,6 +807,75 @@ class E2eContractTest {
             assertEquals(3, response.skippedReadings)
         }
 
+        // fixture 后端只做 DerivePresence、不维护 last_seen_at（真实值由 postgres 实跑覆盖），
+        // 这里校验契约字段存在且 unknown 是独立一档、lastSeenAt 为 null。
+        step("readings: presence field is exposed and unknown stays unknown") {
+            val backfillExternalId = "AA:BB:CC:00:00:08"
+            val neverExternalId = "AA:BB:CC:00:00:09"
+            // 补录 2 小时前的旧读数：presence 只按服务端接收时间推导，不看 recordedAt。
+            val presenceRequest = SyncPushRequest(
+                clientId = "e2e-presence-client",
+                devices = listOf(
+                    PushDeviceDto(
+                        id = UUID.randomUUID().toString(),
+                        platform = "android",
+                        externalId = backfillExternalId,
+                        mac = backfillExternalId.lowercase(),
+                        updatedAt = Rfc3339.format(now),
+                    ),
+                    PushDeviceDto(
+                        id = UUID.randomUUID().toString(),
+                        platform = "android",
+                        externalId = neverExternalId,
+                        mac = neverExternalId.lowercase(),
+                        updatedAt = Rfc3339.format(now),
+                    ),
+                ),
+                readings = listOf(
+                    PushReadingDto(
+                        id = UUID.randomUUID().toString(),
+                        platform = "android",
+                        externalId = backfillExternalId,
+                        metric = "temperature",
+                        value = 20.0,
+                        unit = "°C",
+                        recordedAt = Rfc3339.format(now - 2 * 3_600_000L),
+                    ),
+                ),
+            )
+            val pushed = push(
+                pushRequestAdapter.toJson(presenceRequest),
+                user.token,
+                "e2e-presence-${UUID.randomUUID()}",
+            )
+            assertEquals(200, pushed.code)
+
+            val list = get("/my/devices", user.token)
+            assertEquals(200, list.code)
+            val devices = (parseMap(list.body)["items"] as? List<*>).orEmpty()
+                .map { it as? Map<*, *> }
+
+            val reported = devices.firstOrNull { it?.get("externalId") == externalId }
+                ?: error("missing reported device")
+            assertTrue(
+                "presence must be present in payload",
+                reported["presence"] in setOf("unknown", "online", "offline"),
+            )
+
+            val backfilled = devices.firstOrNull { it?.get("externalId") == backfillExternalId }
+                ?: error("missing backfill device")
+            assertTrue(
+                "backfill presence must be present in payload",
+                backfilled["presence"] in setOf("unknown", "online", "offline"),
+            )
+
+            // 从未上报：unknown 是独立一档，不能并进 offline；lastSeenAt 必须为 null。
+            val never = devices.firstOrNull { it?.get("externalId") == neverExternalId }
+                ?: error("missing never-reported device")
+            assertEquals("unknown", never["presence"])
+            assertTrue(never["lastSeenAt"] == null)
+        }
+
         step("readings: list is newest first and filterable") {
             val result = get(
                 "/my/devices/android/$externalId/readings?limit=100",

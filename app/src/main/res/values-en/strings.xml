@@ -150,7 +150,11 @@
     <string name="detail_alias">Alias</string>
     <string name="detail_group">Group</string>
     <string name="detail_group_empty">No group</string>
-    <string name="detail_last_seen">Last seen</string>
+    <string name="detail_last_seen">Last seen here</string>
+    <string name="detail_never_scanned">Never scanned here</string>
+    <string name="detail_cloud_last_seen">Last cloud report</string>
+    <string name="detail_cloud_last_seen_value">%1$s (server receive time)</string>
+    <string name="detail_cloud_never_reported">No reading ever reported</string>
     <string name="detail_compatibility">Compatibility</string>
     <string name="detail_offline_hint">Network unavailable. Showing cached local data.</string>
     <string name="detail_security_title">Android 16 security events</string>
@@ -618,9 +622,12 @@
     <string name="home_scene_meta_local">%1$s · %2$s</string>
     <string name="home_devices_title">My devices</string>
     <string name="home_devices_count">Devices: %1$d · Groups: %2$d</string>
-    <string name="home_device_connected">Connected</string>
-    <string name="home_device_disconnected">Disconnected</string>
-    <string name="home_device_unreachable">Not connectable here</string>
+    <string name="home_device_connected">Connected on this phone</string>
+    <!-- Server presence only means "a reading was reported in the last 15 minutes"; never a plain "online". -->
+    <string name="home_device_cloud_recent">Reported within 15 min</string>
+    <string name="home_device_cloud_stale">Last reported %1$s</string>
+    <string name="home_device_cloud_unknown">Never reported to cloud</string>
+    <string name="home_device_cloud_never">no record</string>
     <string name="home_device_last_reading">Latest reading</string>
     <string name="home_device_cloud_reading">Cloud reading</string>
     <string name="home_device_cloud_loading">Loading cloud reading…</string>
@@ -814,11 +821,11 @@
     <string name="home_today_metric_row">%1$s %2$d</string>
     <string name="home_today_hourly_desc">Readings by hour today; peak at %1$d:00 with %2$d</string>
     <string name="home_device_status_title">Device status</string>
-    <string name="home_status_online">Local online</string>
-    <string name="home_status_offline">Local offline</string>
+    <string name="home_status_local_connected">Connected here</string>
+    <string name="home_status_cloud_recent">Reported in 15 min</string>
     <string name="home_status_unassigned">No room</string>
     <string name="home_status_low_battery">Battery below %1$d</string>
-    <string name="home_status_online_hint">Local online means this phone\'s Bluetooth is connected; %1$d more device(s) not connectable here</string>
+    <string name="home_status_presence_hint">&quot;Reported in 15 min&quot; is derived from the server receive time of the latest reading and does not mean the device is online; stale: %1$d, never reported: %2$d</string>
     <string name="home_status_filter_active">%1$s · %2$d devices</string>
     <string name="home_status_filter_clear">Clear filter</string>
     <string name="home_activity_title">Recent activity</string>
@@ -848,13 +855,15 @@
     <string name="room_unsynced_meta">%1$s · Not synced</string>
 
     <!-- Room detail: aggregate view and batch actions -->
-    <string name="room_detail_summary">Total: %1$d · local online: %2$d · local offline: %3$d · not connectable: %4$d · marked: %5$d</string>
-    <string name="room_detail_summary_large">Total: %1$d · local online: %2$d · local offline: %3$d\nnot connectable: %4$d · marked: %5$d</string>
+    <string name="room_detail_summary">Total: %1$d · connected here: %2$d · reported in 15 min: %3$d · reported earlier: %4$d · never reported: %5$d · marked: %6$d</string>
+    <string name="room_detail_summary_large">Total: %1$d · connected here: %2$d\nreported in 15 min: %3$d · reported earlier: %4$d\nnever reported: %5$d · marked: %6$d</string>
     <string name="room_detail_device_title">%1$s · %2$s</string>
     <string name="room_detail_device_meta">%1$s %2$s</string>
-    <string name="room_detail_online">Local online</string>
-    <string name="room_detail_offline">Local offline</string>
-    <string name="room_detail_unreachable">Not connectable here</string>
+    <string name="room_detail_local_connected">Connected on this phone</string>
+    <string name="room_detail_cloud_recent">Reported within 15 min</string>
+    <string name="room_detail_cloud_stale">Last report expired</string>
+    <string name="room_detail_cloud_unknown">Never reported to cloud</string>
+    <string name="room_detail_last_seen">Last reported %1$s (%2$s, server receive time)</string>
     <string name="room_detail_no_reading">No reading yet</string>
     <string name="room_detail_cloud_meta">Cloud reading %1$s · %2$s</string>
     <string name="room_detail_cloud_loading">Loading cloud reading…</string>

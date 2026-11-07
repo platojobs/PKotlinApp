@@ -77,9 +77,8 @@ class DeviceInfoRepositoryImpl(
 
         val latestScan = myDevice?.scanRecords.orEmpty()
             .maxByOrNull { Rfc3339.parse(it.at) ?: Long.MIN_VALUE }
-        val lastSeen = latestScan?.let { Rfc3339.parse(it.at) }?.takeIf { it > 0 }
-            ?: Rfc3339.parse(myDevice?.updatedAt)
-            ?: 0L
+        // 本机「最近出现」只认扫描记录；updatedAt 是编辑时间，不能当心跳。
+        val lastSeen = latestScan?.let { Rfc3339.parse(it.at) }?.takeIf { it > 0 } ?: 0L
 
         val info = DeviceInfo(
             mac = public?.mac ?: myDevice?.mac ?: mac,
@@ -92,6 +91,7 @@ class DeviceInfoRepositoryImpl(
             advertisedName = myDevice?.advertisedName.orEmpty(),
             group = myDevice?.group.orEmpty(),
             lastSeenTimestamp = lastSeen,
+            lastSeenAt = myDevice?.lastSeenAt?.takeIf { it.isNotBlank() }?.let(Rfc3339::parse),
             compatibility = compatibility,
         )
 

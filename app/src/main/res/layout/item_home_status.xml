@@ -51,7 +51,7 @@
                     style="@style/Widget.App.TextView"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="@string/home_status_online"
+                    android:text="@string/home_status_local_connected"
                     android:textAppearance="@style/TextAppearance.App.Footnote"
                     android:textColor="@color/text_secondary" />
             </LinearLayout>
@@ -78,7 +78,7 @@
                     style="@style/Widget.App.TextView"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="@string/home_status_offline"
+                    android:text="@string/home_status_cloud_recent"
                     android:textAppearance="@style/TextAppearance.App.Footnote"
                     android:textColor="@color/text_secondary" />
             </LinearLayout>

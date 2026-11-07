@@ -92,6 +92,8 @@ class DeviceRepositoryImpl(
                 vendor = device.vendor ?: existing?.vendor,
                 firmwareVersion = device.firmwareVersion ?: existing?.firmwareVersion,
                 compatibility = device.compatibility ?: existing?.compatibility,
+                // 服务端只读字段：扫描/编辑不得清空，也不参与本地 updatedAt。
+                lastSeenAt = device.lastSeenAt ?: existing?.lastSeenAt,
                 id = clientId,
                 platform = PLATFORM_ANDROID,
                 externalId = normalizedExternalId,
@@ -556,6 +558,7 @@ private fun DeviceEntity.toDomain() = Device(
     shared = shared,
     pendingRoomPatch = pendingRoomPatch,
     markedAt = markedAt,
+    lastSeenAt = lastSeenAt,
 )
 
 private fun Device.toEntity(
@@ -590,6 +593,7 @@ private fun Device.toEntity(
     shared = shared,
     markedAt = markedAt,
     markedAtDirty = markedAtDirty,
+    lastSeenAt = lastSeenAt,
 )
 
 private fun RuleEntity.toDomain() = DeviceRule(

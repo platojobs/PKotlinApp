@@ -353,10 +353,15 @@ internal object PushDeviceMigrationSql {
  * v23 -> v24：v0.32.3 之前写入的 markedAt 只在本机，从未上报过服务端。
  * 升级后把它们置为脏 + pending，并让 updatedAt 至少等于标记时间，
  * 这样下一次 /sync/push 才真正把旧标记同步上去，而不是永远停留在本机。
+ * v24 -> v25：新增服务端只读的 lastSeenAt，历史行保持 null（不伪造从未发生的心跳）。
  */
 internal object DeviceMarkDirtyMigrationSql {
     val V22_TO_V23 = listOf(
         "ALTER TABLE `devices` ADD COLUMN `markedAtDirty` INTEGER NOT NULL DEFAULT 0",
+    )
+    /** v24 -> v25：服务端只读的最近上报时间；历史行保持 null（从未上报）。 */
+    val V24_TO_V25 = listOf(
+        "ALTER TABLE `devices` ADD COLUMN `lastSeenAt` INTEGER",
     )
     val V23_TO_V24 = listOf(
         "UPDATE `devices` SET `markedAtDirty` = 1, " +
@@ -383,7 +388,7 @@ internal object DeviceMarkDirtyMigrationSql {
         CatalogSyncEntity::class,
         PushDeviceEntity::class,
     ],
-    version = 24,
+    version = 25,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -622,6 +627,13 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v24 -> v25：新增只读的 lastSeenAt；既有设备保持 null，不伪造历史心跳。 */
+        val MIGRATION_24_25 = object : Migration(24, 25) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                DeviceMarkDirtyMigrationSql.V24_TO_V25.forEach(db::execSQL)
+            }
+        }
+
         @Volatile
         private var instance: AppDatabase? = null
 
@@ -655,6 +667,7 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_21_22,
                     MIGRATION_22_23,
                     MIGRATION_23_24,
+                    MIGRATION_24_25,
                 )
                     .build()
                     .also { instance = it }

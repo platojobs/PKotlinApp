@@ -24,9 +24,10 @@ import com.platojobs.pkotlinapp.domain.household.HouseholdErrorKind
 import com.platojobs.pkotlinapp.domain.household.RoomSetMismatchException
 import com.platojobs.pkotlinapp.domain.household.classifyHouseholdError
 import com.platojobs.pkotlinapp.domain.model.Device
+import com.platojobs.pkotlinapp.domain.model.DeviceLinkStatus
 import com.platojobs.pkotlinapp.domain.model.HourCount
+import com.platojobs.pkotlinapp.domain.model.deviceLinkStatus
 import com.platojobs.pkotlinapp.domain.model.MetricCount
-import com.platojobs.pkotlinapp.domain.model.PLATFORM_ANDROID
 import com.platojobs.pkotlinapp.domain.model.Room
 import com.platojobs.pkotlinapp.domain.model.RuleEvent
 import com.platojobs.pkotlinapp.domain.model.ScanLog
@@ -73,10 +74,13 @@ data class DeviceSection(
     val devices: List<Device>,
 )
 
-/** 首页设备状态下钻的筛选维度。 */
+/**
+ * 首页设备状态下钻的筛选维度。
+ * 在线口径只分「本机已连接」与服务端 presence 的「最近上报」，不宣称服务端在线。
+ */
 enum class HomeStatusFilter {
-    ONLINE,
-    OFFLINE,
+    LOCAL_CONNECTED,
+    CLOUD_RECENT,
     UNASSIGNED,
     LOW_BATTERY,
 }
@@ -87,10 +91,14 @@ data class HomeOverview(
     val metricCounts: List<MetricCount> = emptyList(),
     val hourlyCounts: List<HourCount> = emptyList(),
     val violationCount: Int = 0,
-    val onlineCount: Int = 0,
-    val offlineCount: Int = 0,
-    /** 非 Android 平台设备：本机无法直接蓝牙连接，不能计入在线/离线。 */
-    val unreachableCount: Int = 0,
+    /** 本机蓝牙当前已连接（最强证据）。 */
+    val localConnectedCount: Int = 0,
+    /** 本机未连接，但服务端 15 分钟窗口内有读数上报。 */
+    val cloudRecentCount: Int = 0,
+    /** 本机未连接，服务端最近一次上报已超出 15 分钟窗口。 */
+    val cloudStaleCount: Int = 0,
+    /** 本机未连接，服务端从未收到过读数上报（unknown 单独一档，不并入离线）。 */
+    val cloudUnknownCount: Int = 0,
     val unassignedCount: Int = 0,
     val lowBatteryCount: Int = 0,
     val lowBatteryMacs: Set<String> = emptySet(),
@@ -128,6 +136,8 @@ data class HomeUiState(
     val statusFilter: HomeStatusFilter? = null,
     /** 下拉刷新进行中。 */
     val refreshing: Boolean = false,
+    /** 本次状态推导使用的本机时钟；presence 窗口以它为准。 */
+    val now: Long = System.currentTimeMillis(),
 )
 
 /** 首页快捷场景的实时进度（执行中逐条推进）。 */
@@ -223,7 +233,8 @@ class HomeViewModel(
     }
 
     /**
-     * 设备状态：本机在线/离线只按「本机蓝牙是否已连接」统计，不冒充服务端在线；
+     * 设备状态：本机已连接优先，其余按服务端 presence 的 15 分钟窗口分档，
+     * unknown 单独一档；都不宣称「设备在线」；
      * 未分配房间走 SQL 计数，低电量用每设备最新电量读数。
      */
     private val deviceAggregates = combine(
@@ -294,19 +305,20 @@ class HomeViewModel(
         }
         val visibleMacs = visibleDevices.mapTo(mutableSetOf()) { it.mac }
         val connectedMac = (connectionPack.connection as? BleConnectionState.Connected)?.mac
-        // 本机口径：在线=本机蓝牙已连接；离线=可连接的 Android 设备未连接；
-        // 不可连接=其他平台设备。三者都不代表服务端在线状态。
-        val onlineDevices = visibleDevices.filter { it.mac == connectedMac }
-        val unreachableDevices = visibleDevices.filter { it.platform != PLATFORM_ANDROID }
-        val offlineDevices = visibleDevices.filter {
-            it.platform == PLATFORM_ANDROID && it.mac != connectedMac
-        }
+        // 四档互斥：本机蓝牙连接优先，其次服务端 presence（15 分钟窗口），
+        // unknown 单独一档。都不等同于「设备在线」，只用于「最近上报」口径展示。
+        val now = System.currentTimeMillis()
+        val byStatus = visibleDevices.groupBy { deviceLinkStatus(it, connectedMac, now) }
+        val locallyConnected = byStatus[DeviceLinkStatus.LOCAL_CONNECTED].orEmpty()
+        val cloudRecent = byStatus[DeviceLinkStatus.CLOUD_RECENT].orEmpty()
+        val cloudStale = byStatus[DeviceLinkStatus.CLOUD_STALE].orEmpty()
+        val cloudUnknown = byStatus[DeviceLinkStatus.CLOUD_UNKNOWN].orEmpty()
         val lowBatteryMacs = device.batteryReadings
             .filter { it.value < LOW_BATTERY_THRESHOLD && it.deviceId in visibleMacs }
             .mapTo(mutableSetOf()) { it.deviceId }
         val statusDevices = when (statusFilter) {
-            HomeStatusFilter.ONLINE -> onlineDevices
-            HomeStatusFilter.OFFLINE -> offlineDevices
+            HomeStatusFilter.LOCAL_CONNECTED -> locallyConnected
+            HomeStatusFilter.CLOUD_RECENT -> cloudRecent
             HomeStatusFilter.UNASSIGNED -> visibleDevices.filter { it.roomId == null }
             HomeStatusFilter.LOW_BATTERY -> visibleDevices.filter { it.mac in lowBatteryMacs }
             null -> visibleDevices
@@ -346,9 +358,10 @@ class HomeViewModel(
                 metricCounts = today.metricCounts,
                 hourlyCounts = today.hourlyCounts,
                 violationCount = today.violations,
-                onlineCount = onlineDevices.size,
-                offlineCount = offlineDevices.size,
-                unreachableCount = unreachableDevices.size,
+                localConnectedCount = locallyConnected.size,
+                cloudRecentCount = cloudRecent.size,
+                cloudStaleCount = cloudStale.size,
+                cloudUnknownCount = cloudUnknown.size,
                 unassignedCount = device.unassigned,
                 lowBatteryCount = lowBatteryMacs.size,
                 lowBatteryMacs = lowBatteryMacs,
@@ -358,6 +371,7 @@ class HomeViewModel(
             ),
             statusFilter = statusFilter,
             refreshing = refreshing,
+            now = now,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -409,6 +423,12 @@ class HomeViewModel(
             if (localReadings[device.mac] != null) return@forEach
             if (device.platform.isBlank()) return@forEach
             val key = device.cloudReadingKey
+            // presence=unknown 表示服务端从未接受过该设备的读数，云端必然为空：
+            // 直接落 Empty，省掉 metrics + limit=1 两次往返。
+            if (device.lastSeenAt == null) {
+                _cloudReadings.update { it + (key to CloudReadingState.Empty) }
+                return@forEach
+            }
             if (cloudJobs[key]?.isActive == true) return@forEach
             val cached = _cloudReadings.value[key]
             if (!force && cached != null && cached !is CloudReadingState.Failed) return@forEach

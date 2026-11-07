@@ -408,8 +408,14 @@ class DeviceDetailActivity : AppCompatActivity() {
                     info.displayName() ?: deviceName.ifBlank { unknown }
                 binding.groupValue.text =
                     info.group.ifBlank { getString(R.string.detail_group_empty) }
-                binding.lastSeenValue.text =
-                    TimeFormat.relative(this, info.lastSeenTimestamp)
+                binding.lastSeenValue.text = info.lastSeenTimestamp
+                    .takeIf { it > 0 }
+                    ?.let { TimeFormat.relative(this, it) }
+                    ?: getString(R.string.detail_never_scanned)
+                // 服务端只读的最近上报时间：口径是「最近一次读数被服务端接收」。
+                binding.cloudLastSeenValue.text = info.lastSeenAt
+                    ?.let { getString(R.string.detail_cloud_last_seen_value, TimeFormat.relative(this, it)) }
+                    ?: getString(R.string.detail_cloud_never_reported)
                 binding.compatibilityValue.text =
                     info.compatibility?.displayLabel()?.takeIf { it.isNotBlank() } ?: unknown
             }

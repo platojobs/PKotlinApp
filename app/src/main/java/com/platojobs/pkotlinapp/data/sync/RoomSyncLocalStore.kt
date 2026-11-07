@@ -47,6 +47,8 @@ class RoomSyncLocalStore(
                 group = record.group ?: existing?.group,
                 // 字段缺失=保持本地标记；显式 null/空串=取消；RFC3339=覆盖。
                 markedAt = if (record.markedAtDirty) record.markedAt else existing?.markedAt,
+                // lastSeenAt 只会前进；老后端不返回该字段时保留本地值，避免降级丢心跳。
+                lastSeenAt = record.lastSeenAt ?: existing?.lastSeenAt,
             ).toEntity(
                 macOverride = localMac,
                 createdAt = existing?.createdAt?.takeIf { it > 0 }
@@ -54,6 +56,12 @@ class RoomSyncLocalStore(
                 roomId = existing?.roomId,
             ),
         )
+    }
+
+    override suspend fun applyServerPresence(externalId: String, lastSeenAt: Long?) {
+        if (lastSeenAt == null) return
+        val entity = dao.findByExternalId(externalId) ?: return
+        dao.applyLastSeenAt(entity.mac, lastSeenAt)
     }
 
     override suspend fun deleteByExternalId(externalId: String) {
@@ -81,6 +89,7 @@ private fun DeviceEntity.toSyncRecord() = SyncRecord(
     advertisedName = advertisedName,
     markedAt = markedAt,
     markedAtDirty = markedAtDirty,
+    lastSeenAt = lastSeenAt,
 )
 
 private fun SyncRecord.toEntity(macOverride: String? = null, createdAt: Long = 0L, roomId: Long? = null): DeviceEntity {
@@ -111,6 +120,8 @@ private fun SyncRecord.toEntity(macOverride: String? = null, createdAt: Long = 0
         // 服务端落地后标记视为已确认，不再重复上报。
         markedAt = markedAt,
         markedAtDirty = false,
+        // 服务端只读字段：随增量写入，不置脏、不推进 updatedAt（updatedAt 已用服务端值）。
+        lastSeenAt = lastSeenAt,
         createdAt = createdAt,
         roomId = roomId,
     )

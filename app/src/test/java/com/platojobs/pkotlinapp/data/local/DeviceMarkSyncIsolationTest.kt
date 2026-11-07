@@ -82,6 +82,37 @@ class DeviceMarkSyncIsolationTest {
     }
 
     @Test
+    fun `lastSeenAt writes without dirtying sync state or updatedAt`() = runBlocking {
+        val dao = db.deviceDao()
+        dao.insertOrUpdate(
+            device(OWN_MAC, shared = false).copy(lastSeenAt = LAST_SEEN_AT - 120_000L),
+        )
+        val before = requireNotNull(dao.find(OWN_MAC))
+
+        // 增量更新：较新的服务端心跳覆盖本地旧值。
+        dao.applyLastSeenAt(OWN_MAC, LAST_SEEN_AT)
+
+        val after = requireNotNull(dao.find(OWN_MAC))
+        assertEquals(LAST_SEEN_AT, after.lastSeenAt)
+        // 服务端只读字段：不推进本地 updatedAt，也不进入待同步队列。
+        assertEquals(before.updatedAt, after.updatedAt)
+        assertEquals("synced", after.syncState)
+        assertEquals(0, dao.pendingCount())
+        assertFalse(after.markedAtDirty)
+    }
+
+    @Test
+    fun `null lastSeenAt keeps the previous value`() = runBlocking {
+        val dao = db.deviceDao()
+        dao.insertOrUpdate(device(OWN_MAC, shared = false).copy(lastSeenAt = LAST_SEEN_AT))
+
+        // 老后端不返回该字段：不能把已缓存的心跳清空。
+        dao.applyLastSeenAt(OWN_MAC, null)
+
+        assertEquals(LAST_SEEN_AT, requireNotNull(dao.find(OWN_MAC)).lastSeenAt)
+    }
+
+    @Test
     fun `account deletion wipe does not leak marks to the next account`() = runBlocking {
         val dao = db.deviceDao()
         dao.insertOrUpdate(device(OWN_MAC, shared = false))
@@ -113,5 +144,6 @@ class DeviceMarkSyncIsolationTest {
         const val OWN_MAC = "C8:47:8C:AA:BB:CC"
         const val SHARED_MAC = "C8:47:8C:DD:EE:FF"
         const val MARK_AT = 1_762_000_000_000L
+        const val LAST_SEEN_AT = MARK_AT + 60_000L
     }
 }

@@ -88,10 +88,66 @@ data class Device(
     val pendingHouseholdRemoteId: String? = null,
     /** 场景「标记设备」动作写入的时间戳；null 表示未标记。 */
     val markedAt: Long? = null,
+    /**
+     * 服务端最后一次接受该设备读数上报的接收时间（毫秒）；null 表示从未上报。
+     * 服务端只读字段，只用于展示 presence 与「最近上报」，不参与 LWW，也不参与上报。
+     */
+    val lastSeenAt: Long? = null,
 ) {
     /** 共享设备不允许本机修改房间归属（服务端会对非 owner 返回 404）。 */
     val canEditRoom: Boolean get() = !shared
 }
+
+/**
+ * 服务端推导的在线三态（openapi 0.21.0）：
+ * - [UNKNOWN]：从未上报过读数，不能并入离线；
+ * - [ONLINE]：`now - lastSeenAt <= 900s`；
+ * - [OFFLINE]：曾上报，但已超出窗口。
+ */
+enum class DevicePresence {
+    UNKNOWN,
+    ONLINE,
+    OFFLINE,
+}
+
+/** 服务端 presence 的判定窗口：固定 15 分钟，客户端不实现第二套阈值。 */
+const val PRESENCE_WINDOW_MS = 900_000L
+
+/**
+ * 按 [lastSeenAt] 与服务端同一窗口推导 presence。
+ * 只用于展示；服务端在每次响应时按自己的时钟重算，本机时钟偏差会让结果略有差异。
+ */
+fun presenceOf(lastSeenAt: Long?, now: Long): DevicePresence = when {
+    lastSeenAt == null -> DevicePresence.UNKNOWN
+    now - lastSeenAt <= PRESENCE_WINDOW_MS -> DevicePresence.ONLINE
+    else -> DevicePresence.OFFLINE
+}
+
+/** 列表/详情展示的设备状态：本机连接是最强证据，其次才是服务端 presence。 */
+enum class DeviceLinkStatus {
+    /** 本机蓝牙当前已连接。 */
+    LOCAL_CONNECTED,
+
+    /** 本机未连接，但服务端表示最近 15 分钟内有读数上报。 */
+    CLOUD_RECENT,
+
+    /** 本机未连接，服务端表示最近一次上报已超出 15 分钟窗口。 */
+    CLOUD_STALE,
+
+    /** 本机未连接，服务端从未收到过该设备的读数上报（unknown 单独一档）。 */
+    CLOUD_UNKNOWN,
+}
+
+/** 本机 BLE 连接优先于服务端 presence；[connectedMac] 为空表示当前没有连接。 */
+fun deviceLinkStatus(device: Device, connectedMac: String?, now: Long): DeviceLinkStatus =
+    when {
+        device.mac == connectedMac -> DeviceLinkStatus.LOCAL_CONNECTED
+        else -> when (presenceOf(device.lastSeenAt, now)) {
+            DevicePresence.ONLINE -> DeviceLinkStatus.CLOUD_RECENT
+            DevicePresence.OFFLINE -> DeviceLinkStatus.CLOUD_STALE
+            DevicePresence.UNKNOWN -> DeviceLinkStatus.CLOUD_UNKNOWN
+        }
+    }
 
 /** 本机房间：remoteId 为空表示仅存本机、尚未同步。 */
 data class Room(
@@ -171,7 +227,10 @@ data class DeviceInfo(
     val alias: String = "",
     val advertisedName: String = "",
     val group: String = "",
+    /** 本机扫描到的最近出现时间；0 表示本机从未扫描到。 */
     val lastSeenTimestamp: Long = 0L,
+    /** 服务端最近一次接受读数上报的时间；null 表示从未上报（不拿 updatedAt 冒充）。 */
+    val lastSeenAt: Long? = null,
     val compatibility: Compatibility? = null,
     val fromLocalCache: Boolean = false,
 )
@@ -202,7 +261,7 @@ fun Device.toOfflineDeviceInfo(): DeviceInfo = DeviceInfo(
     alias = name,
     advertisedName = advertisedName.orEmpty(),
     group = group.orEmpty(),
-    lastSeenTimestamp = lastSeenTimestamp,
+    lastSeenAt = lastSeenAt,
     compatibility = compatibility?.takeIf { it.isNotBlank() }?.let {
         Compatibility(protocol = it)
     },

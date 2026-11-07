@@ -42,6 +42,11 @@ data class SyncRecord(
      */
     val markedAt: Long? = null,
     val markedAtDirty: Boolean = false,
+    /**
+     * 服务端最后一次接受读数上报的接收时间；null 表示从未上报。
+     * 服务端只读：不参与 push、幂等哈希与 LWW，写入本地也不推进 updatedAt / 置脏。
+     */
+    val lastSeenAt: Long? = null,
 )
 
 data class SyncPullPage(
@@ -91,6 +96,12 @@ interface SyncLocalStore {
 
     /** 服务端版本覆盖本地，并标记为 synced。 */
     suspend fun replaceWithServer(record: SyncRecord)
+
+    /**
+     * 服务端只读字段：即使本地待同步版本胜出（LWW）也要写入，避免新代码的 presence
+     * 被本机未上传的修改永远挡住。默认空实现便于既有测试替身。
+     */
+    suspend fun applyServerPresence(externalId: String, lastSeenAt: Long?) {}
 
     suspend fun deleteByExternalId(externalId: String)
 }
@@ -229,7 +240,10 @@ class SyncEngine(
                 val localUnsyncedWins = localRecord != null &&
                     localRecord.syncState == SyncState.PENDING &&
                     localRecord.updatedAt > change.updatedAt
-                if (!localUnsyncedWins) {
+                if (localUnsyncedWins) {
+                    // 本地改动胜出，但服务端只读的最近上报时间仍然要落地。
+                    local.applyServerPresence(change.externalId, change.lastSeenAt)
+                } else {
                     local.replaceWithServer(change)
                 }
             }

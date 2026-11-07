@@ -276,6 +276,7 @@ class RemoteHouseholdDataSource(
             roomRemoteId = roomId?.takeIf { it.isNotBlank() },
             alias = alias?.takeIf { it.isNotBlank() },
             updatedAt = Rfc3339.parse(updatedAt) ?: 0L,
+            lastSeenAt = lastSeenAt?.takeIf { it.isNotBlank() }?.let(Rfc3339::parse),
         )
     }
 }

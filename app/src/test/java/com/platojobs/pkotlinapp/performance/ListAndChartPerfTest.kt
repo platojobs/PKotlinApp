@@ -122,7 +122,10 @@ class ListAndChartPerfTest {
             sections = sections,
             rooms = roomList,
             latestReadings = readings,
-            overview = HomeOverview(todayReadings = deviceCount, onlineCount = deviceCount),
+            overview = HomeOverview(
+                todayReadings = deviceCount,
+                localConnectedCount = deviceCount,
+            ),
             groups = listOf("Living", "Bedroom"),
             householdSynced = true,
             loading = false,

@@ -139,4 +139,8 @@ data class UserDeviceDto(
     val vendor: String? = null,
     val firmwareVersion: String? = null,
     val compatibility: CompatibilityDto? = null,
+    // openapi 0.21.0：服务端在响应时实时推导的在线三态（unknown/online/offline）。
+    val presence: String? = null,
+    // 服务端最后一次接受读数上报的接收时间；null 表示从未上报。
+    val lastSeenAt: String? = null,
 )

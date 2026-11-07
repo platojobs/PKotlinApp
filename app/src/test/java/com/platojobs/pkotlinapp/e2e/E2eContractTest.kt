@@ -27,6 +27,7 @@ import com.platojobs.pkotlinapp.data.remote.SyncPushResponse
 import com.platojobs.pkotlinapp.data.remote.SyncScanRecordDto
 import com.platojobs.pkotlinapp.data.remote.SyncApi
 import com.platojobs.pkotlinapp.data.scene.RemoteSceneDataSource
+import com.platojobs.pkotlinapp.data.sync.RemoteSyncDataSource
 import com.platojobs.pkotlinapp.data.sync.TokenStore
 import com.platojobs.pkotlinapp.data.sync.toDomain
 import com.platojobs.pkotlinapp.data.sync.toPushDto
@@ -922,6 +923,30 @@ class E2eContractTest {
             assertEquals("bpm", items[1].unit)
             val lastAts = items.mapNotNull { Rfc3339.parse(it.lastAt.orEmpty()) }
             assertEquals(lastAts.sortedDescending(), lastAts)
+        }
+
+        // 与 App 内使用同一条生产代码路径：metrics 找 lastAt 最新指标，再 limit=1 取最近一条。
+        step("readings: production latest path returns the newest cloud reading") {
+            val tokenStore = object : TokenStore {
+                override fun token(): String = user.token
+                override fun saveToken(token: String) = Unit
+                override fun clear() = Unit
+            }
+            val remote = RemoteSyncDataSource(
+                api = syncApi,
+                tokenStore = tokenStore,
+                installId = "e2e-latest-readings",
+            )
+            val latest = runBlocking { remote.latest("android", externalId) }
+            assertNotNull(latest)
+            assertEquals("temperature", latest!!.metric)
+            assertEquals(22.0, latest.value, 0.001)
+            assertEquals("°C", latest.unit)
+            val expectedAt = now - 30_000
+            assertTrue(
+                "recordedAt ${latest.recordedAt} should be near $expectedAt",
+                latest.recordedAt in (expectedAt - 1_000)..(expectedAt + 1_000),
+            )
         }
 
         println("[E2E] SUMMARY: readings contract cases passed")

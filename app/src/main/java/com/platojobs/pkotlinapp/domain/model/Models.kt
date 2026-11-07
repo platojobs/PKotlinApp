@@ -119,6 +119,12 @@ const val PLATFORM_ANDROID = "android"
 /** 设备唯一键：Android 使用规范化大写 MAC。 */
 fun normalizeExternalId(mac: String): String = mac.trim().uppercase()
 
+/** 云端读数查询用的 externalId：历史数据缺失时回退本机主键。 */
+val Device.cloudExternalId: String get() = externalId.ifBlank { mac }
+
+/** 云端最近读数在 UI 状态中的键：平台必须参与，避免跨端 externalId 撞车。 */
+val Device.cloudReadingKey: String get() = "${platform.trim().lowercase()}|${cloudExternalId.uppercase()}"
+
 /** 一次 BLE 扫描回调中的设备快照。 */
 data class ScannedDevice(
     val name: String?,

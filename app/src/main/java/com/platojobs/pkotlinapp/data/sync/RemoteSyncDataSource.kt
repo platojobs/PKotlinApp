@@ -17,10 +17,12 @@ import com.platojobs.pkotlinapp.data.remote.toSyncException
 import com.platojobs.pkotlinapp.domain.model.PLATFORM_ANDROID
 import com.platojobs.pkotlinapp.domain.model.SyncState
 import com.platojobs.pkotlinapp.domain.model.normalizeExternalId
+import com.platojobs.pkotlinapp.domain.reading.CloudReading
 import com.platojobs.pkotlinapp.domain.reading.Reading
 import com.platojobs.pkotlinapp.domain.reading.ReadingBucket
 import com.platojobs.pkotlinapp.domain.reading.ReadingMetric
 import com.platojobs.pkotlinapp.domain.reading.ReadingMetrics
+import com.platojobs.pkotlinapp.domain.reading.LatestReadingRemote
 import com.platojobs.pkotlinapp.domain.reading.ReadingPage
 import com.platojobs.pkotlinapp.domain.reading.ReadingPushAck
 import com.platojobs.pkotlinapp.domain.reading.ReadingRemote
@@ -57,7 +59,7 @@ class RemoteSyncDataSource(
     private val installId: String,
     /** 匿名登录写入新会话后通知推送注册；默认空实现，便于既有测试替身。 */
     private val onSessionReady: () -> Unit = {},
-) : SyncRemote, ReadingRemote {
+) : SyncRemote, ReadingRemote, LatestReadingRemote {
 
     override suspend fun push(records: List<SyncRecord>, idempotencyKey: String): SyncPushAck =
         withToken { authorization ->
@@ -237,6 +239,46 @@ class RemoteSyncDataSource(
                     lastAt = Rfc3339.parse(item.lastAt) ?: 0L,
                 )
             }
+        }
+
+    /**
+     * 云端最近读数：先取 `/readings/metrics` 找 `lastAt` 最新的指标，
+     * 再按 `limit=1` 取该指标最近一条。任何指标都没有时返回 null（空态）。
+     */
+    override suspend fun latest(platform: String, externalId: String): CloudReading? =
+        withToken { authorization ->
+            val safePlatform = platform.trim().lowercase().ifBlank { PLATFORM_ANDROID }
+            // Retrofit @Path 默认 encoded=false：这里的冒号 MAC 只会被编码一次（%3A）。
+            val normalized = normalizeExternalIdForPlatform(safePlatform, externalId)
+            val newest = api.readingsMetrics(authorization, safePlatform, normalized)
+                .items.orEmpty()
+                .mapNotNull { item ->
+                    val metric = item.metric?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                    val lastAt = Rfc3339.parse(item.lastAt) ?: return@mapNotNull null
+                    metric to lastAt
+                }
+                .maxByOrNull { it.second }
+                ?: return@withToken null
+
+            val page = api.readings(
+                authorization = authorization,
+                platform = safePlatform,
+                externalId = normalized,
+                metric = newest.first,
+                from = null,
+                to = null,
+                limit = 1,
+                cursor = null,
+            )
+            val item = page.items.orEmpty().firstOrNull() ?: return@withToken null
+            val value = item.value ?: return@withToken null
+            if (!value.isFinite()) return@withToken null
+            CloudReading(
+                metric = item.metric?.takeIf { it.isNotBlank() } ?: newest.first,
+                value = value,
+                unit = item.unit.orEmpty().ifBlank { ReadingMetrics.unit(newest.first) },
+                recordedAt = Rfc3339.parse(item.recordedAt) ?: 0L,
+            )
         }
 
     /**

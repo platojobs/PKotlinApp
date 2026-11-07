@@ -21,7 +21,9 @@ import com.platojobs.pkotlinapp.databinding.ItemHomeScenesBinding
 import com.platojobs.pkotlinapp.databinding.ItemHomeSectionBinding
 import com.platojobs.pkotlinapp.databinding.ItemSceneCardBinding
 import com.platojobs.pkotlinapp.domain.model.Device
+import com.platojobs.pkotlinapp.domain.model.PLATFORM_ANDROID
 import com.platojobs.pkotlinapp.domain.model.displayName
+import com.platojobs.pkotlinapp.domain.reading.CloudReadingState
 import com.platojobs.pkotlinapp.domain.reading.Reading
 import com.platojobs.pkotlinapp.domain.reading.ReadingMetrics
 import com.platojobs.pkotlinapp.domain.scene.Scene
@@ -41,11 +43,10 @@ sealed interface HomeItem {
     /** 今日概览：读数总量、按指标分布、越界次数。 */
     data class TodayOverview(val overview: HomeOverview) : HomeItem
 
-    /** 设备状态：在线/离线/未分配/低电量，点击下钻。 */
+    /** 设备状态：本机在线/本机离线/未分配/低电量，点击下钻。 */
     data class DeviceStatus(
         val overview: HomeOverview,
         val filter: HomeStatusFilter?,
-        val onlineWindowMinutes: Int,
     ) : HomeItem
 
     /** 最近活动：同步、告警、场景触发，均来自真实记录。 */
@@ -70,6 +71,7 @@ sealed interface HomeItem {
     data class DeviceCard(
         val device: Device,
         val reading: Reading?,
+        val cloudReading: CloudReadingState?,
         val connected: Boolean,
     ) : HomeItem {
         override val span: Int get() = 1
@@ -253,7 +255,7 @@ class HomeAdapter(
             if (filter == null) {
                 binding.statusFilterHint.text = context.getString(
                     R.string.home_status_online_hint,
-                    item.onlineWindowMinutes,
+                    overview.unreachableCount,
                 )
             } else {
                 val label = when (filter) {
@@ -438,35 +440,72 @@ class HomeAdapter(
             binding.deviceName.text = device.displayName() ?: unknownName
             binding.markedBadge.visibility =
                 if (device.markedAt != null) View.VISIBLE else View.GONE
+            val connected = item.connected
+            val unreachable = device.platform != PLATFORM_ANDROID
             binding.connectionStatus.setText(
-                if (item.connected) R.string.home_device_connected
-                else R.string.home_device_disconnected,
+                when {
+                    connected -> R.string.home_device_connected
+                    unreachable -> R.string.home_device_unreachable
+                    else -> R.string.home_device_disconnected
+                },
             )
             binding.connectionStatus.setTextColor(
                 ContextCompat.getColor(
                     context,
-                    if (item.connected) R.color.success else R.color.text_tertiary,
+                    if (connected) R.color.success else R.color.text_tertiary,
                 ),
             )
             binding.signal.setRssi(device.lastRssi)
 
+            fun renderReading(text: CharSequence, primary: Boolean, label: CharSequence?) {
+                binding.readingValue.text = text
+                binding.readingValue.setTextColor(
+                    ContextCompat.getColor(
+                        context,
+                        if (primary) R.color.text_primary else R.color.text_tertiary,
+                    ),
+                )
+                binding.readingLabel.visibility = if (label != null) View.VISIBLE else View.GONE
+                binding.readingLabel.text = label
+            }
+
+            // 本机读数优先；没有本机读数时才展示云端四态，失败明确说「暂不可用」。
             val reading = item.reading
-            if (reading == null) {
-                binding.readingValue.setText(R.string.home_device_no_reading)
-                binding.readingValue.setTextColor(
-                    ContextCompat.getColor(context, R.color.text_tertiary),
+            val cloud = item.cloudReading
+            when {
+                reading != null -> renderReading(
+                    formatReading(reading), true,
+                    context.getString(
+                        R.string.home_device_last_reading_at,
+                        context.getString(R.string.home_device_last_reading),
+                        formatTime(reading.recordedAt),
+                    ),
                 )
-                binding.readingLabel.visibility = View.GONE
-            } else {
-                binding.readingValue.text = formatReading(reading)
-                binding.readingValue.setTextColor(
-                    ContextCompat.getColor(context, R.color.text_primary),
+
+                cloud is CloudReadingState.Available -> renderReading(
+                    formatReading(cloud.reading.value, cloud.reading.unit), true,
+                    context.getString(
+                        R.string.home_device_last_reading_at,
+                        context.getString(R.string.home_device_cloud_reading),
+                        formatTime(cloud.reading.recordedAt),
+                    ),
                 )
-                binding.readingLabel.visibility = View.VISIBLE
-                binding.readingLabel.text = context.getString(
-                    R.string.home_device_last_reading_at,
-                    context.getString(R.string.home_device_last_reading),
-                    formatTime(reading.recordedAt),
+
+                cloud is CloudReadingState.Loading -> renderReading(
+                    context.getString(R.string.home_device_cloud_loading), false, null,
+                )
+
+                cloud is CloudReadingState.Failed -> renderReading(
+                    context.getString(R.string.home_device_cloud_unavailable), false, null,
+                )
+
+                cloud is CloudReadingState.Empty -> renderReading(
+                    context.getString(R.string.home_device_no_reading), false,
+                    context.getString(R.string.home_device_cloud_empty),
+                )
+
+                else -> renderReading(
+                    context.getString(R.string.home_device_no_reading), false, null,
                 )
             }
             binding.root.contentDescription = context.getString(
@@ -580,16 +619,25 @@ private fun metricName(context: Context, metric: String): String = context.getSt
     },
 )
 
-private fun formatTime(timestamp: Long): String =
+internal fun formatTime(timestamp: Long): String =
     SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(timestamp))
 
-internal fun formatReading(reading: Reading): String {
-    val number = if (reading.value % 1.0 == 0.0) {
-        reading.value.toLong().toString()
+internal fun formatReading(reading: Reading): String =
+    formatReading(reading.value, reading.unit)
+
+internal fun formatReading(value: Double, unit: String): String {
+    val number = if (value % 1.0 == 0.0) {
+        value.toLong().toString()
     } else {
-        String.format(Locale.getDefault(), "%.1f", reading.value)
+        String.format(Locale.getDefault(), "%.1f", value)
     }
-    return "$number ${reading.unit}"
+    val displayUnit = when (unit.trim().lowercase()) {
+        "celsius", "°c" -> "℃"
+        "fahrenheit", "°f" -> "℉"
+        "percent" -> "%"
+        else -> unit.trim()
+    }
+    return if (displayUnit.isBlank()) number else "$number $displayUnit"
 }
 
 fun sceneActionLabel(context: Context, action: SceneAction): String = when (action.type) {

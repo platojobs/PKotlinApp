@@ -50,6 +50,38 @@ data class ReadingMetric(
     val lastAt: Long,
 )
 
+/** 云端最近一条读数；[metric] 为该设备 `lastAt` 最新的指标。 */
+data class CloudReading(
+    val metric: String,
+    val value: Double,
+    val unit: String,
+    val recordedAt: Long,
+)
+
+/**
+ * 云端最近读数四态：UI 必须区分「正在取」「有值」「确实没有」「取不到」，
+ * 失败不得退化成离线或「暂无读数」。
+ */
+sealed interface CloudReadingState {
+    data object Loading : CloudReadingState
+
+    data class Available(val reading: CloudReading) : CloudReadingState
+
+    /** 云端确认该设备没有任何指标（200 + 空清单）。 */
+    data object Empty : CloudReadingState
+
+    /** 网络/鉴权/服务端错误；界面显示「云端读数暂不可用」。 */
+    data object Failed : CloudReadingState
+}
+
+/**
+ * 按平台 + externalId 取云端最近读数：
+ * 先 `/readings/metrics` 找 `lastAt` 最新的指标，再取该指标最近一条。
+ */
+interface LatestReadingRemote {
+    suspend fun latest(platform: String, externalId: String): CloudReading?
+}
+
 /** 读数远端接口：推送、倒序查询、24h 汇总、长周期分桶与指标清单。 */
 interface ReadingRemote {
     suspend fun pushReadings(readings: List<Reading>, idempotencyKey: String): ReadingPushAck

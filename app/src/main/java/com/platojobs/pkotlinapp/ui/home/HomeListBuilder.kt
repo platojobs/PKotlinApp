@@ -1,5 +1,7 @@
 package com.platojobs.pkotlinapp.ui.home
 
+import com.platojobs.pkotlinapp.domain.model.cloudReadingKey
+
 /**
  * 首页列表构建（纯 Kotlin，便于 JVM 压测）：
  * 输入聚合状态与场景进度，输出 RecyclerView 直接消费的扁平条目。
@@ -18,7 +20,6 @@ object HomeListBuilder {
         items += HomeItem.DeviceStatus(
             overview = state.overview,
             filter = state.statusFilter,
-            onlineWindowMinutes = (HomeViewModel.ONLINE_WINDOW_MS / 60_000L).toInt(),
         )
         items += HomeItem.RecentActivity(state.overview)
         if (state.devices.isNotEmpty() || state.rooms.isNotEmpty()) {
@@ -44,9 +45,16 @@ object HomeListBuilder {
                 }
                 if (!collapsed) {
                     section.devices.forEach { device ->
+                        val localReading = state.latestReadings[device.mac]
                         items += HomeItem.DeviceCard(
                             device = device,
-                            reading = state.latestReadings[device.mac],
+                            reading = localReading,
+                            // 本机读数优先：有本机读数时不再暴露云端状态。
+                            cloudReading = if (localReading == null) {
+                                state.cloudReadings[device.cloudReadingKey]
+                            } else {
+                                null
+                            },
                             connected = state.connectedMac == device.mac,
                         )
                     }

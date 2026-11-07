@@ -13,6 +13,7 @@ import com.platojobs.pkotlinapp.data.notification.AlertStatePrefs
 import com.platojobs.pkotlinapp.data.notification.AndroidAlertContentBuilder
 import com.platojobs.pkotlinapp.data.notification.AndroidAlertPoster
 import com.platojobs.pkotlinapp.data.prefs.AppSettings
+import com.platojobs.pkotlinapp.data.reading.LatestReadingCache
 import com.platojobs.pkotlinapp.data.remote.ApiClient
 import com.platojobs.pkotlinapp.data.remote.DeviceInfoRepositoryImpl
 import com.platojobs.pkotlinapp.data.remote.MarketRepositoryImpl
@@ -211,6 +212,11 @@ class AppContainer(context: Context) {
 
     /** 详情页可选的远端 24h 汇总；失败自动回退本地。 */
     val readingRemote: ReadingRemote by lazy { remoteSyncDataSource }
+
+    /** 首页卡片/房间详情的云端最近读数：按设备缓存并合并并发请求。 */
+    val latestReadingCache: LatestReadingCache by lazy {
+        LatestReadingCache(remote = remoteSyncDataSource, scope = ioScope)
+    }
 
     val deviceInfoRepository: DeviceInfoRepository by lazy {
         DeviceInfoRepositoryImpl(

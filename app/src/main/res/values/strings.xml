@@ -624,7 +624,12 @@
     <string name="home_devices_count">共 %1$d 台设备 · %2$d 个分组</string>
     <string name="home_device_connected">已连接</string>
     <string name="home_device_disconnected">未连接</string>
+    <string name="home_device_unreachable">本机不可连接</string>
     <string name="home_device_last_reading">最近读数</string>
+    <string name="home_device_cloud_reading">云端读数</string>
+    <string name="home_device_cloud_loading">正在读取云端读数…</string>
+    <string name="home_device_cloud_unavailable">云端读数暂不可用</string>
+    <string name="home_device_cloud_empty">云端无历史读数</string>
     <string name="home_device_no_reading">暂无读数</string>
     <string name="home_device_signal">信号 %1$s</string>
     <string name="home_device_open">查看详情</string>
@@ -813,11 +818,11 @@
     <string name="home_today_metric_row">%1$s %2$d</string>
     <string name="home_today_hourly_desc">今日读数按小时分布，峰值 %1$d 点 %2$d 条</string>
     <string name="home_device_status_title">设备状态</string>
-    <string name="home_status_online">在线</string>
-    <string name="home_status_offline">离线</string>
+    <string name="home_status_online">本机在线</string>
+    <string name="home_status_offline">本机离线</string>
     <string name="home_status_unassigned">未分配房间</string>
     <string name="home_status_low_battery">电量低于 %1$d</string>
-    <string name="home_status_online_hint">在线指最近 %1$d 分钟内有出现</string>
+    <string name="home_status_online_hint">本机在线仅指本机蓝牙已连接；另有 %1$d 台本机不可连接</string>
     <string name="home_status_filter_active">%1$s · %2$d 台</string>
     <string name="home_status_filter_clear">清除筛选</string>
     <string name="home_activity_title">最近活动</string>
@@ -847,13 +852,18 @@
     <string name="room_unsynced_meta">%1$s · 未同步</string>
 
     <!-- 房间详情：聚合视图与批量操作 -->
-    <string name="room_detail_summary">共 %1$d 台 · 在线 %2$d · 离线 %3$d · 已标记 %4$d</string>
-    <string name="room_detail_summary_large">共 %1$d 台 · 在线 %2$d · 离线 %3$d\n已标记 %4$d</string>
+    <string name="room_detail_summary">共 %1$d 台 · 本机在线 %2$d · 本机离线 %3$d · 本机不可连接 %4$d · 已标记 %5$d</string>
+    <string name="room_detail_summary_large">共 %1$d 台 · 本机在线 %2$d · 本机离线 %3$d\n本机不可连接 %4$d · 已标记 %5$d</string>
     <string name="room_detail_device_title">%1$s · %2$s</string>
     <string name="room_detail_device_meta">%1$s %2$s</string>
-    <string name="room_detail_online">在线</string>
-    <string name="room_detail_offline">离线</string>
+    <string name="room_detail_online">本机在线</string>
+    <string name="room_detail_offline">本机离线</string>
+    <string name="room_detail_unreachable">本机不可连接</string>
     <string name="room_detail_no_reading">暂无读数</string>
+    <string name="room_detail_cloud_meta">云端读数 %1$s · %2$s</string>
+    <string name="room_detail_cloud_loading">正在读取云端读数…</string>
+    <string name="room_detail_cloud_unavailable">云端读数暂不可用</string>
+    <string name="room_detail_cloud_empty">云端暂无读数</string>
     <string name="room_detail_marked_suffix">· 已标记</string>
     <string name="room_detail_mark">标记设备</string>
     <string name="room_detail_unmark">取消标记</string>

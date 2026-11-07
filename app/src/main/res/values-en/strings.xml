@@ -620,7 +620,12 @@
     <string name="home_devices_count">Devices: %1$d · Groups: %2$d</string>
     <string name="home_device_connected">Connected</string>
     <string name="home_device_disconnected">Disconnected</string>
+    <string name="home_device_unreachable">Not connectable here</string>
     <string name="home_device_last_reading">Latest reading</string>
+    <string name="home_device_cloud_reading">Cloud reading</string>
+    <string name="home_device_cloud_loading">Loading cloud reading…</string>
+    <string name="home_device_cloud_unavailable">Cloud reading unavailable</string>
+    <string name="home_device_cloud_empty">No cloud history</string>
     <string name="home_device_no_reading">No readings</string>
     <string name="home_device_signal">Signal %1$s</string>
     <string name="home_device_open">View details</string>
@@ -809,11 +814,11 @@
     <string name="home_today_metric_row">%1$s %2$d</string>
     <string name="home_today_hourly_desc">Readings by hour today; peak at %1$d:00 with %2$d</string>
     <string name="home_device_status_title">Device status</string>
-    <string name="home_status_online">Online</string>
-    <string name="home_status_offline">Offline</string>
+    <string name="home_status_online">Local online</string>
+    <string name="home_status_offline">Local offline</string>
     <string name="home_status_unassigned">No room</string>
     <string name="home_status_low_battery">Battery below %1$d</string>
-    <string name="home_status_online_hint">Online means seen in the last %1$d minutes</string>
+    <string name="home_status_online_hint">Local online means this phone\'s Bluetooth is connected; %1$d more device(s) not connectable here</string>
     <string name="home_status_filter_active">%1$s · %2$d devices</string>
     <string name="home_status_filter_clear">Clear filter</string>
     <string name="home_activity_title">Recent activity</string>
@@ -843,13 +848,18 @@
     <string name="room_unsynced_meta">%1$s · Not synced</string>
 
     <!-- Room detail: aggregate view and batch actions -->
-    <string name="room_detail_summary">Total: %1$d · online: %2$d · offline: %3$d · marked: %4$d</string>
-    <string name="room_detail_summary_large">Total: %1$d · online: %2$d · offline: %3$d\nmarked: %4$d</string>
+    <string name="room_detail_summary">Total: %1$d · local online: %2$d · local offline: %3$d · not connectable: %4$d · marked: %5$d</string>
+    <string name="room_detail_summary_large">Total: %1$d · local online: %2$d · local offline: %3$d\nnot connectable: %4$d · marked: %5$d</string>
     <string name="room_detail_device_title">%1$s · %2$s</string>
     <string name="room_detail_device_meta">%1$s %2$s</string>
-    <string name="room_detail_online">Online</string>
-    <string name="room_detail_offline">Offline</string>
+    <string name="room_detail_online">Local online</string>
+    <string name="room_detail_offline">Local offline</string>
+    <string name="room_detail_unreachable">Not connectable here</string>
     <string name="room_detail_no_reading">No reading yet</string>
+    <string name="room_detail_cloud_meta">Cloud reading %1$s · %2$s</string>
+    <string name="room_detail_cloud_loading">Loading cloud reading…</string>
+    <string name="room_detail_cloud_unavailable">Cloud reading unavailable</string>
+    <string name="room_detail_cloud_empty">No cloud readings</string>
     <string name="room_detail_marked_suffix">· Marked</string>
     <string name="room_detail_mark">Mark devices</string>
     <string name="room_detail_unmark">Unmark</string>

@@ -15,6 +15,7 @@ import com.platojobs.pkotlinapp.data.ble.BleScanner
 import com.platojobs.pkotlinapp.data.household.HouseholdRepository
 import com.platojobs.pkotlinapp.data.prefs.AppSettings
 import com.platojobs.pkotlinapp.data.prefs.DeviceSortMode
+import com.platojobs.pkotlinapp.data.reading.LatestReadingCache
 import com.platojobs.pkotlinapp.data.scene.SceneTriggerRunner
 import com.platojobs.pkotlinapp.data.sync.SyncManager
 import com.platojobs.pkotlinapp.data.sync.SyncScheduler
@@ -25,11 +26,15 @@ import com.platojobs.pkotlinapp.domain.household.classifyHouseholdError
 import com.platojobs.pkotlinapp.domain.model.Device
 import com.platojobs.pkotlinapp.domain.model.HourCount
 import com.platojobs.pkotlinapp.domain.model.MetricCount
+import com.platojobs.pkotlinapp.domain.model.PLATFORM_ANDROID
 import com.platojobs.pkotlinapp.domain.model.Room
 import com.platojobs.pkotlinapp.domain.model.RuleEvent
 import com.platojobs.pkotlinapp.domain.model.ScanLog
 import com.platojobs.pkotlinapp.domain.model.ScannedDevice
+import com.platojobs.pkotlinapp.domain.model.cloudExternalId
+import com.platojobs.pkotlinapp.domain.model.cloudReadingKey
 import com.platojobs.pkotlinapp.domain.model.displayName
+import com.platojobs.pkotlinapp.domain.reading.CloudReadingState
 import com.platojobs.pkotlinapp.domain.reading.Reading
 import com.platojobs.pkotlinapp.domain.reading.ReadingMetrics
 import com.platojobs.pkotlinapp.domain.repository.DeviceRepository
@@ -84,6 +89,8 @@ data class HomeOverview(
     val violationCount: Int = 0,
     val onlineCount: Int = 0,
     val offlineCount: Int = 0,
+    /** 非 Android 平台设备：本机无法直接蓝牙连接，不能计入在线/离线。 */
+    val unreachableCount: Int = 0,
     val unassignedCount: Int = 0,
     val lowBatteryCount: Int = 0,
     val lowBatteryMacs: Set<String> = emptySet(),
@@ -99,6 +106,8 @@ data class HomeUiState(
     val collapsedRooms: Set<Long> = emptySet(),
     val searching: Boolean = false,
     val latestReadings: Map<String, Reading> = emptyMap(),
+    /** 云端最近读数四态（键为 [Device.cloudReadingKey]）；本机有读数时不请求。 */
+    val cloudReadings: Map<String, CloudReadingState> = emptyMap(),
     val connectedMac: String? = null,
     val alertCountToday: Int = 0,
     val scenes: List<Scene> = emptyList(),
@@ -115,8 +124,6 @@ data class HomeUiState(
     val householdSynced: Boolean = true,
     /** 今日概览 / 设备状态 / 最近活动；没有数据时保持真实的 0 与空列表。 */
     val overview: HomeOverview = HomeOverview(),
-    /** 在线阈值（最近 N 毫秒内出现）；与 DAO 计数共用同一口径。 */
-    val onlineSince: Long = 0L,
     /** 设备状态下钻筛选；null 表示不筛选。 */
     val statusFilter: HomeStatusFilter? = null,
     /** 下拉刷新进行中。 */
@@ -135,6 +142,7 @@ data class SceneProgress(
 class HomeViewModel(
     private val deviceRepository: DeviceRepository,
     private val readingRepository: ReadingRepository,
+    private val latestReadingCache: LatestReadingCache,
     private val ruleEventRepository: RuleEventRepository,
     private val sceneRepository: SceneRepository,
     private val sceneRunRepository: SceneRunRepository,
@@ -192,7 +200,10 @@ class HomeViewModel(
 
     /** 今日窗口按本地 0 点切分；跨零点下拉刷新时会重新计算。 */
     private val _dayWindow = MutableStateFlow(todayWindow())
-    private val _onlineSince = MutableStateFlow(System.currentTimeMillis() - ONLINE_WINDOW_MS)
+
+    /** 云端最近读数：只对没有本机读数的设备请求；缓存与并发由 LatestReadingCache 收敛。 */
+    private val _cloudReadings = MutableStateFlow<Map<String, CloudReadingState>>(emptyMap())
+    private val cloudJobs = mutableMapOf<String, Job>()
 
     private fun <T> dayFlow(block: suspend (Long, Long) -> Flow<T>): Flow<T> =
         _dayWindow.flatMapLatest { (from, to) -> block(from, to) }
@@ -211,14 +222,15 @@ class HomeViewModel(
         TodayAggregate(readings, metrics, hourly, violations, alerts.count, alerts.latest)
     }
 
-    /** 设备状态：在线/离线/未分配房间走 SQL 计数，低电量用每设备最新电量读数。 */
+    /**
+     * 设备状态：本机在线/离线只按「本机蓝牙是否已连接」统计，不冒充服务端在线；
+     * 未分配房间走 SQL 计数，低电量用每设备最新电量读数。
+     */
     private val deviceAggregates = combine(
-        _onlineSince.flatMapLatest { deviceRepository.observeOnlineCount(it) },
-        _onlineSince.flatMapLatest { deviceRepository.observeOfflineCount(it) },
         deviceRepository.observeUnassignedRoomCount(),
         readingRepository.observeLatestPerDeviceMetric(ReadingMetrics.BATTERY),
-    ) { online, offline, unassigned, batteryReadings ->
-        DeviceAggregate(online, offline, unassigned, batteryReadings)
+    ) { unassigned, batteryReadings ->
+        DeviceAggregate(unassigned, batteryReadings)
     }
 
     /** 最近活动：最近同步时间与最近一次场景触发均来自真实记录。 */
@@ -258,8 +270,13 @@ class HomeViewModel(
         combine(_query, _sortMode, _selectedGroup, _collapsedRooms) { query, sort, group, collapsed ->
             HomeFilters(query, sort, group, collapsed)
         },
-        combine(bleConnectionManager.state, _loaded, syncManager.status) { connection, loaded, status ->
-            ConnectionPack(connection, loaded, status.lastError)
+        combine(
+            bleConnectionManager.state,
+            _loaded,
+            syncManager.status,
+            _cloudReadings,
+        ) { connection, loaded, status, clouds ->
+            ConnectionPack(connection, loaded, status.lastError, clouds)
         },
     ) { contentAndHousehold, dashboard, scenePack, filters, connectionPack ->
         val (content, household) = contentAndHousehold
@@ -276,13 +293,20 @@ class HomeViewModel(
                 device.householdId == currentLocalId
         }
         val visibleMacs = visibleDevices.mapTo(mutableSetOf()) { it.mac }
-        val onlineSince = _onlineSince.value
+        val connectedMac = (connectionPack.connection as? BleConnectionState.Connected)?.mac
+        // 本机口径：在线=本机蓝牙已连接；离线=可连接的 Android 设备未连接；
+        // 不可连接=其他平台设备。三者都不代表服务端在线状态。
+        val onlineDevices = visibleDevices.filter { it.mac == connectedMac }
+        val unreachableDevices = visibleDevices.filter { it.platform != PLATFORM_ANDROID }
+        val offlineDevices = visibleDevices.filter {
+            it.platform == PLATFORM_ANDROID && it.mac != connectedMac
+        }
         val lowBatteryMacs = device.batteryReadings
             .filter { it.value < LOW_BATTERY_THRESHOLD && it.deviceId in visibleMacs }
             .mapTo(mutableSetOf()) { it.deviceId }
         val statusDevices = when (statusFilter) {
-            HomeStatusFilter.ONLINE -> visibleDevices.filter { it.lastSeenTimestamp >= onlineSince }
-            HomeStatusFilter.OFFLINE -> visibleDevices.filter { it.lastSeenTimestamp < onlineSince }
+            HomeStatusFilter.ONLINE -> onlineDevices
+            HomeStatusFilter.OFFLINE -> offlineDevices
             HomeStatusFilter.UNASSIGNED -> visibleDevices.filter { it.roomId == null }
             HomeStatusFilter.LOW_BATTERY -> visibleDevices.filter { it.mac in lowBatteryMacs }
             null -> visibleDevices
@@ -304,7 +328,8 @@ class HomeViewModel(
             collapsedRooms = filters.collapsed,
             searching = filters.query.isNotBlank(),
             latestReadings = newestPerDevice,
-            connectedMac = (connectionPack.connection as? BleConnectionState.Connected)?.mac,
+            cloudReadings = connectionPack.cloudReadings,
+            connectedMac = connectedMac,
             alertCountToday = today.alertCount,
             scenes = scenes,
             groups = visibleDevices.mapNotNull { it.group?.takeIf(String::isNotBlank) }.distinct().sorted(),
@@ -321,8 +346,9 @@ class HomeViewModel(
                 metricCounts = today.metricCounts,
                 hourlyCounts = today.hourlyCounts,
                 violationCount = today.violations,
-                onlineCount = device.online,
-                offlineCount = device.offline,
+                onlineCount = onlineDevices.size,
+                offlineCount = offlineDevices.size,
+                unreachableCount = unreachableDevices.size,
                 unassignedCount = device.unassigned,
                 lowBatteryCount = lowBatteryMacs.size,
                 lowBatteryMacs = lowBatteryMacs,
@@ -330,7 +356,6 @@ class HomeViewModel(
                 latestAlert = today.latestAlert,
                 latestSceneRun = activity.latestRun,
             ),
-            onlineSince = onlineSince,
             statusFilter = statusFilter,
             refreshing = refreshing,
         )
@@ -360,6 +385,40 @@ class HomeViewModel(
 
     init {
         viewModelScope.launch { householdRepository.refreshHouseholds() }
+        viewModelScope.launch {
+            combine(
+                deviceRepository.observeDevices(),
+                readingRepository.observeLatestPerDevice(),
+            ) { devices, readings -> devices to readings.associateBy { it.deviceId } }
+                .collect { (devices, localReadings) ->
+                    ensureCloudReadings(devices, localReadings, force = false)
+                }
+        }
+    }
+
+    /**
+     * 本机读数优先：只有本机没有读数的设备才走云端。
+     * 同一设备同一时刻只保留一个进行中的请求；结果由 [LatestReadingCache] 缓存。
+     */
+    private fun ensureCloudReadings(
+        devices: List<Device>,
+        localReadings: Map<String, Reading>,
+        force: Boolean,
+    ) {
+        devices.forEach { device ->
+            if (localReadings[device.mac] != null) return@forEach
+            if (device.platform.isBlank()) return@forEach
+            val key = device.cloudReadingKey
+            if (cloudJobs[key]?.isActive == true) return@forEach
+            val cached = _cloudReadings.value[key]
+            if (!force && cached != null && cached !is CloudReadingState.Failed) return@forEach
+            _cloudReadings.update { it + (key to CloudReadingState.Loading) }
+            cloudJobs[key] = viewModelScope.launch {
+                val state = latestReadingCache.load(device.platform, device.cloudExternalId, force)
+                _cloudReadings.update { it + (key to state) }
+                cloudJobs.remove(key)
+            }
+        }
     }
 
     fun createRoom(name: String) {
@@ -453,12 +512,13 @@ class HomeViewModel(
         _statusFilter.value = null
     }
 
-    /** 下拉刷新：重算今日窗口与在线阈值，触发一次同步，结束后刷新聚合。 */
+    /** 下拉刷新：重算今日窗口，触发一次同步，并强制刷新可见设备的云端最近读数。 */
     fun refreshNow() {
         if (_refreshing.value) return
         _refreshing.value = true
         _dayWindow.value = todayWindow()
-        _onlineSince.value = System.currentTimeMillis() - ONLINE_WINDOW_MS
+        val state = uiState.value
+        ensureCloudReadings(state.devices, state.latestReadings, force = true)
         viewModelScope.launch {
             try {
                 syncManager.manualSync()
@@ -542,8 +602,6 @@ class HomeViewModel(
     )
 
     private data class DeviceAggregate(
-        val online: Int,
-        val offline: Int,
         val unassigned: Int,
         val batteryReadings: List<Reading>,
     )
@@ -569,6 +627,7 @@ class HomeViewModel(
         val connection: BleConnectionState,
         val loaded: Boolean,
         val syncError: String?,
+        val cloudReadings: Map<String, CloudReadingState>,
     )
 
     private data class HomeFilters(
@@ -733,9 +792,6 @@ class HomeViewModel(
         private const val MAX_LIVE_DEVICES = 100
         private const val DATABASE_WRITE_INTERVAL_MS = 2_000L
 
-        /** 最近 15 分钟内出现视为在线；与 DAO 的 lastSeenTimestamp 计数共用。 */
-        const val ONLINE_WINDOW_MS = 15 * 60 * 1000L
-
         /** 最新电量低于该值计为低电量。 */
         const val LOW_BATTERY_THRESHOLD = 20.0
 
@@ -760,6 +816,7 @@ class HomeViewModel(
                 HomeViewModel(
                     deviceRepository = container.deviceRepository,
                     readingRepository = container.readingRepository,
+                    latestReadingCache = container.latestReadingCache,
                     ruleEventRepository = container.ruleEventRepository,
                     sceneRepository = container.sceneRepository,
                     sceneRunRepository = container.sceneRunRepository,

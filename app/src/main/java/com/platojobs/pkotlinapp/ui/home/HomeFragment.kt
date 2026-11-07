@@ -30,6 +30,7 @@ import com.platojobs.pkotlinapp.diagnostics.StartupStage
 import com.platojobs.pkotlinapp.domain.household.householdRolePermissions
 import com.platojobs.pkotlinapp.domain.model.Device
 import com.platojobs.pkotlinapp.domain.model.displayName
+import com.platojobs.pkotlinapp.domain.reading.CloudReadingState
 import com.platojobs.pkotlinapp.ui.MainActivity
 import com.platojobs.pkotlinapp.ui.common.BlePermissions
 import com.platojobs.pkotlinapp.ui.common.PermissionRationale
@@ -261,7 +262,8 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             room = room,
             devices = state.devices,
             readings = state.latestReadings,
-            onlineSince = state.onlineSince,
+            cloudReadings = state.cloudReadings,
+            connectedMac = state.connectedMac,
             unknownName = getString(R.string.device_unknown),
         )
         if (detail.isEmpty) {
@@ -275,28 +277,12 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(8), dp(20), dp(8))
         }
-        content.addView(TextView(context).apply {
-            // 200% 字号下汇总行会把「已标记」拆到两行，改为按语义换行。
-            text = if (largeFont) {
-                getString(
-                    R.string.room_detail_summary_large,
-                    detail.total,
-                    detail.onlineCount,
-                    detail.offlineCount,
-                    detail.markedCount,
-                )
-            } else {
-                getString(
-                    R.string.room_detail_summary,
-                    detail.total,
-                    detail.onlineCount,
-                    detail.offlineCount,
-                    detail.markedCount,
-                )
-            }
+        val summaryView = TextView(context).apply {
+            text = roomSummary(detail, largeFont)
             setTextAppearance(R.style.TextAppearance_App_Caption)
             setTextColor(context.getColor(R.color.text_secondary))
-        })
+        }
+        content.addView(summaryView)
         // 标记随设备同步；离线/未登录时仍先写本机，明确告知等待上传的状态。
         if (detail.pendingMarkCount > 0) {
             content.addView(TextView(context).apply {
@@ -357,23 +343,84 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         content.addView(actions)
 
         val scroll = ScrollView(context).apply { addView(content) }
-        MaterialAlertDialogBuilder(context)
+        val dialog = MaterialAlertDialogBuilder(context)
             .setTitle(room.name)
             .setView(scroll)
             .setNeutralButton(R.string.room_detail_add_device) { _, _ -> openScanDialog() }
             .setNegativeButton(R.string.action_close, null)
             .show()
+
+        // 云端读数按需返回：弹窗打开期间持续刷新每行读数与汇总，不阻塞首次展示。
+        val refreshJob = viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.uiState.collect { latest ->
+                    val latestRoom = latest.rooms.firstOrNull { it.id == roomId } ?: room
+                    val fresh = RoomDetailBuilder.build(
+                        room = latestRoom,
+                        devices = latest.devices,
+                        readings = latest.latestReadings,
+                        cloudReadings = latest.cloudReadings,
+                        connectedMac = latest.connectedMac,
+                        unknownName = getString(R.string.device_unknown),
+                    )
+                    summaryView.text = roomSummary(fresh, largeFont)
+                    val freshEntries = fresh.entries.associateBy { it.mac }
+                    selection.forEach { (mac, row) ->
+                        freshEntries[mac]?.let { entry -> row.text = roomDeviceText(entry) }
+                    }
+                }
+            }
+        }
+        dialog.setOnDismissListener { refreshJob.cancel() }
     }
+
+    private fun roomSummary(detail: RoomDetail, largeFont: Boolean): String =
+        if (largeFont) {
+            getString(
+                R.string.room_detail_summary_large,
+                detail.total,
+                detail.onlineCount,
+                detail.offlineCount,
+                detail.unreachableCount,
+                detail.markedCount,
+            )
+        } else {
+            getString(
+                R.string.room_detail_summary,
+                detail.total,
+                detail.onlineCount,
+                detail.offlineCount,
+                detail.unreachableCount,
+                detail.markedCount,
+            )
+        }
 
     private fun roomDeviceText(entry: RoomDeviceEntry): String {
         val status = getString(
-            if (entry.online) R.string.room_detail_online else R.string.room_detail_offline,
+            when (entry.link) {
+                LocalLinkState.ONLINE -> R.string.room_detail_online
+                LocalLinkState.OFFLINE -> R.string.room_detail_offline
+                LocalLinkState.UNREACHABLE -> R.string.room_detail_unreachable
+            },
         )
-        val reading = entry.reading?.let(::formatReading)
-            ?: getString(R.string.room_detail_no_reading)
+        val readingText = when {
+            entry.reading != null -> formatReading(entry.reading)
+            else -> when (val cloud = entry.cloudReading) {
+                is CloudReadingState.Available -> getString(
+                    R.string.room_detail_cloud_meta,
+                    formatReading(cloud.reading.value, cloud.reading.unit),
+                    formatTime(cloud.reading.recordedAt),
+                )
+
+                is CloudReadingState.Loading -> getString(R.string.room_detail_cloud_loading)
+                is CloudReadingState.Failed -> getString(R.string.room_detail_cloud_unavailable)
+                is CloudReadingState.Empty -> getString(R.string.room_detail_cloud_empty)
+                null -> getString(R.string.room_detail_no_reading)
+            }
+        }
         val marked = if (entry.marked) getString(R.string.room_detail_marked_suffix) else ""
         // 名称/状态与读数分两行：长名称或 100% 字号下也不会在词中间换行。
-        val meta = getString(R.string.room_detail_device_meta, reading, marked)
+        val meta = getString(R.string.room_detail_device_meta, readingText, marked)
         return getString(R.string.room_detail_device_title, entry.name, status) + "\n" + meta
     }
 

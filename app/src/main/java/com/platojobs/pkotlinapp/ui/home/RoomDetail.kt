@@ -1,20 +1,37 @@
 package com.platojobs.pkotlinapp.ui.home
 
 import com.platojobs.pkotlinapp.domain.model.Device
+import com.platojobs.pkotlinapp.domain.model.PLATFORM_ANDROID
 import com.platojobs.pkotlinapp.domain.model.Room
 import com.platojobs.pkotlinapp.domain.model.SyncState
+import com.platojobs.pkotlinapp.domain.model.cloudReadingKey
 import com.platojobs.pkotlinapp.domain.model.displayName
+import com.platojobs.pkotlinapp.domain.reading.CloudReadingState
 import com.platojobs.pkotlinapp.domain.reading.Reading
 
-/** 房间详情里的单台设备：最新读数与在线/标记状态都来自本机真实缓存。 */
+/** 本机连接口径：不宣称服务端在线。 */
+enum class LocalLinkState {
+    /** 本机蓝牙当前已连接。 */
+    ONLINE,
+
+    /** 可连接的 Android 设备，本机当前未连接。 */
+    OFFLINE,
+
+    /** 其他平台设备，本机无法直接蓝牙连接。 */
+    UNREACHABLE,
+}
+
+/** 房间详情里的单台设备：本机读数优先，缺失时才展示云端四态。 */
 data class RoomDeviceEntry(
     val mac: String,
     val name: String,
-    val online: Boolean,
+    val link: LocalLinkState,
     val marked: Boolean,
     /** 标记尚在本机等待上传（离线/未登录）；用于界面说明当前状态。 */
     val pending: Boolean,
     val reading: Reading?,
+    /** 本机无读数时的云端状态；本机有读数时为 null。 */
+    val cloudReading: CloudReadingState?,
 )
 
 /**
@@ -26,6 +43,7 @@ data class RoomDetail(
     val total: Int,
     val onlineCount: Int,
     val offlineCount: Int,
+    val unreachableCount: Int,
     val markedCount: Int,
     val entries: List<RoomDeviceEntry>,
 ) {
@@ -42,35 +60,49 @@ object RoomDetailBuilder {
 
     /**
      * @param devices 已经按当前家庭过滤后的设备集合；这里再按 [room] 归属过滤一次，避免调用方传错。
-     * @param readings 每台设备的最新一条读数（`mac -> Reading`）。
-     * @param onlineSince 与首页在线统计同一阈值（最近出现时间 >= 该值视为在线）。
+     * @param readings 每台设备的最新一条本机读数（`mac -> Reading`），优先展示。
+     * @param cloudReadings 本机无读数时按 [Device.cloudReadingKey] 查云端四态。
+     * @param connectedMac 本机蓝牙当前连接的设备；只有它能算「本机在线」。
      */
     fun build(
         room: Room,
         devices: List<Device>,
         readings: Map<String, Reading>,
-        onlineSince: Long,
+        cloudReadings: Map<String, CloudReadingState>,
+        connectedMac: String?,
         unknownName: String,
     ): RoomDetail {
         val entries = devices
             .filter { it.roomId == room.id }
             .map { device ->
+                val localReading = readings[device.mac]
+                val link = when {
+                    device.mac == connectedMac -> LocalLinkState.ONLINE
+                    device.platform != PLATFORM_ANDROID -> LocalLinkState.UNREACHABLE
+                    else -> LocalLinkState.OFFLINE
+                }
                 RoomDeviceEntry(
                     mac = device.mac,
                     name = device.displayName()?.takeIf(String::isNotBlank) ?: unknownName,
-                    online = device.lastSeenTimestamp >= onlineSince,
+                    link = link,
                     marked = device.markedAt != null,
                     pending = device.syncState == SyncState.PENDING,
-                    reading = readings[device.mac],
+                    reading = localReading,
+                    // 本机读数优先：有本机读数时不再展示云端状态。
+                    cloudReading = if (localReading == null) {
+                        cloudReadings[device.cloudReadingKey]
+                    } else {
+                        null
+                    },
                 )
             }
-        val online = entries.count { it.online }
         return RoomDetail(
             roomId = room.id,
             roomName = room.name,
             total = entries.size,
-            onlineCount = online,
-            offlineCount = entries.size - online,
+            onlineCount = entries.count { it.link == LocalLinkState.ONLINE },
+            offlineCount = entries.count { it.link == LocalLinkState.OFFLINE },
+            unreachableCount = entries.count { it.link == LocalLinkState.UNREACHABLE },
             markedCount = entries.count { it.marked },
             entries = entries,
         )

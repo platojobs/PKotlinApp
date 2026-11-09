@@ -20,7 +20,7 @@
 - 修复：TIL 关闭 hint（`app:hintEnabled="false"`）、高度改 `wrap_content` + `minHeight=input_h`；EditText 直接设 `android:hint`；按钮高度 `wrap_content` + `minHeight=input_h` 并在 `doOnLayout` 的下一帧与 TIL 实际高度对齐。
 - 断言（修复后）：TIL 与按钮 bounds 完全一致，中心偏差 **0px**。
   - 100%：搜索框 `[42,653][753,809]`（宽 711px，高 156px / 59.4dp）；按钮 `[774,653][1038,809]`（高 156px / 59.4dp）。二者 top=653、bottom=809，垂直中心同为 y=731。
-  - 200%：搜索框 `[42,701][629,902]`（宽 587px，高 201px / 76.6dp）；按钮 `[650,701][1038,902]`（高 201px / 76.6dp）。二者 top=701、bottom=902，垂直中心同为 y=801.5；占位文字完整显示。
+  - 200%：搜索框 `[42,701][629,902]`（宽 587px，高 201px / 76.6dp）；按钮 `[650,701][1038,902]`（高 201px / 76.6dp）。二者 top=701、bottom=902，垂直中心同为 y=801.5；输入框上下不再裁切，但横向占位文字仍被裁（v0.32.12 已改为大字号纵向堆叠，见 `verify-v0.32.12/`）。
 - 截图：`before-home-100.png` / `after-home-100.png`；`before-home-200.png` / `after-home-200.png`。
 
 ## 二、200% 下首页「设备状态」统计块标签被裁

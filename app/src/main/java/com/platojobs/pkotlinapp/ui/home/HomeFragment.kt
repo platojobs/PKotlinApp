@@ -2,6 +2,7 @@ package com.platojobs.pkotlinapp.ui.home
 
 import android.content.Context
 import android.os.Bundle
+import android.view.Gravity
 import android.view.View
 import android.widget.EditText
 import android.widget.CheckBox
@@ -128,14 +129,17 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             viewModel.setQuery(text?.toString().orEmpty())
         }
         binding.scanAddButton.setOnClickListener { openScanDialog() }
+        applyResponsiveSearchRow()
         // 搜索框高度由 Material 输入框决定（大字号会变高），按钮与之等高，避免上下错位。
         val scanButton = binding.scanAddButton
-        binding.searchLayout.doOnLayout { box ->
-            val height = box.height
-            // 布局过程中改高度不会生效，放到下一帧。
-            box.post {
-                if (scanButton.height != height) {
-                    scanButton.layoutParams = scanButton.layoutParams.apply { this.height = height }
+        if (binding.searchRow.orientation == LinearLayout.HORIZONTAL) {
+            binding.searchLayout.doOnLayout { box ->
+                val height = box.height
+                // 布局过程中改高度不会生效，放到下一帧。
+                box.post {
+                    if (scanButton.height != height) {
+                        scanButton.layoutParams = scanButton.layoutParams.apply { this.height = height }
+                    }
                 }
             }
         }
@@ -144,6 +148,25 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         buildSortChips()
         (activity as? MainActivity)?.attachHeaderScroll(binding.homeList)
         observe()
+    }
+
+    /**
+     * 大字号（≥150%）下「扫描添加」占掉近半行宽，搜索框只剩 587px，占位文字被硬裁成
+     * 「搜索设备名称或」。此时把按钮换到下一行并右对齐，搜索框独占整行。
+     */
+    private fun applyResponsiveSearchRow() {
+        if (resources.configuration.fontScale < LARGE_FONT_SCALE) return
+        binding.searchRow.orientation = LinearLayout.VERTICAL
+        binding.searchLayout.layoutParams =
+            (binding.searchLayout.layoutParams as LinearLayout.LayoutParams).apply {
+                width = LinearLayout.LayoutParams.MATCH_PARENT
+                weight = 0f
+            }
+        binding.scanAddButton.layoutParams =
+            (binding.scanAddButton.layoutParams as LinearLayout.LayoutParams).apply {
+                gravity = Gravity.END
+                topMargin = resources.getDimensionPixelSize(R.dimen.space_8)
+            }
     }
 
     private fun observe() {

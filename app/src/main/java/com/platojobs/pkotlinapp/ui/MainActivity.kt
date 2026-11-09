@@ -63,6 +63,7 @@ class MainActivity : AppCompatActivity() {
     private var headerCollapsed = false
     private var headerAnimator: ValueAnimator? = null
     private var attachedScroll: View? = null
+    private val scrollByTag = mutableMapOf<String, View>()
     private var suppressNavSelection = false
     private var recyclerListener: RecyclerView.OnScrollListener? = null
     private var nestedScrollListener: NestedScrollView.OnScrollChangeListener? = null
@@ -225,6 +226,14 @@ class MainActivity : AppCompatActivity() {
         scrollListener = null
         attachedScroll = scrollable
 
+        // 记住每个 Fragment 的滚动容器：onViewCreated 只跑一次，切回已创建的
+        // Tab 时不会重新注册，需要按 tag 取回。
+        if (scrollable != null) {
+            val owner = supportFragmentManager.fragments
+                .firstOrNull { fragment -> isInside(scrollable, fragment.view) }
+            owner?.tag?.let { scrollByTag[it] = scrollable }
+        }
+
         when (scrollable) {
             is RecyclerView -> {
                 val listener = object : RecyclerView.OnScrollListener() {
@@ -257,6 +266,24 @@ class MainActivity : AppCompatActivity() {
     private fun updateHeader(offset: Int) {
         val threshold = resources.getDimensionPixelSize(R.dimen.header_scroll_threshold)
         setHeaderCollapsed(offset >= threshold)
+    }
+
+    /** 滚动容器是否位于该 Fragment 的视图树内。 */
+    private fun isInside(view: View, ancestor: View?): Boolean {
+        if (ancestor == null) return false
+        var current: View? = view
+        while (current != null) {
+            if (current === ancestor) return true
+            current = current.parent as? View
+        }
+        return false
+    }
+
+    private fun scrollOffsetOf(view: View): Int = when (view) {
+        is RecyclerView -> view.computeVerticalScrollOffset()
+        is NestedScrollView -> view.scrollY
+        is android.widget.ScrollView -> view.scrollY
+        else -> 0
     }
 
     private fun setHeaderCollapsed(collapse: Boolean, animate: Boolean = true) {
@@ -324,6 +351,13 @@ class MainActivity : AppCompatActivity() {
         binding.headerTitleCollapsed.text = title
         attachHeaderScroll(null)
         setHeaderCollapsed(false, animate = false)
+        // 切回已创建的 Tab 时重新挂上滚动联动，否则大标题不再随滚动收起。
+        binding.root.post {
+            scrollByTag[tag]?.let { restored ->
+                attachHeaderScroll(restored)
+                updateHeader(scrollOffsetOf(restored))
+            }
+        }
     }
 
     private fun createFragment(itemId: Int): Fragment = when (itemId) {

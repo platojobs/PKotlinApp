@@ -143,6 +143,7 @@
                     android:textAppearance="@style/TextAppearance.App.Headline" />
 
                 <LinearLayout
+                    android:id="@+id/scanPermissionRow"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="10dp"
@@ -164,6 +165,7 @@
                 </LinearLayout>
 
                 <LinearLayout
+                    android:id="@+id/connectPermissionRow"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="6dp"
@@ -185,6 +187,7 @@
                 </LinearLayout>
 
                 <LinearLayout
+                    android:id="@+id/locationPermissionRow"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="6dp"

@@ -10,6 +10,7 @@ import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.view.Gravity
 import android.widget.FrameLayout
+import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.Fragment
@@ -135,7 +136,31 @@ class IntelligenceFragment : Fragment(R.layout.fragment_intelligence) {
 
         binding.intelligenceScroll.applyBottomInsetPadding()
         (activity as? MainActivity)?.attachHeaderScroll(binding.intelligenceScroll)
+        applyResponsiveHeaders()
         observe()
+    }
+
+    /**
+     * 大字号（≥150%）下标题列会被右侧文字按钮挤到只剩几十 dp：「自动化」拆成两行、
+     * 说明每行只剩一个字。此时把动作按钮改到说明下方并右对齐，正常字号保持同一行。
+     */
+    private fun applyResponsiveHeaders() {
+        if (resources.configuration.fontScale < 1.5f) return
+        stackHeader(binding.automationHeader, binding.automationHeaderText, binding.automationHeaderActions)
+        stackHeader(binding.scenesHeader, binding.scenesHeaderText, binding.addSceneButton)
+        stackHeader(binding.runsHeader, binding.runsHeaderText, binding.clearRunsButton)
+    }
+
+    private fun stackHeader(header: LinearLayout, text: LinearLayout, action: View) {
+        header.orientation = LinearLayout.VERTICAL
+        text.layoutParams = (text.layoutParams as LinearLayout.LayoutParams).apply {
+            width = LinearLayout.LayoutParams.MATCH_PARENT
+            weight = 0f
+        }
+        action.layoutParams = (action.layoutParams as LinearLayout.LayoutParams).apply {
+            gravity = Gravity.END
+            topMargin = resources.getDimensionPixelSize(R.dimen.space_4)
+        }
     }
 
     private fun observe() {

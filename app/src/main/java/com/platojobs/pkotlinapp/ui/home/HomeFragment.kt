@@ -12,6 +12,7 @@ import android.widget.TextView
 import android.widget.Toast
 import com.google.android.material.button.MaterialButton
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.view.doOnLayout
 import androidx.core.widget.doAfterTextChanged
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
@@ -127,6 +128,17 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             viewModel.setQuery(text?.toString().orEmpty())
         }
         binding.scanAddButton.setOnClickListener { openScanDialog() }
+        // 搜索框高度由 Material 输入框决定（大字号会变高），按钮与之等高，避免上下错位。
+        val scanButton = binding.scanAddButton
+        binding.searchLayout.doOnLayout { box ->
+            val height = box.height
+            // 布局过程中改高度不会生效，放到下一帧。
+            box.post {
+                if (scanButton.height != height) {
+                    scanButton.layoutParams = scanButton.layoutParams.apply { this.height = height }
+                }
+            }
+        }
         binding.homeRefresh.setOnRefreshListener { viewModel.refreshNow() }
 
         buildSortChips()

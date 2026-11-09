@@ -43,27 +43,32 @@
                 android:id="@+id/searchLayout"
                 style="@style/Widget.App.TextInputLayout"
                 android:layout_width="0dp"
-                android:layout_height="@dimen/input_h"
+                android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:hint="@string/home_search_hint"
-                app:boxBackgroundMode="outline">
+                android:minHeight="@dimen/input_h"
+                app:boxBackgroundMode="outline"
+                app:hintEnabled="false">
 
                 <com.google.android.material.textfield.TextInputEditText
                     android:id="@+id/searchInput"
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
+                    android:hint="@string/home_search_hint"
                     android:imeOptions="actionSearch"
                     android:inputType="text"
+                    android:lineSpacingExtra="0dp"
                     android:maxLines="1"
-                    android:textAppearance="@style/TextAppearance.App.Body" />
+                    android:textAppearance="@style/TextAppearance.App.Body"
+                    android:textColorHint="@color/text_secondary" />
             </com.google.android.material.textfield.TextInputLayout>
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/scanAddButton"
                 style="@style/Widget.App.Button.Secondary"
                 android:layout_width="wrap_content"
-                android:layout_height="@dimen/input_h"
+                android:layout_height="wrap_content"
                 android:layout_marginStart="@dimen/space_8"
+                android:minHeight="@dimen/input_h"
                 android:paddingStart="@dimen/space_16"
                 android:paddingEnd="@dimen/space_16"
                 android:text="@string/home_scan_add" />

@@ -10,6 +10,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.text.InputFilter
+import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -56,6 +57,7 @@ import com.platojobs.pkotlinapp.domain.household.householdRolePermissions
 import com.platojobs.pkotlinapp.domain.push.PushRegistrationState
 import com.platojobs.pkotlinapp.domain.push.PushRegistrationStatus
 import com.platojobs.pkotlinapp.domain.sync.SyncStatus
+import com.platojobs.pkotlinapp.ui.MainActivity
 import com.platojobs.pkotlinapp.ui.common.BlePermissions
 import com.platojobs.pkotlinapp.ui.common.FileSharing
 import com.platojobs.pkotlinapp.ui.common.HelpCenterDialog
@@ -109,6 +111,7 @@ class ProfileFragment : Fragment() {
         binding.logsList.layoutManager = LinearLayoutManager(requireContext())
         binding.logsList.adapter = scanLogAdapter
         binding.profileScroll.applyBottomInsetPadding()
+        (activity as? MainActivity)?.attachHeaderScroll(binding.profileScroll)
 
         binding.aboutCard.versionText.text = getString(
             R.string.profile_version,
@@ -140,6 +143,7 @@ class ProfileFragment : Fragment() {
         setupAccountControls()
         setupHouseholdControls()
         setupCollectionControls()
+        applyResponsivePermissionRows()
 
         binding.themeGroup.check(
             when (viewModel.themeMode.value) {
@@ -1283,6 +1287,29 @@ class ProfileFragment : Fragment() {
         }
         binding.pushStatusText.text = text
         binding.pushStatusText.setTextColor(ContextCompat.getColor(requireContext(), color))
+    }
+
+    /**
+     * 大字号（≥150%）下「定位权限（Android 11 及以下）」会被右侧状态文案挤成每行一个字。
+     * 此时把状态换到下一行并右对齐，正常字号保持同一行。
+     */
+    private fun applyResponsivePermissionRows() {
+        if (resources.configuration.fontScale < 1.5f) return
+        stackRow(binding.scanPermissionRow, binding.scanPermissionStatus)
+        stackRow(binding.connectPermissionRow, binding.connectPermissionStatus)
+        stackRow(binding.locationPermissionRow, binding.locationPermissionStatus)
+    }
+
+    private fun stackRow(row: LinearLayout, status: TextView) {
+        row.orientation = LinearLayout.VERTICAL
+        row.getChildAt(0).layoutParams = (row.getChildAt(0).layoutParams as LinearLayout.LayoutParams).apply {
+            width = LinearLayout.LayoutParams.MATCH_PARENT
+            weight = 0f
+        }
+        status.layoutParams = (status.layoutParams as LinearLayout.LayoutParams).apply {
+            gravity = Gravity.END
+            topMargin = resources.getDimensionPixelSize(R.dimen.space_4)
+        }
     }
 
     private fun renderPermissions(status: PermissionStatus) {

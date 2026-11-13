@@ -26,7 +26,7 @@
     <string name="onboarding_step_bluetooth_title">Why nearby device permission is needed</string>
     <string name="onboarding_step_bluetooth_body">Scanning discovers nearby devices through their Bluetooth broadcasts. After connecting, the app reads heart rate, battery, temperature and other readings. On Android 12 and above only Nearby devices is requested; scan results are not used for location.</string>
     <string name="onboarding_step_notification_title">Why notification permission is needed</string>
-    <string name="onboarding_step_notification_body">Sends local alerts when a rule triggers (signal below threshold, device disconnected, bond lost). A persistent notification is also shown during background collection. If denied, rules are still recorded but no reminder is sent.</string>
+    <string name="onboarding_step_notification_body">Sends local alerts when a rule triggers (signal at or below threshold, device disconnected, bond lost). A persistent notification is also shown during background collection. If denied, rules are still recorded but no reminder is sent.</string>
     <string name="onboarding_step_location_title_current">Why location is explained here</string>
     <string name="onboarding_step_location_body_current">On Android 11 and below, the system requires location permission to scan for BLE devices. This app does not use or collect location data, and location never leaves the device. This system is Android 12 or above, so scanning does not depend on location and this step will not request it.</string>
     <string name="onboarding_step_location_title_legacy">Why location permission is needed</string>
@@ -61,6 +61,8 @@
     <string name="device_rssi_value">%1$d dBm</string>
     <string name="device_rssi_unknown">-- dBm</string>
     <string name="device_rssi_read_at">Read at %1$s</string>
+    <string name="device_rssi_stale_at">Last reading · %1$s</string>
+    <string name="device_rssi_read_failed">Read failed, no reading yet</string>
     <string name="device_last_seen">Last seen: %1$s</string>
 
     <string name="home_live_title">Nearby devices</string>
@@ -83,7 +85,7 @@
 
     <string name="rules_add">New rule</string>
     <string name="rules_empty">No rules yet. New rules are recorded and reported during scanning or connection</string>
-    <string name="rule_low_rssi">RSSI below threshold</string>
+    <string name="rule_low_rssi">RSSI at or below threshold</string>
     <string name="rule_disconnected">Device disconnected</string>
     <string name="rule_bond_lost">Bond information lost</string>
     <string name="rule_threshold_value">Threshold %1$d dBm</string>
@@ -91,7 +93,7 @@
     <string name="rule_type_label">Rule type</string>
     <string name="rule_threshold_hint">RSSI threshold (-100 to 0)</string>
     <string name="rule_threshold_error">Enter an integer between -100 and 0</string>
-    <string name="rule_desc_low_rssi">Records an event when a scanned device signal drops below the threshold</string>
+    <string name="rule_desc_low_rssi">Records an event when a scanned device signal drops to or below the threshold</string>
     <string name="rule_desc_disconnected">Records an event when a connected device disconnects</string>
     <string name="rule_desc_bond_lost">Records an event and prompts to re-pair the device when a bond loss broadcast is received</string>
     <string name="rule_enabled_desc">Rule enabled</string>
@@ -754,7 +756,7 @@
     <string name="scene_trigger_title">Trigger</string>
     <string name="scene_trigger_manual">Manual only</string>
     <string name="scene_trigger_disconnected">Device offline</string>
-    <string name="scene_trigger_low_rssi">RSSI below threshold</string>
+    <string name="scene_trigger_low_rssi">RSSI at or below threshold</string>
     <string name="scene_trigger_metric">Metric out of range</string>
     <string name="scene_trigger_schedule">Schedule</string>
     <string name="scene_trigger_rssi_hint">RSSI threshold (-100 to 0)</string>
@@ -795,7 +797,7 @@
     <string name="intelligence_runs_trigger_rule">%1$s · %2$s</string>
     <string name="intelligence_runs_cleared">Run history cleared</string>
     <string name="intelligence_runs_clear_failed">Failed to clear run history</string>
-    <string name="scene_trigger_type_low_rssi">RSSI below threshold</string>
+    <string name="scene_trigger_type_low_rssi">RSSI at or below threshold</string>
     <string name="scene_trigger_type_disconnected">Device offline</string>
     <string name="scene_trigger_type_metric">Metric out of range</string>
     <string name="scene_trigger_type_schedule">Scheduled</string>

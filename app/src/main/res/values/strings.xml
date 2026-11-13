@@ -26,7 +26,7 @@
     <string name="onboarding_step_bluetooth_title">为什么需要「附近的设备」权限</string>
     <string name="onboarding_step_bluetooth_body">扫描时要发现附近设备的蓝牙广播；连接后要读取心率、电量、温度等读数。Android 12 及以上只申请「附近的设备」，扫描结果不用于定位。</string>
     <string name="onboarding_step_notification_title">为什么需要通知权限</string>
-    <string name="onboarding_step_notification_body">规则命中时（信号低于阈值、设备断开、绑定丢失）发送本地告警；后台采集时也会显示常驻通知。拒绝后规则仍会记录，但不会提醒。</string>
+    <string name="onboarding_step_notification_body">规则命中时（信号低于或等于阈值、设备断开、绑定丢失）发送本地告警；后台采集时也会显示常驻通知。拒绝后规则仍会记录，但不会提醒。</string>
     <string name="onboarding_step_location_title_current">为什么这里要说明位置权限</string>
     <string name="onboarding_step_location_body_current">Android 11 及以下，系统要求扫描 BLE 必须获得位置权限；本 App 不使用、也不收集位置数据，位置数据不会离开本机。当前系统为 Android 12 及以上，扫描不依赖定位，本步骤不会申请位置权限。</string>
     <string name="onboarding_step_location_title_legacy">为什么需要位置权限</string>
@@ -61,6 +61,8 @@
     <string name="device_rssi_value">%1$d dBm</string>
     <string name="device_rssi_unknown">-- dBm</string>
     <string name="device_rssi_read_at">读数时间 %1$s</string>
+    <string name="device_rssi_stale_at">上次读数 · %1$s</string>
+    <string name="device_rssi_read_failed">读取失败，暂无读数</string>
     <string name="device_last_seen">上次出现：%1$s</string>
 
     <string name="home_live_title">附近设备</string>
@@ -83,7 +85,7 @@
 
     <string name="rules_add">新增规则</string>
     <string name="rules_empty">暂无规则，新增后会在扫描或连接时记录并提示</string>
-    <string name="rule_low_rssi">RSSI 低于阈值</string>
+    <string name="rule_low_rssi">RSSI 低于或等于阈值</string>
     <string name="rule_disconnected">设备断开</string>
     <string name="rule_bond_lost">绑定信息丢失</string>
     <string name="rule_threshold_value">阈值 %1$d dBm</string>
@@ -91,7 +93,7 @@
     <string name="rule_type_label">规则类型</string>
     <string name="rule_threshold_hint">RSSI 阈值（-100 ~ 0）</string>
     <string name="rule_threshold_error">请输入 -100 到 0 之间的整数</string>
-    <string name="rule_desc_low_rssi">扫描到设备信号低于阈值时记录一条事件</string>
+    <string name="rule_desc_low_rssi">扫描到设备信号低于或等于阈值时记录一条事件</string>
     <string name="rule_desc_disconnected">已连接设备断开时记录一条事件</string>
     <string name="rule_desc_bond_lost">收到绑定丢失广播时记录并提示重新配对</string>
     <string name="rule_enabled_desc">规则已启用</string>
@@ -761,7 +763,7 @@
     <string name="scene_trigger_title">触发条件</string>
     <string name="scene_trigger_manual">仅手动运行</string>
     <string name="scene_trigger_disconnected">设备离线</string>
-    <string name="scene_trigger_low_rssi">RSSI 低于阈值</string>
+    <string name="scene_trigger_low_rssi">RSSI 低于或等于阈值</string>
     <string name="scene_trigger_metric">指标越界</string>
     <string name="scene_trigger_schedule">定时</string>
     <string name="scene_trigger_rssi_hint">RSSI 阈值（-100 ~ 0）</string>
@@ -802,7 +804,7 @@
     <string name="intelligence_runs_trigger_rule">%1$s · %2$s</string>
     <string name="intelligence_runs_cleared">执行记录已清空</string>
     <string name="intelligence_runs_clear_failed">清空执行记录失败</string>
-    <string name="scene_trigger_type_low_rssi">RSSI 低于阈值</string>
+    <string name="scene_trigger_type_low_rssi">RSSI 低于或等于阈值</string>
     <string name="scene_trigger_type_disconnected">设备离线</string>
     <string name="scene_trigger_type_metric">指标越界</string>
     <string name="scene_trigger_type_schedule">定时触发</string>

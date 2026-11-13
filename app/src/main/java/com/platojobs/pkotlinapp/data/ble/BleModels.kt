@@ -12,6 +12,9 @@ class BleException(
     val code: Int = 0,
 ) : Exception("BLE error: $error (code=$code)")
 
+/** 一次 RSSI 读取的结果；[STALE] 表示本次失败，当前展示的仍是上次成功值。 */
+enum class RssiReadState { IDLE, CURRENT, STALE }
+
 sealed interface BleConnectionState {
     data object Idle : BleConnectionState
 

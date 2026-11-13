@@ -9,6 +9,7 @@ import com.platojobs.pkotlinapp.PKotlinApplication
 import com.platojobs.pkotlinapp.R
 import com.platojobs.pkotlinapp.data.ble.BleConnectionManager
 import com.platojobs.pkotlinapp.data.ble.BleConnectionState
+import com.platojobs.pkotlinapp.data.ble.RssiReadState
 import com.platojobs.pkotlinapp.data.collection.CollectionSession
 import com.platojobs.pkotlinapp.data.collection.CollectionStatus
 import com.platojobs.pkotlinapp.data.household.HouseholdRepository
@@ -56,6 +57,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 data class EncryptionInfo(
@@ -184,6 +186,9 @@ class DeviceDetailViewModel(
     /** RSSI 读数时间，与 [rssi] 同步；未知或断开时为 null。 */
     val rssiUpdatedAt: StateFlow<Long?> = bleConnectionManager.rssiUpdatedAt
 
+    /** 最近一次 RSSI 读取结果；STALE 时展示的仍是上次成功值与时间。 */
+    val rssiReadState: StateFlow<RssiReadState> = bleConnectionManager.rssiReadState
+
     /** 后台采集开关（持久化）；采集状态来自全局会话。 */
     private val _backgroundCollection = MutableStateFlow(settings.backgroundCollectionEnabled)
     val backgroundCollection: StateFlow<Boolean> = _backgroundCollection.asStateFlow()
@@ -209,6 +214,8 @@ class DeviceDetailViewModel(
 
     private var metricsJob: Job? = null
     private var seriesJob: Job? = null
+    private var rssiPollJob: Job? = null
+    private var pageVisible = false
 
     init {
         viewModelScope.launch { ruleEngine.refresh() }
@@ -224,12 +231,9 @@ class DeviceDetailViewModel(
                     if (_info.value !is InfoState.Success) {
                         loadInfo()
                     }
-                    // 连接期间周期性读取远端 RSSI，驱动自绘信号视图。
-                    while (true) {
-                        delay(RSSI_POLL_INTERVAL_MS)
-                        bleConnectionManager.readRssi()
-                    }
                 }
+                // 连接/断开都重新评估轮询：只有可见且已连接才读 RSSI。
+                syncRssiPolling()
             }
         }
 
@@ -243,6 +247,32 @@ class DeviceDetailViewModel(
                 }
                 wasConnected = connected
             }
+        }
+    }
+
+    /**
+     * 页面可见性变化（onStart/onStop、前后台切换）：不可见即停表，回到前台且仍连接再起。
+     * 停表只取消采集，不清空 [rssiUpdatedAt]，否则回到页面读数时间会消失。
+     */
+    fun setPageVisible(visible: Boolean) {
+        if (pageVisible == visible) return
+        pageVisible = visible
+        syncRssiPolling()
+    }
+
+    private fun syncRssiPolling() {
+        val connected = (connectionState.value as? BleConnectionState.Connected)?.mac == mac
+        if (pageVisible && connected) {
+            if (rssiPollJob?.isActive == true) return
+            rssiPollJob = viewModelScope.launch {
+                while (isActive) {
+                    bleConnectionManager.readRssi()
+                    delay(RSSI_POLL_INTERVAL_MS)
+                }
+            }
+        } else {
+            rssiPollJob?.cancel()
+            rssiPollJob = null
         }
     }
 

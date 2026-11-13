@@ -1,7 +1,6 @@
 package com.platojobs.pkotlinapp.data.scene
 
 import com.platojobs.pkotlinapp.domain.model.DeviceRule
-import com.platojobs.pkotlinapp.domain.model.RuleComparator
 import com.platojobs.pkotlinapp.domain.model.RuleType
 import com.platojobs.pkotlinapp.domain.repository.SceneRepository
 import com.platojobs.pkotlinapp.domain.repository.SceneRunRepository
@@ -163,7 +162,8 @@ class SceneTriggerRunner(
 
         RuleType.LOW_RSSI -> {
             val actual = rssi ?: rule.threshold
-            "RSSI $actual ${RuleComparator.LESS.symbol} ${rule.threshold}"
+            // 旧 RSSI 规则始终按「达到阈值即触发」（<=）判定，展示符号必须含等号，与 iOS 一致。
+            "RSSI $actual ≤ ${rule.threshold}"
         }
 
         RuleType.SCHEDULE ->

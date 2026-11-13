@@ -34,6 +34,7 @@ import com.google.android.material.snackbar.Snackbar
 import com.platojobs.pkotlinapp.PKotlinApplication
 import com.platojobs.pkotlinapp.R
 import com.platojobs.pkotlinapp.data.ble.BleConnectionState
+import com.platojobs.pkotlinapp.data.ble.RssiReadState
 import com.platojobs.pkotlinapp.data.collection.CollectionLauncher
 import com.platojobs.pkotlinapp.data.collection.CollectionStatus
 import com.platojobs.pkotlinapp.databinding.ActivityDeviceDetailBinding
@@ -210,7 +211,9 @@ class DeviceDetailActivity : AppCompatActivity() {
                     viewModel.rssi.collect { rssiValue -> renderRssi(rssiValue) }
                 }
                 launch {
-                    viewModel.rssiUpdatedAt.collect { at -> renderRssiUpdatedAt(at) }
+                    combine(viewModel.rssiUpdatedAt, viewModel.rssiReadState) { at, state ->
+                        at to state
+                    }.collect { (at, state) -> renderRssiUpdatedAt(at, state) }
                 }
                 launch {
                     viewModel.info.collect { state -> renderInfo(state) }
@@ -245,6 +248,8 @@ class DeviceDetailActivity : AppCompatActivity() {
     @SuppressLint("InlinedApi")
     override fun onStart() {
         super.onStart()
+        // 回到前台且仍连接时恢复 RSSI 轮询；不可见期间不读，避免无谓的 GATT 操作。
+        viewModel.setPageVisible(true)
         if (!receiverRegistered) {
             val filter = IntentFilter().apply {
                 addAction(BluetoothDevice.ACTION_KEY_MISSING)
@@ -261,6 +266,8 @@ class DeviceDetailActivity : AppCompatActivity() {
     }
 
     override fun onStop() {
+        // 页面不可见（含进后台）立即停表；已读到的值与时间保留，回前台继续展示。
+        viewModel.setPageVisible(false)
         if (receiverRegistered) {
             runCatching { unregisterReceiver(securityReceiver) }
             receiverRegistered = false
@@ -373,9 +380,12 @@ class DeviceDetailActivity : AppCompatActivity() {
     }
 
     /** 详情页三要素之一：dBm、格数之外还要给出读数时间。 */
-    private fun renderRssiUpdatedAt(timestamp: Long?) {
+    private fun renderRssiUpdatedAt(timestamp: Long?, readState: RssiReadState) {
         if (timestamp == null || timestamp <= 0L) {
-            binding.rssiUpdatedAt.visibility = View.GONE
+            // 从未成功读到过：读取失败时给明确提示，否则该行不占位。
+            val failed = readState == RssiReadState.STALE
+            binding.rssiUpdatedAt.visibility = if (failed) View.VISIBLE else View.GONE
+            if (failed) binding.rssiUpdatedAt.text = getString(R.string.device_rssi_read_failed)
             return
         }
         binding.rssiUpdatedAt.visibility = View.VISIBLE
@@ -383,7 +393,12 @@ class DeviceDetailActivity : AppCompatActivity() {
             getString(R.string.time_format_time),
             Locale.getDefault(),
         ).format(Date(timestamp))
-        binding.rssiUpdatedAt.text = getString(R.string.device_rssi_read_at, time)
+        // 本次读取失败时仍展示上次成功值，并标明是「上次读数」。
+        binding.rssiUpdatedAt.text = if (readState == RssiReadState.STALE) {
+            getString(R.string.device_rssi_stale_at, time)
+        } else {
+            getString(R.string.device_rssi_read_at, time)
+        }
     }
 
     private fun renderInfo(state: DeviceDetailViewModel.InfoState) {

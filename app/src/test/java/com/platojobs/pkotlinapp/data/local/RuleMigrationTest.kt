@@ -74,7 +74,7 @@ class RuleMigrationTest {
                     assertEquals(-70, cursor.getInt("threshold"))
                     assertEquals(1, cursor.getInt("enabled"))
                     assertNull(cursor.getString("metric"))
-                    assertEquals("<", cursor.getString("comparator"))
+                    assertEquals("<=", cursor.getString("comparator"))
                     assertEquals(-70.0, cursor.getDouble("thresholdValue"), 0.001)
                     assertEquals(1, cursor.getInt("consecutive"))
                 }

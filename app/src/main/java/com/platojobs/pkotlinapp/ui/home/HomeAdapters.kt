@@ -1,6 +1,7 @@
 package com.platojobs.pkotlinapp.ui.home
 
 import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
@@ -8,6 +9,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.platojobs.pkotlinapp.R
 import com.platojobs.pkotlinapp.databinding.ItemLiveDeviceBinding
 import com.platojobs.pkotlinapp.domain.model.ScannedDevice
+import com.platojobs.pkotlinapp.ui.common.RssiLevel
 
 /** 扫描弹层里的实时设备列表。 */
 class LiveDeviceAdapter(
@@ -42,8 +44,13 @@ class LiveDeviceAdapter(
             val context = binding.root.context
             binding.name.text = device.name ?: context.getString(R.string.device_unknown)
             binding.mac.text = device.mac
-            binding.rssi.text = context.getString(R.string.device_rssi_value, device.rssi)
-            binding.signal.setRssi(device.rssi)
+            // 与设备卡共用同一判定：0 / 127 等非负值不是真实读数，不显示 dBm 数值。
+            val validRssi = device.rssi.takeIf { RssiLevel.isValid(it) }
+            binding.rssi.text = validRssi?.let {
+                context.getString(R.string.device_rssi_value, it)
+            }.orEmpty()
+            binding.rssi.visibility = if (validRssi == null) View.GONE else View.VISIBLE
+            binding.signal.setRssi(validRssi)
             binding.root.setOnClickListener { onClick(device) }
         }
     }

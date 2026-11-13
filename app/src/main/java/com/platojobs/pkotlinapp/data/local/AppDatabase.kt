@@ -64,8 +64,9 @@ internal object RuleMigrationSql {
         "ALTER TABLE rules ADD COLUMN comparator TEXT NOT NULL DEFAULT '>'",
         "ALTER TABLE rules ADD COLUMN thresholdValue REAL NOT NULL DEFAULT 0",
         "ALTER TABLE rules ADD COLUMN consecutive INTEGER NOT NULL DEFAULT 1",
-        // 旧规则仍是 LOW_RSSI（type 不变），这里只把语义字段回填成 `< 阈值`，不放宽触发条件。
-        "UPDATE rules SET comparator = '<', thresholdValue = threshold WHERE type = 'LOW_RSSI'",
+        // 旧规则仍是 LOW_RSSI（type 不变），语义字段回填成 `<= 阈值`：执行路径本就按含等号判定，
+        // 这里让存储值与行为一致。只影响尚未从 v9 升级的安装，不改写已升级的历史数据。
+        "UPDATE rules SET comparator = '<=', thresholdValue = threshold WHERE type = 'LOW_RSSI'",
         "ALTER TABLE rule_events ADD COLUMN metric TEXT",
         "ALTER TABLE rule_events ADD COLUMN value REAL",
         "ALTER TABLE rule_events ADD COLUMN thresholdValue REAL",

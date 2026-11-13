@@ -41,9 +41,19 @@ class BleConnectionManager(
     private val _rssiUpdatedAt = MutableStateFlow<Long?>(null)
     val rssiUpdatedAt: StateFlow<Long?> = _rssiUpdatedAt.asStateFlow()
 
+    /** 最近一次读取的结果；[RssiReadState.STALE] 表示当前展示的是上次成功值。 */
+    private val _rssiReadState = MutableStateFlow(RssiReadState.IDLE)
+    val rssiReadState: StateFlow<RssiReadState> = _rssiReadState.asStateFlow()
+
+    /** GATT 同一时刻只接受一个 RSSI 请求；重复调用会被栈拒绝。 */
+    @Volatile
+    private var rssiReadInFlight = false
+
     private fun clearRssi() {
+        rssiReadInFlight = false
         _rssi.value = null
         _rssiUpdatedAt.value = null
+        _rssiReadState.value = RssiReadState.IDLE
     }
 
     private var gatt: BluetoothGatt? = null
@@ -85,9 +95,15 @@ class BleConnectionManager(
         }
 
         override fun onReadRemoteRssi(gatt: BluetoothGatt, rssi: Int, status: Int) {
-            if (status == BluetoothGatt.GATT_SUCCESS) {
+            if (this@BleConnectionManager.gatt !== gatt) return
+            rssiReadInFlight = false
+            // 合法 RSSI 恒为负；非负值按失败处理，保留上次成功值与时间。
+            if (status == BluetoothGatt.GATT_SUCCESS && rssi < 0) {
                 _rssi.value = rssi
                 _rssiUpdatedAt.value = System.currentTimeMillis()
+                _rssiReadState.value = RssiReadState.CURRENT
+            } else {
+                _rssiReadState.value = RssiReadState.STALE
             }
         }
 
@@ -335,8 +351,19 @@ class BleConnectionManager(
 
     fun isReconnectBlocked(mac: String): Boolean = blockedMacs.contains(mac)
 
+    /**
+     * 请求一次远端 RSSI。已有请求在途时直接忽略，避免 GATT 栈拒绝重复调用；
+     * 请求发不出去（未连接或栈返回 false）时标记为上次读数。
+     */
     fun readRssi() {
-        runCatching { gatt?.readRemoteRssi() }
+        val current = gatt ?: return
+        if (rssiReadInFlight) return
+        rssiReadInFlight = true
+        val started = runCatching { current.readRemoteRssi() }.getOrDefault(false)
+        if (!started) {
+            rssiReadInFlight = false
+            _rssiReadState.value = RssiReadState.STALE
+        }
     }
 
     private fun closeCurrent() {

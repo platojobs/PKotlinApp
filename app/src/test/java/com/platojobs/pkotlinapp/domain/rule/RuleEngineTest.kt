@@ -18,7 +18,7 @@ import org.junit.Test
 
 /**
  * 规则引擎口径：
- * - 旧 RSSI 规则升级后仍按 `rssi < threshold` 触发；
+ * - 旧 RSSI 规则升级后按 `rssi <= threshold` 触发（达到阈值即触发）；
  * - 指标规则连续 N 条满足才触发，任一条不满足即清零；
  * - 同一 ruleId + mac 的冷却窗口内只记录一次；
  * - 恢复只在确实触发过之后发一次。
@@ -79,7 +79,7 @@ class RuleEngineTest {
 
     private class FakeTextProvider : RuleTextProvider {
         override fun lowRssi(deviceName: String, rssi: Int, threshold: Int): String =
-            "$deviceName 信号 $rssi 低于 $threshold"
+            "$deviceName 信号 $rssi 达到阈值 $threshold"
 
         override fun disconnected(deviceName: String): String = "$deviceName 已断开"
 
@@ -204,6 +204,56 @@ class RuleEngineTest {
         assertEquals(1, triggered.size)
         assertEquals(RuleType.LOW_RSSI, events.events.single().ruleType)
         assertEquals("AA:BB:CC:DD:EE:01", events.events.single().mac)
+    }
+
+    /** 阈值含等号：设备停在 -80、用户设 -80 时必须告警（与 iOS 的 `<=` 一致）。 */
+    @Test
+    fun `low rssi rule triggers at exact threshold`() = runBlocking {
+        val legacy = DeviceRule(
+            id = 10,
+            type = RuleType.LOW_RSSI,
+            threshold = -80,
+            enabled = true,
+            createdAt = 0L,
+            lastTriggeredTimestamp = 0L,
+            metric = null,
+            comparator = RuleComparator.LESS,
+            thresholdValue = -80.0,
+            consecutive = 1,
+        )
+        val (engine, events, _) = engine(listOf(legacy))
+        val triggered = engine.onScan(
+            ScannedDevice(name = "温湿度计", mac = "AA:BB:CC:DD:EE:02", rssi = -80, timestamp = 0L),
+            "温湿度计",
+        )
+        assertEquals(1, triggered.size)
+        assertEquals("温湿度计 信号 -80 达到阈值 -80", events.events.single().message)
+    }
+
+    /** 等值触发的反面：高 1 dBm 不触发，确保 `<=` 没有被写成「恒触发」。 */
+    @Test
+    fun `low rssi rule does not trigger one dbm above threshold`() = runBlocking {
+        val legacy = DeviceRule(
+            id = 11,
+            type = RuleType.LOW_RSSI,
+            threshold = -80,
+            enabled = true,
+            createdAt = 0L,
+            lastTriggeredTimestamp = 0L,
+            metric = null,
+            comparator = RuleComparator.LESS,
+            thresholdValue = -80.0,
+            consecutive = 1,
+        )
+        val (engine, events, sink) = engine(listOf(legacy))
+        val triggered = engine.onScan(
+            ScannedDevice(name = "温湿度计", mac = "AA:BB:CC:DD:EE:03", rssi = -79, timestamp = 0L),
+            "温湿度计",
+        )
+        assertTrue(triggered.isEmpty())
+        assertTrue(events.events.isEmpty())
+        // 未触发过就不会产生恢复事件。
+        assertEquals(0, sink.rssiRecovered)
     }
 
     @Test

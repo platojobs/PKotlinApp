@@ -60,6 +60,7 @@
     <string name="device_unknown">Unknown device</string>
     <string name="device_rssi_value">%1$d dBm</string>
     <string name="device_rssi_unknown">-- dBm</string>
+    <string name="device_rssi_read_at">Read at %1$s</string>
     <string name="device_last_seen">Last seen: %1$s</string>
 
     <string name="home_live_title">Nearby devices</string>
@@ -425,7 +426,7 @@
 
     <string name="market_disclaimer">This page supports no ordering, payment or orders. Sample entries are hidden by default and never show stock or price.</string>
 
-    <string name="rule_event_low_rssi">%1$s signal %2$d dBm, below threshold %3$d dBm</string>
+    <string name="rule_event_low_rssi">%1$s signal %2$d dBm, at or below threshold %3$d dBm</string>
     <string name="rule_event_disconnected">%1$s disconnected</string>
     <string name="rule_event_bond_lost">%1$s bond information lost. Please re-pair the device</string>
     <string name="rule_event_metric_threshold">%1$s · %2$s %3$s %4$s threshold %5$s</string>
@@ -764,7 +765,7 @@
     <string name="scene_trigger_invalid">%1$s</string>
     <string name="scene_trigger_summary_manual">Manual only</string>
     <string name="scene_trigger_summary_disconnected">Device offline</string>
-    <string name="scene_trigger_summary_low_rssi">RSSI &lt; %1$d dBm</string>
+    <string name="scene_trigger_summary_low_rssi">RSSI ≤ %1$d dBm</string>
     <string name="scene_trigger_summary_metric">%1$s %2$s %3$s</string>
     <string name="scene_trigger_summary_schedule">Every %1$d min</string>
     <string name="scene_trigger_summary_schedule_at">Daily at %1$s (%2$s)</string>

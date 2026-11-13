@@ -37,6 +37,15 @@ class BleConnectionManager(
     private val _rssi = MutableStateFlow<Int?>(null)
     val rssi: StateFlow<Int?> = _rssi.asStateFlow()
 
+    /** 每次成功读取远端 RSSI 的本地时间，供详情页展示「读数时间」；与 [rssi] 同步清空。 */
+    private val _rssiUpdatedAt = MutableStateFlow<Long?>(null)
+    val rssiUpdatedAt: StateFlow<Long?> = _rssiUpdatedAt.asStateFlow()
+
+    private fun clearRssi() {
+        _rssi.value = null
+        _rssiUpdatedAt.value = null
+    }
+
     private var gatt: BluetoothGatt? = null
     private val blockedMacs = mutableSetOf<String>()
 
@@ -65,7 +74,7 @@ class BleConnectionManager(
                         this@BleConnectionManager.gatt = null
                     }
                     resetReadingQueues()
-                    _rssi.value = null
+                    clearRssi()
                     _state.value = if (blockedMacs.contains(mac)) {
                         BleConnectionState.KeyMissing(mac)
                     } else {
@@ -78,6 +87,7 @@ class BleConnectionManager(
         override fun onReadRemoteRssi(gatt: BluetoothGatt, rssi: Int, status: Int) {
             if (status == BluetoothGatt.GATT_SUCCESS) {
                 _rssi.value = rssi
+                _rssiUpdatedAt.value = System.currentTimeMillis()
             }
         }
 
@@ -278,7 +288,7 @@ class BleConnectionManager(
         if (!adapter.isEnabled) return false
 
         closeCurrent()
-        _rssi.value = null
+        clearRssi()
         _state.value = BleConnectionState.Connecting(mac)
 
         val device = runCatching { adapter.getRemoteDevice(mac) }.getOrNull() ?: run {
@@ -298,7 +308,7 @@ class BleConnectionManager(
     fun disconnect(mac: String? = null) {
         val current = gatt?.device?.address ?: mac
         closeCurrent()
-        _rssi.value = null
+        clearRssi()
         _state.value = when {
             current == null -> BleConnectionState.Idle
             blockedMacs.contains(current) -> BleConnectionState.KeyMissing(current)
@@ -314,7 +324,7 @@ class BleConnectionManager(
         gatt?.let { runCatching { it.close() } }
         gatt = null
         resetReadingQueues()
-        _rssi.value = null
+        clearRssi()
     }
 
     /** 用户在系统设置中重新配对后，允许再次连接。 */

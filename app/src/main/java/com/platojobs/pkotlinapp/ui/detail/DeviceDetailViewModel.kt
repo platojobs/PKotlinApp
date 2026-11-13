@@ -181,6 +181,9 @@ class DeviceDetailViewModel(
     val connectionState: StateFlow<BleConnectionState> = bleConnectionManager.state
     val rssi: StateFlow<Int?> = bleConnectionManager.rssi
 
+    /** RSSI 读数时间，与 [rssi] 同步；未知或断开时为 null。 */
+    val rssiUpdatedAt: StateFlow<Long?> = bleConnectionManager.rssiUpdatedAt
+
     /** 后台采集开关（持久化）；采集状态来自全局会话。 */
     private val _backgroundCollection = MutableStateFlow(settings.backgroundCollectionEnabled)
     val backgroundCollection: StateFlow<Boolean> = _backgroundCollection.asStateFlow()

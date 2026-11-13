@@ -5,6 +5,7 @@ import com.platojobs.pkotlinapp.domain.model.Device
 import com.platojobs.pkotlinapp.domain.model.UNKNOWN_RSSI
 import com.platojobs.pkotlinapp.domain.model.localRssi
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -70,17 +71,41 @@ class RssiLevelTest {
         assertEquals(0, RssiLevel.level(-86))
     }
 
-    /** 每一个 dBm 值都恰好落在一档，且随信号增强单调不减。 */
+    /** 每一个合法 dBm 值都恰好落在一档，且随信号增强单调不减。 */
     @Test
     fun `every rssi maps to exactly one tier`() {
         var previous = 0
-        for (rssi in -150..20) {
+        // 合法 RSSI 恒为负；0 及以上属于无效值，由下一条用例单独锁定。
+        for (rssi in -150..-1) {
             val tier = RssiLevel.tier(rssi)
             assertNotEquals(RssiLevel.Tier.UNKNOWN, tier)
             assertTrue("level out of range at $rssi", tier.level in 0..RssiLevel.MAX_LEVEL)
             assertTrue("level not monotonic at $rssi", tier.level >= previous)
             previous = tier.level
         }
+    }
+
+    /** 合法 RSSI 恒为负数：`0`（云端占位）与 `127`（协议占位）都必须是未知，不是满格。 */
+    @Test
+    fun `non negative rssi is unknown instead of strong`() {
+        listOf(0, 127).forEach { invalid ->
+            assertEquals("tier at $invalid", RssiLevel.Tier.UNKNOWN, RssiLevel.tier(invalid))
+            assertEquals("level at $invalid", 0, RssiLevel.level(invalid))
+            assertEquals("bars at $invalid", 0, RssiLevel.bars(invalid, 4))
+            assertEquals(
+                "description at $invalid",
+                R.string.rssi_desc_unknown,
+                RssiLevel.descriptionRes(invalid),
+            )
+            assertFalse("validity at $invalid", RssiLevel.isValid(invalid))
+        }
+
+        // 合法最大值的边界仍是满格，不能被「非负即未知」误伤。
+        assertEquals(RssiLevel.Tier.STRONG, RssiLevel.tier(-55))
+        assertEquals(4, RssiLevel.level(-55))
+        assertEquals(4, RssiLevel.bars(-55, 4))
+        assertEquals(R.string.rssi_desc_strong, RssiLevel.descriptionRes(-55))
+        assertTrue(RssiLevel.isValid(-55))
     }
 
     /** 边界两侧的档位必须相邻且相差 1 格，不存在两档都不覆盖的缝隙。 */

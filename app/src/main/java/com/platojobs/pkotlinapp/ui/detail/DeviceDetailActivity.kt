@@ -54,6 +54,7 @@ import com.platojobs.pkotlinapp.ui.chart.ChartBucket
 import com.platojobs.pkotlinapp.ui.common.BlePermissions
 import com.platojobs.pkotlinapp.ui.common.FileSharing
 import com.platojobs.pkotlinapp.ui.common.NotificationPermission
+import com.platojobs.pkotlinapp.ui.common.RssiLevel
 import com.platojobs.pkotlinapp.ui.common.applyBottomInsetPadding
 import com.platojobs.pkotlinapp.ui.common.applyHorizontalInsets
 import com.platojobs.pkotlinapp.ui.common.TimeFormat
@@ -209,6 +210,9 @@ class DeviceDetailActivity : AppCompatActivity() {
                     viewModel.rssi.collect { rssiValue -> renderRssi(rssiValue) }
                 }
                 launch {
+                    viewModel.rssiUpdatedAt.collect { at -> renderRssiUpdatedAt(at) }
+                }
+                launch {
                     viewModel.info.collect { state -> renderInfo(state) }
                 }
                 launch {
@@ -357,13 +361,29 @@ class DeviceDetailActivity : AppCompatActivity() {
     }
 
     private fun renderRssi(value: Int?) {
+        // 0 / 127 等非负值不是真实读数，按未知档展示，避免出现 0 dBm 满格。
         val display = value ?: initialRssi.takeIf { it != UNKNOWN_RSSI }
-        binding.signalView.setRssi(display)
-        binding.rssiText.text = if (display == null) {
+        val valid = display?.takeIf { RssiLevel.isValid(it) }
+        binding.signalView.setRssi(valid)
+        binding.rssiText.text = if (valid == null) {
             getString(R.string.device_rssi_unknown)
         } else {
-            getString(R.string.device_rssi_value, display)
+            getString(R.string.device_rssi_value, valid)
         }
+    }
+
+    /** 详情页三要素之一：dBm、格数之外还要给出读数时间。 */
+    private fun renderRssiUpdatedAt(timestamp: Long?) {
+        if (timestamp == null || timestamp <= 0L) {
+            binding.rssiUpdatedAt.visibility = View.GONE
+            return
+        }
+        binding.rssiUpdatedAt.visibility = View.VISIBLE
+        val time = SimpleDateFormat(
+            getString(R.string.time_format_time),
+            Locale.getDefault(),
+        ).format(Date(timestamp))
+        binding.rssiUpdatedAt.text = getString(R.string.device_rssi_read_at, time)
     }
 
     private fun renderInfo(state: DeviceDetailViewModel.InfoState) {

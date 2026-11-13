@@ -60,6 +60,7 @@
     <string name="device_unknown">未知设备</string>
     <string name="device_rssi_value">%1$d dBm</string>
     <string name="device_rssi_unknown">-- dBm</string>
+    <string name="device_rssi_read_at">读数时间 %1$s</string>
     <string name="device_last_seen">上次出现：%1$s</string>
 
     <string name="home_live_title">附近设备</string>
@@ -427,7 +428,7 @@
 
     <string name="market_disclaimer">本页不提供下单、支付或订单能力；示例条目默认隐藏，且不展示库存与价格。</string>
 
-    <string name="rule_event_low_rssi">%1$s 信号 %2$d dBm，低于阈值 %3$d dBm</string>
+    <string name="rule_event_low_rssi">%1$s 信号 %2$d dBm，已达到阈值 %3$d dBm</string>
     <string name="rule_event_disconnected">%1$s 已断开连接</string>
     <string name="rule_event_bond_lost">%1$s 绑定信息丢失，请重新配对</string>
     <string name="rule_event_metric_threshold">%1$s · %2$s %3$s %4$s 阈值 %5$s</string>
@@ -771,7 +772,7 @@
     <string name="scene_trigger_invalid">%1$s</string>
     <string name="scene_trigger_summary_manual">仅手动</string>
     <string name="scene_trigger_summary_disconnected">设备离线</string>
-    <string name="scene_trigger_summary_low_rssi">RSSI &lt; %1$d dBm</string>
+    <string name="scene_trigger_summary_low_rssi">RSSI ≤ %1$d dBm</string>
     <string name="scene_trigger_summary_metric">%1$s %2$s %3$s</string>
     <string name="scene_trigger_summary_schedule">每 %1$d 分钟</string>
     <string name="scene_trigger_summary_schedule_at">每天 %1$s（%2$s）</string>

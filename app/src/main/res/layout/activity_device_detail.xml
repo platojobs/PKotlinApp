@@ -91,6 +91,17 @@
                             android:textAppearance="@style/TextAppearance.App.Body" />
                     </LinearLayout>
 
+                    <!-- 读数时间：与 dBm、格数一起构成本规范要求的详情页三要素。 -->
+                    <TextView
+                        android:id="@+id/rssiUpdatedAt"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:textAppearance="@style/TextAppearance.App.Caption"
+                        android:textColor="@color/text_secondary"
+                        android:visibility="gone"
+                        tools:text="读数时间 12:34:56" />
+
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"

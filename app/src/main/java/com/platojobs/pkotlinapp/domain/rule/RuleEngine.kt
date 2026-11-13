@@ -54,7 +54,8 @@ class RuleEngine(
             it.type == RuleType.LOW_RSSI && it.matchesDevice(device.mac)
         }
         lowRssiRules.mapNotNull { rule ->
-            if (device.rssi < rule.threshold) {
+            // 含等号：达到阈值即触发（与 iOS 一致）。RSSI 是整数，停在阈值上是常见情况。
+            if (device.rssi <= rule.threshold) {
                 trigger(rule, device.mac, displayName, device.rssi, textProvider.lowRssi(displayName, device.rssi, rule.threshold))
             } else {
                 recover(rule, device.mac, displayName, device.rssi)

@@ -38,16 +38,24 @@ object RssiLevel {
     }
 
     /**
-     * 任何 dBm 值都恰好落在一个档位：`null` 与 [UNKNOWN_RSSI] 为未知，
+     * 合法 RSSI 恒为负 dBm；`0`（云端占位）与 `127`（部分协议的最大值/占位）都不是真实读数。
+     * 任何非负值都不参与分档，一律按未知处理，避免显示成满格。
+     */
+    fun isValid(rssi: Int?): Boolean = rssi != null && rssi != UNKNOWN_RSSI && rssi < 0
+
+    /**
+     * 任何 dBm 值都恰好落在一个档位：`null`、[UNKNOWN_RSSI] 与非负值均为未知，
      * 其余按 [STRONG_MIN] / [GOOD_MIN] / [FAIR_MIN] / [WEAK_MIN] 从高到低比较。
      */
-    fun tier(rssi: Int?): Tier = when {
-        rssi == null || rssi == UNKNOWN_RSSI -> Tier.UNKNOWN
-        rssi >= STRONG_MIN -> Tier.STRONG
-        rssi >= GOOD_MIN -> Tier.GOOD
-        rssi >= FAIR_MIN -> Tier.FAIR
-        rssi >= WEAK_MIN -> Tier.WEAK
-        else -> Tier.VERY_WEAK
+    fun tier(rssi: Int?): Tier {
+        if (rssi == null || !isValid(rssi)) return Tier.UNKNOWN
+        return when {
+            rssi >= STRONG_MIN -> Tier.STRONG
+            rssi >= GOOD_MIN -> Tier.GOOD
+            rssi >= FAIR_MIN -> Tier.FAIR
+            rssi >= WEAK_MIN -> Tier.WEAK
+            else -> Tier.VERY_WEAK
+        }
     }
 
     fun level(rssi: Int?): Int = tier(rssi).level

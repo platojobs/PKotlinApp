@@ -13,7 +13,7 @@
 | --- | --- |
 | 应用名称 | `BLE 设备数据面板`（9 个字符，Play 上限 30） |
 | 包名 | `com.platojobs.pkotlinapp` |
-| 版本 | `versionCode = 59`、`versionName = 0.32.15` |
+| 版本 | `versionCode = 60`、`versionName = 0.32.16` |
 | 默认语言 | 中文（简体），另含英文 `values-en` |
 | 分类 | 工具（Tools）；次要分类建议「健康与健身」，因部分设备上报心率 |
 | 联系方式 | https://github.com/platojobs/PKotlinApp/issues |

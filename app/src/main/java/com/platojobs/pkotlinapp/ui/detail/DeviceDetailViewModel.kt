@@ -57,7 +57,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 data class EncryptionInfo(
@@ -214,8 +213,12 @@ class DeviceDetailViewModel(
 
     private var metricsJob: Job? = null
     private var seriesJob: Job? = null
-    private var rssiPollJob: Job? = null
     private var pageVisible = false
+
+    /** 页面可见且已连接时才读取远端 RSSI，驱动自绘信号视图。 */
+    private val rssiPoller = RssiPoller(viewModelScope, RSSI_POLL_INTERVAL_MS) {
+        bleConnectionManager.readRssi()
+    }
 
     init {
         viewModelScope.launch { ruleEngine.refresh() }
@@ -262,18 +265,7 @@ class DeviceDetailViewModel(
 
     private fun syncRssiPolling() {
         val connected = (connectionState.value as? BleConnectionState.Connected)?.mac == mac
-        if (pageVisible && connected) {
-            if (rssiPollJob?.isActive == true) return
-            rssiPollJob = viewModelScope.launch {
-                while (isActive) {
-                    bleConnectionManager.readRssi()
-                    delay(RSSI_POLL_INTERVAL_MS)
-                }
-            }
-        } else {
-            rssiPollJob?.cancel()
-            rssiPollJob = null
-        }
+        rssiPoller.sync(pageVisible && connected)
     }
 
     fun selectMetric(metric: String) {

@@ -52,6 +52,7 @@ import com.platojobs.pkotlinapp.domain.scene.Scene
 import com.platojobs.pkotlinapp.domain.scene.SceneAction
 import com.platojobs.pkotlinapp.domain.scene.SceneRun
 import com.platojobs.pkotlinapp.domain.scene.SceneRunResult
+import com.platojobs.pkotlinapp.ui.common.RssiLevel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
@@ -662,7 +663,10 @@ class HomeViewModel(
     private fun comparatorFor(sort: DeviceSortMode): Comparator<Device> = when (sort) {
         DeviceSortMode.RECENT -> compareByDescending { it.lastSeenTimestamp }
         DeviceSortMode.NAME -> compareBy { (it.displayName() ?: it.mac).lowercase() }
-        DeviceSortMode.RSSI -> compareByDescending { it.localRssi ?: UNKNOWN_RSSI }
+        DeviceSortMode.RSSI -> compareByDescending {
+            // 与展示共用同一判定：0 / 127 等非负值不是真实读数，排到未知档而不是最前。
+            it.localRssi?.takeIf(RssiLevel::isValid) ?: UNKNOWN_RSSI
+        }
         DeviceSortMode.ADDED -> compareByDescending { it.createdAt }
     }
 
@@ -759,7 +763,7 @@ class HomeViewModel(
     private fun handleScanResult(device: ScannedDevice) {
         _scanResults.update { current ->
             (current.filterNot { it.mac == device.mac } + device)
-                .sortedByDescending { it.rssi }
+                .sortedByDescending { it.rssi.takeIf(RssiLevel::isValid) ?: UNKNOWN_RSSI }
                 .take(MAX_LIVE_DEVICES)
         }
 

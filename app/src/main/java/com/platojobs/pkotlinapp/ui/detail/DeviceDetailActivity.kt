@@ -381,24 +381,9 @@ class DeviceDetailActivity : AppCompatActivity() {
 
     /** 详情页三要素之一：dBm、格数之外还要给出读数时间。 */
     private fun renderRssiUpdatedAt(timestamp: Long?, readState: RssiReadState) {
-        if (timestamp == null || timestamp <= 0L) {
-            // 从未成功读到过：读取失败时给明确提示，否则该行不占位。
-            val failed = readState == RssiReadState.STALE
-            binding.rssiUpdatedAt.visibility = if (failed) View.VISIBLE else View.GONE
-            if (failed) binding.rssiUpdatedAt.text = getString(R.string.device_rssi_read_failed)
-            return
-        }
-        binding.rssiUpdatedAt.visibility = View.VISIBLE
-        val time = SimpleDateFormat(
-            getString(R.string.time_format_time),
-            Locale.getDefault(),
-        ).format(Date(timestamp))
-        // 本次读取失败时仍展示上次成功值，并标明是「上次读数」。
-        binding.rssiUpdatedAt.text = if (readState == RssiReadState.STALE) {
-            getString(R.string.device_rssi_stale_at, time)
-        } else {
-            getString(R.string.device_rssi_read_at, time)
-        }
+        val text = rssiUpdatedAtText(this, timestamp, readState)
+        binding.rssiUpdatedAt.visibility = if (text == null) View.GONE else View.VISIBLE
+        binding.rssiUpdatedAt.text = text.orEmpty()
     }
 
     private fun renderInfo(state: DeviceDetailViewModel.InfoState) {

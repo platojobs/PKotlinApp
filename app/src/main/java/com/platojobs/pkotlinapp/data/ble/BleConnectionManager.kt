@@ -11,6 +11,8 @@ import android.bluetooth.BluetoothProfile
 import android.bluetooth.BluetoothStatusCodes
 import android.content.Context
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import com.platojobs.pkotlinapp.domain.reading.GattReadingParser
 import com.platojobs.pkotlinapp.domain.reading.ReadingSample
@@ -45,12 +47,21 @@ class BleConnectionManager(
     private val _rssiReadState = MutableStateFlow(RssiReadState.IDLE)
     val rssiReadState: StateFlow<RssiReadState> = _rssiReadState.asStateFlow()
 
-    /** GATT 同一时刻只接受一个 RSSI 请求；重复调用会被栈拒绝。 */
-    @Volatile
-    private var rssiReadInFlight = false
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    /** GATT 同一时刻只接受一个 RSSI 请求；系统不回调时按 [RssiReadGuard.DEFAULT_TIMEOUT_MS] 复位。 */
+    private val rssiReadGuard = RssiReadGuard(
+        schedule = { delayMs, action ->
+            val token = Runnable { action() }
+            mainHandler.postDelayed(token, delayMs)
+            val cancel: () -> Unit = { mainHandler.removeCallbacks(token) }
+            cancel
+        },
+        onTimeout = { _rssiReadState.value = RssiReadState.STALE },
+    )
 
     private fun clearRssi() {
-        rssiReadInFlight = false
+        rssiReadGuard.reset()
         _rssi.value = null
         _rssiUpdatedAt.value = null
         _rssiReadState.value = RssiReadState.IDLE
@@ -96,9 +107,9 @@ class BleConnectionManager(
 
         override fun onReadRemoteRssi(gatt: BluetoothGatt, rssi: Int, status: Int) {
             if (this@BleConnectionManager.gatt !== gatt) return
-            rssiReadInFlight = false
-            // 合法 RSSI 恒为负；非负值按失败处理，保留上次成功值与时间。
-            if (status == BluetoothGatt.GATT_SUCCESS && rssi < 0) {
+            rssiReadGuard.finish()
+            // 合法 RSSI 恒为负；成功回调但返回非负值同样按失败处理，保留上次成功值与时间。
+            if (isRssiReadResultUsable(status, rssi)) {
                 _rssi.value = rssi
                 _rssiUpdatedAt.value = System.currentTimeMillis()
                 _rssiReadState.value = RssiReadState.CURRENT
@@ -354,14 +365,14 @@ class BleConnectionManager(
     /**
      * 请求一次远端 RSSI。已有请求在途时直接忽略，避免 GATT 栈拒绝重复调用；
      * 请求发不出去（未连接或栈返回 false）时标记为上次读数。
+     * 返回 true 但系统迟迟不回调时，由 [RssiReadGuard] 超时复位并标记 STALE。
      */
     fun readRssi() {
         val current = gatt ?: return
-        if (rssiReadInFlight) return
-        rssiReadInFlight = true
+        if (!rssiReadGuard.tryStart()) return
         val started = runCatching { current.readRemoteRssi() }.getOrDefault(false)
         if (!started) {
-            rssiReadInFlight = false
+            rssiReadGuard.finish()
             _rssiReadState.value = RssiReadState.STALE
         }
     }

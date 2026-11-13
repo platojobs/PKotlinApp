@@ -61,7 +61,7 @@
     <string name="device_rssi_value">%1$d dBm</string>
     <string name="device_rssi_unknown">-- dBm</string>
     <string name="device_rssi_read_at">读数时间 %1$s</string>
-    <string name="device_rssi_stale_at">上次读数 · %1$s</string>
+    <string name="device_rssi_stale_at">刷新失败，显示上次读数 · %1$s</string>
     <string name="device_rssi_read_failed">读取失败，暂无读数</string>
     <string name="device_last_seen">上次出现：%1$s</string>
 

@@ -31,7 +31,9 @@ import com.platojobs.pkotlinapp.diagnostics.StartupDiagnostics
 import com.platojobs.pkotlinapp.diagnostics.StartupStage
 import com.platojobs.pkotlinapp.domain.household.householdRolePermissions
 import com.platojobs.pkotlinapp.domain.model.Device
+import com.platojobs.pkotlinapp.domain.model.UNKNOWN_RSSI
 import com.platojobs.pkotlinapp.domain.model.displayName
+import com.platojobs.pkotlinapp.domain.model.localRssi
 import com.platojobs.pkotlinapp.domain.reading.CloudReadingState
 import com.platojobs.pkotlinapp.ui.MainActivity
 import com.platojobs.pkotlinapp.ui.common.BlePermissions
@@ -763,7 +765,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                 requireContext(),
                 device.mac,
                 device.displayName().orEmpty(),
-                device.lastRssi ?: Int.MIN_VALUE,
+                device.localRssi ?: UNKNOWN_RSSI,
             ),
         )
     }

@@ -185,11 +185,29 @@ fun Device.displayName(): String? =
 
 const val PLATFORM_ANDROID = "android"
 
+/**
+ * 「未获取到 RSSI」的跨组件哨兵值。
+ *
+ * 通知、Intent 等通道无法传 null 时统一使用它；UI 层优先传 null。
+ * 分档逻辑（`RssiLevel`）会把 null 与该值都映射为「未知」档，
+ * 因此它不会被显示成「信号极弱」。其它任何整数值都按 dBm 参与分档。
+ */
+const val UNKNOWN_RSSI: Int = Int.MIN_VALUE
+
 /** 设备唯一键：Android 使用规范化大写 MAC。 */
 fun normalizeExternalId(mac: String): String = mac.trim().uppercase()
 
 /** 云端读数查询用的 externalId：历史数据缺失时回退本机主键。 */
 val Device.cloudExternalId: String get() = externalId.ifBlank { mac }
+
+/**
+ * 本机扫描/连接得到的 RSSI；从未在本机扫描到时为 null。
+ *
+ * 数据层用 0 作为「没有本机 RSSI」的占位值（`RemoteSyncDataSource` 等从云端
+ * 同步来的设备会写入 0）。0 dBm 在 BLE 上实际不可达，但语义上仍是一个合法
+ * 强信号值，所以展示层必须先经过这里转成未知，不能直接喂给信号分档。
+ */
+val Device.localRssi: Int? get() = lastRssi.takeIf { it != 0 }
 
 /** 云端最近读数在 UI 状态中的键：平台必须参与，避免跨端 externalId 撞车。 */
 val Device.cloudReadingKey: String get() = "${platform.trim().lowercase()}|${cloudExternalId.uppercase()}"

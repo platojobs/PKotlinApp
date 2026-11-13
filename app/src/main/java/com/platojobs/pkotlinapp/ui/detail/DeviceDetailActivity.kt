@@ -43,6 +43,7 @@ import com.platojobs.pkotlinapp.domain.model.displayDeviceTypeName
 import com.platojobs.pkotlinapp.domain.model.displayName
 import com.platojobs.pkotlinapp.domain.model.deviceLinkStatus
 import com.platojobs.pkotlinapp.domain.model.Room
+import com.platojobs.pkotlinapp.domain.model.UNKNOWN_RSSI
 import com.platojobs.pkotlinapp.domain.model.unrecognizedDeviceTypeKey
 import com.platojobs.pkotlinapp.domain.reading.Reading
 import com.platojobs.pkotlinapp.domain.reading.ReadingMetrics
@@ -74,7 +75,7 @@ class DeviceDetailActivity : AppCompatActivity() {
     private val mac: String by lazy { intent.getStringExtra(EXTRA_MAC).orEmpty() }
     private val deviceName: String by lazy { intent.getStringExtra(EXTRA_NAME).orEmpty() }
     private val initialRssi: Int by lazy {
-        intent.getIntExtra(EXTRA_RSSI, Int.MIN_VALUE)
+        intent.getIntExtra(EXTRA_RSSI, UNKNOWN_RSSI)
     }
 
     private val viewModel: DeviceDetailViewModel by viewModels {
@@ -356,7 +357,7 @@ class DeviceDetailActivity : AppCompatActivity() {
     }
 
     private fun renderRssi(value: Int?) {
-        val display = value ?: initialRssi.takeIf { it != Int.MIN_VALUE }
+        val display = value ?: initialRssi.takeIf { it != UNKNOWN_RSSI }
         binding.signalView.setRssi(display)
         binding.rssiText.text = if (display == null) {
             getString(R.string.device_rssi_unknown)

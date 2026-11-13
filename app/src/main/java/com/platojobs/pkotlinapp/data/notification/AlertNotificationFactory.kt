@@ -7,6 +7,7 @@ import android.content.Context
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.platojobs.pkotlinapp.R
+import com.platojobs.pkotlinapp.domain.model.UNKNOWN_RSSI
 import com.platojobs.pkotlinapp.ui.detail.DeviceDetailActivity
 
 /** 通知构建：单独渠道「设备告警」，点击进入对应设备详情。 */
@@ -36,7 +37,7 @@ object AlertNotificationFactory {
             context,
             content.mac,
             content.deviceName,
-            content.rssi ?: Int.MIN_VALUE,
+            content.rssi ?: UNKNOWN_RSSI,
         )
         val pendingIntent = PendingIntent.getActivity(
             context,

@@ -385,6 +385,7 @@
     <string name="rssi_desc_good">Good signal</string>
     <string name="rssi_desc_fair">Fair signal</string>
     <string name="rssi_desc_weak">Weak signal</string>
+    <string name="rssi_desc_very_weak">Very weak signal</string>
     <string name="rssi_desc_unknown">No signal data</string>
     <string name="rssi_content_desc">Signal strength: %1$s</string>
 

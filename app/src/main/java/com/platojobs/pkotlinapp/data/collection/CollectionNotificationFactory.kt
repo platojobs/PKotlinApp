@@ -9,6 +9,7 @@ import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.platojobs.pkotlinapp.R
+import com.platojobs.pkotlinapp.domain.model.UNKNOWN_RSSI
 import com.platojobs.pkotlinapp.ui.detail.DeviceDetailActivity
 
 /** 常驻采集通知：渠道「数据采集」，含设备名、已采集条数与停止动作。 */
@@ -50,7 +51,7 @@ object CollectionNotificationFactory {
                 context,
                 status.mac,
                 status.deviceName,
-                Int.MIN_VALUE,
+                UNKNOWN_RSSI,
             ),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )

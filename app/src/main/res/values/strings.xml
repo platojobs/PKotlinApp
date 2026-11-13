@@ -387,6 +387,7 @@
     <string name="rssi_desc_good">信号良好</string>
     <string name="rssi_desc_fair">信号一般</string>
     <string name="rssi_desc_weak">信号较弱</string>
+    <string name="rssi_desc_very_weak">信号极弱</string>
     <string name="rssi_desc_unknown">无信号数据</string>
     <string name="rssi_content_desc">信号强度：%1$s</string>
 

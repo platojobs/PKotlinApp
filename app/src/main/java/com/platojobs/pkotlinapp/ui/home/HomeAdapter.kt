@@ -23,6 +23,7 @@ import com.platojobs.pkotlinapp.databinding.ItemSceneCardBinding
 import com.platojobs.pkotlinapp.domain.model.Device
 import com.platojobs.pkotlinapp.domain.model.DeviceLinkStatus
 import com.platojobs.pkotlinapp.domain.model.displayName
+import com.platojobs.pkotlinapp.domain.model.localRssi
 import com.platojobs.pkotlinapp.domain.reading.CloudReadingState
 import com.platojobs.pkotlinapp.domain.reading.Reading
 import com.platojobs.pkotlinapp.domain.reading.ReadingMetrics
@@ -462,7 +463,7 @@ class HomeAdapter(
             // 隐藏图标，把整行宽度留给「云端读数暂不可用」这类长文案。
             binding.signal.visibility =
                 if (connected) View.VISIBLE else View.GONE
-            binding.signal.setRssi(device.lastRssi)
+            binding.signal.setRssi(device.localRssi)
 
             fun renderReading(text: CharSequence, primary: Boolean, label: CharSequence?) {
                 binding.readingValue.text = text

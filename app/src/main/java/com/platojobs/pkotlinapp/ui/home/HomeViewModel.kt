@@ -32,9 +32,11 @@ import com.platojobs.pkotlinapp.domain.model.Room
 import com.platojobs.pkotlinapp.domain.model.RuleEvent
 import com.platojobs.pkotlinapp.domain.model.ScanLog
 import com.platojobs.pkotlinapp.domain.model.ScannedDevice
+import com.platojobs.pkotlinapp.domain.model.UNKNOWN_RSSI
 import com.platojobs.pkotlinapp.domain.model.cloudExternalId
 import com.platojobs.pkotlinapp.domain.model.cloudReadingKey
 import com.platojobs.pkotlinapp.domain.model.displayName
+import com.platojobs.pkotlinapp.domain.model.localRssi
 import com.platojobs.pkotlinapp.domain.reading.CloudReadingState
 import com.platojobs.pkotlinapp.domain.reading.Reading
 import com.platojobs.pkotlinapp.domain.reading.ReadingMetrics
@@ -660,7 +662,7 @@ class HomeViewModel(
     private fun comparatorFor(sort: DeviceSortMode): Comparator<Device> = when (sort) {
         DeviceSortMode.RECENT -> compareByDescending { it.lastSeenTimestamp }
         DeviceSortMode.NAME -> compareBy { (it.displayName() ?: it.mac).lowercase() }
-        DeviceSortMode.RSSI -> compareByDescending { it.lastRssi }
+        DeviceSortMode.RSSI -> compareByDescending { it.localRssi ?: UNKNOWN_RSSI }
         DeviceSortMode.ADDED -> compareByDescending { it.createdAt }
     }
 

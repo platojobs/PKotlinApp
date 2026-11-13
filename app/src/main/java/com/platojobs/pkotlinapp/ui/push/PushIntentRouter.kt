@@ -5,6 +5,7 @@ import android.content.Intent
 import com.platojobs.pkotlinapp.data.push.PushDestination
 import com.platojobs.pkotlinapp.data.push.PushMessage
 import com.platojobs.pkotlinapp.data.push.PushMessageHandler
+import com.platojobs.pkotlinapp.domain.model.UNKNOWN_RSSI
 import com.platojobs.pkotlinapp.ui.MainActivity
 import com.platojobs.pkotlinapp.ui.detail.DeviceDetailActivity
 
@@ -20,7 +21,7 @@ object PushIntentRouter {
                 context = context,
                 mac = destination.mac,
                 name = destination.name.orEmpty(),
-                rssi = Int.MIN_VALUE,
+                rssi = UNKNOWN_RSSI,
             )
             PushDestination.Scenes -> Intent(context, MainActivity::class.java)
                 .putExtra(MainActivity.EXTRA_OPEN_SCENES, true)

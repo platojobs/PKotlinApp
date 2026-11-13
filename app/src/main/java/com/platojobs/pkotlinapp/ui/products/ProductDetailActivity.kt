@@ -21,6 +21,8 @@ import com.platojobs.pkotlinapp.domain.catalog.CatalogService
 import com.platojobs.pkotlinapp.domain.catalog.DeviceTypeCatalog
 import com.platojobs.pkotlinapp.domain.catalog.DeviceTypeCatalogItem
 import com.platojobs.pkotlinapp.domain.model.Device
+import com.platojobs.pkotlinapp.domain.model.UNKNOWN_RSSI
+import com.platojobs.pkotlinapp.domain.model.localRssi
 import com.platojobs.pkotlinapp.domain.product.productCategoryOf
 import com.platojobs.pkotlinapp.ui.catalog.CatalogUiState
 import com.platojobs.pkotlinapp.ui.catalog.catalogStatusText
@@ -249,7 +251,7 @@ class ProductDetailActivity : AppCompatActivity() {
                                 this@ProductDetailActivity,
                                 device.mac,
                                 device.name,
-                                device.lastRssi,
+                                device.localRssi ?: UNKNOWN_RSSI,
                             ),
                         )
                     }

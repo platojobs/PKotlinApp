@@ -94,7 +94,7 @@ class RssiSignalView @JvmOverloads constructor(
     private fun updateContentDescription() {
         contentDescription = context.getString(
             R.string.rssi_content_desc,
-            context.getString(RssiLevel.descriptionRes(rssi)),
+            context.getString(RssiLevel.tier(rssi).descriptionRes),
         )
     }
 

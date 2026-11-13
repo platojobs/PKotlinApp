@@ -420,7 +420,7 @@ Debug / Release 都可通过 `apiBaseUrl` 切换；发布前请传入正式域�
 - 设备列表：每行展示「分组：X / 未分组」，标题旁统计「共 N 台设备 · M 个分组」，数据全部来自 Room，离线一致。
 - 同步：连续失败 3 次进入纯本地模式，主界面横幅 +「我的」同步卡片提示；Room 数据（首页、设备、日志）不依赖网络。
 - 首页 / 设备 / 我的：本地 Room 数据不依赖网络，断网仍可用。
-- 离线验收步骤见 [真机验收清单 §7.2](docs/acceptance.md#72-离线缓存与分组验收v035-新增)；别名/广播名与分组三态验收见 [§7.4](docs/acceptance.md#74-别名--广播名与分组三态验收v036-新增)；清空别名验收见 [§7.5](docs/acceptance.md#75-清空别名验收v037-新增)；读数采集验收见 [§7.6](docs/acceptance.md#76-设备读数readings验收v040-新增)；长周期图表与区间验收见 [§7.7](docs/acceptance.md#77-长周期图表与区间验收v050-新增)；告警通知见 [§7.8](docs/acceptance.md#78-告警通知验收v060-新增)、CSV 导出见 [§7.9](docs/acceptance.md#79-读数-csv-导出验收v060-新增)、深色模式见 [§7.10](docs/acceptance.md#710-深色模式验收v060-新增)。
+- 离线行为由单测（Room、分组三态、读数、图表、告警、导出、深色模式）与两套 e2e 覆盖；真机走查截图在 `docs/screenshots/`。
 
 ### 6.1 数据采集与长周期图表（readings，v0.5.0）
 
@@ -517,7 +517,7 @@ Debug / Release 都可通过 `apiBaseUrl` 切换；发布前请传入正式域�
 - 图表折线、数据点、网格、坐标轴、min–max 区间带，以及 Chip、卡片、次要文字的颜色全部来自主题资源；深色值集中在 `values-night/colors.xml`，代码中**不出现** `#FFF` / `#000` / `Color.rgb(...)` 等硬编码。
 - `ChartColorAuditTest` 扫描 `ui/chart` 源码与布局，断言无颜色字面量，并校验日间/夜间资源成对存在；深色下网格 `#3A4152`、坐标轴 `#8B93A7`、折线 `#A8B4FF`，对比度满足可读性。
 
-**限制**：模拟器无法验证真实 BLE notify 投递与厂商固件字节格式；解析规则已用单测覆盖，但真实心率带/温湿度计/NUS 设备需按 [§7.6](docs/acceptance.md#76-设备读数readings验收v040-新增) 真机验收。
+**限制**：模拟器无法验证真实 BLE notify 投递与厂商固件字节格式；解析规则由单测覆盖，真实心率带/温湿度计/NUS 设备需真机自测。
 
 ### 6.6 账号迁移与注销（v0.7.0）
 
@@ -562,7 +562,7 @@ Debug / Release 都可通过 `apiBaseUrl` 切换；发布前请传入正式域�
 ### 6.10 中英双语、200% 字号与无障碍（v0.12.0）
 
 - **双语资源**：默认 `res/values/strings.xml` 为中文，`res/values-en/strings.xml` 为英文；复数走 `<plurals>`（时间、动作数、读数条数、分桶数、连续条数），所有格式化占位符统一命名参数（`%1$s` / `%2$d`），不存在裸 `%s`。`BilingualAuditTest` 解析两份 XML，断言 key 集合完全一致、占位符个数与类型一致、无空值，并扫描 `ui/` 下 Kotlin 源码不允许出现中文字面量（注释与日志除外）。
-- **术语**：英文统一 Device / Reading / Sync / Scan / Group / Alert / **Transfer Code** / Bucket，8 位接管码绝不写作 “pairing code”，完整对照表见 §13.2。
+- **术语**：英文统一 Device / Reading / Sync / Scan / Group / Alert / **Transfer Code** / Bucket，8 位接管码绝不写作 “pairing code”，由 `BilingualAuditTest` 断言。
 - **格式化**：界面上的日期与数字使用 `Locale.getDefault()`（如设备详情读数、图表 Y 轴）；CSV 导出仍固定 `Locale.US`，保证文件小数点与表头跨语言稳定。
 - **200% 字号**：`fontScale ≥ 1.5` 时首页设备卡片由 2 列降为 1 列，卡片文字取消 `maxLines=1`/省略，随内容换行；设备详情标签改为 `wrap_content + minWidth 100dp`；规则新增/编辑弹窗放入 `NestedScrollView`；图表高度 160dp → 220dp 且 Y 轴刻度从 5 段缩为 3 个（上下界 + 中位），左侧标签区宽度按最大标签实测宽度自适应；市场筛选 Chip 从横向滚动改为可换行 `ChipGroup`（`maxLines=2`、不省略）。
 - **无障碍**：扫描、添加设备、规则开关、导出、注销的触控区 ≥48dp；规则开关补 `stateDescription`（「已启用 / 已停用」）；图标补 `contentDescription`；图表整图播报「温度，最近 24 小时，最低 X 最高 Y，共 N 个数据点」，点选后更新为当前桶摘要。文字配色按 WCAG 计算全部 ≥4.5:1（`text_tertiary` 由 `#667085` 调深到 `#5F6A7D` 以覆盖 `surface_sunken` 组合），`BilingualAuditTest` 同时审计浅色/深色配色与触控尺寸。
@@ -681,7 +681,7 @@ export JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk-21.jdk/Contents/Home
 
 ./gradlew assembleDebug        # Debug APK
 ./gradlew lintDebug            # Lint
-./gradlew testDebugUnitTest    # 单元测试：463 个（含规则防抖/恢复/迁移、图表命中、推荐模板、双语/无障碍/200% 字号、家庭结构同步/未知 entity、市场洞察、场景引擎闭环、首页聚合、反馈状态机/幂等/429/契约/迁移、推送注册生命周期/路由/迁移、presence 三态与四档共享文案、本机不可连接维度）
+./gradlew testDebugUnitTest    # 单元测试（当前 473 个）
 ./gradlew assembleRelease      # 签名 Release APK
 ./gradlew bundleRelease        # 签名 Release AAB
 
@@ -692,7 +692,7 @@ Debug 包路径：`app/build/outputs/apk/debug/app-debug.apk`
 
 ### Lint 基线
 
-`lintDebug` 当前为 **0 error / 0 warning**，未使用 `abortOnError=false` 之类的全局屏蔽。历史 62 条 warning 已按类型直接修复：硬编码文案抽到 `strings.xml`、未使用字符串/颜色/图标删除、`contentDescription` 与 KTX 改造、`RectF` 预分配、移除重复根背景、补全备份规则等。
+`lintDebug` 当前为 **0 error / 11 warning**（`PluralsCandidate` 7、`SetTextI18n` 4，均为文案格式化提示）。未使用 `abortOnError=false` 之类的全局屏蔽；历史 warning 已按类型直接修复。
 
 仅 `app/lint.xml` 显式忽略 4 个「版本提示」类检查，原因如下：
 
@@ -704,77 +704,33 @@ Debug 包路径：`app/build/outputs/apk/debug/app-debug.apk`
 
 其余检查（含 `UnusedResources`、`InlinedApi`、`DataExtractionRules`）均按 lint 建议在代码/资源中处理，不使用配置抑制。
 
-### 验收与排障文档
+### 相关文档
 
-- [真机验收清单](docs/acceptance.md)：五模块走查、BLE、Android 16 广播、权限、横竖屏、断网降级、Room 迁移、Release/R8，逐项写预期与失败判定。
-- [常见问题排查](docs/troubleshooting.md)：JDK、SDK、Go 服务、端口占用、keystore、BASE_URL 更换。
-- [发布说明](docs/releasenotes.md)：v0.1.0 → 当前版本的实际变更。
+- [常见问题排查](docs/troubleshooting.md)：JDK、SDK、后端、端口、keystore、BASE_URL。
+- [发布说明](docs/releasenotes.md)：每个 tag 一句话。
+- [RSSI 分档规范](docs/rssi-signal-tiers.md)：跨端阈值与边界。
+- [截图](docs/screenshots/)：按版本分目录，文件本身即验收证据。
 
 ---
 
 ## 8. Release 签名与混淆
 
-### 签名配置（密码不入库）
-
-`app/build.gradle.kts` 从**仓库根目录的 `keystore.properties`** 读取签名信息；该文件与密钥库均被 `.gitignore` 覆盖，不会提交。
-
-推荐用脚本生成（自动写入 `keystore.properties`，密码通过 `-storepass:env` 传给 keytool，不进命令行参数、不打印）：
+签名信息只从仓库根目录的 `keystore.properties` 读取，文件与密钥库均被 `.gitignore` 覆盖：
 
 ```bash
-./scripts/make-upload-keystore.sh            # 交互：别名、密码
-# 或 CI 非交互：
-KEY_ALIAS=ci-selfsigned KEYSTORE_PASSWORD="$(openssl rand -hex 16)" \
-  ./scripts/make-upload-keystore.sh --non-interactive
+./scripts/make-upload-keystore.sh   # 交互生成；CI 用 --non-interactive + 环境变量密码
 ```
 
-生成的文件（均已忽略）：
+四个字段（`storeFile / storePassword / keyAlias / keyPassword`）缺失或密钥不存在时，`preReleaseBuild` 直接失败，不会产出未签名包。
 
-```properties
-storeFile=upload-keystore.jks
-storePassword=<本地随机密码>
-keyAlias=<你的别名>
-keyPassword=<同 keystore 密码>
-```
-
-`storeFile` 相对仓库根目录解析；也可用 `KEYSTORE_PATH` 指向仓库外的密钥库。
-`keystore.properties` 缺失、四个字段不全或密钥文件不存在时，`preReleaseBuild` 会直接失败并提示运行脚本，
-不再静默产出未签名的 `app-release-unsigned.apk`。
-
-### Release 三件套
-
-```kotlin
-release {
-    isDebuggable = false
-    isMinifyEnabled = true
-    isShrinkResources = true
-    proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-}
-```
-
-### ProGuard / R8 规则覆盖
-
-`app/proguard-rules.pro` 已覆盖：
-
-- 泛型签名、内部类、运行时注解（Retrofit / Moshi 依赖）；
-- Retrofit `ApiService`、`Response`、`Call`、`Continuation`；
-- `data.remote.**` DTO 与 Moshi 注解方法、`@JsonQualifier`；
-- `kotlin.Metadata`、`kotlin.reflect.**`、`kotlin.jvm.internal.**`；
-- Room `data.local.**` 实体与列名；
-- OkHttp / Okio 的 `-dontwarn`。
-
-验证命令：
+release 配置固定为 `isDebuggable = false`、`isMinifyEnabled = true`、`isShrinkResources = true`；`proguard-rules.pro` 保留 Retrofit / Moshi / Room / WorkManager 反射类，其余业务类重命名。
 
 ```bash
-/Users/<user>/Library/Android/sdk/build-tools/36.0.0/apksigner \
-  verify --print-certs app/build/outputs/apk/release/app-release.apk
+$ANDROID_HOME/build-tools/36.0.0/apksigner verify --print-certs \
+  app/build/outputs/apk/release/app-release.apk
 ```
 
-### 上架说明
-
-- 版本目标：`compileSdk/targetSdk = 36`，满足 Google Play 新应用的 targetSdk 要求；`minSdk = 24`。
-- 权限模型：`BLUETOOTH_SCAN` 标注 `neverForLocation`；低版本才声明定位权限，避免新版过度申请。
-- Android 16 适配：edge-to-edge、预测性返回、大屏方向、BLE 新广播监听均已按上文处理。
-- 发布前请替换为自己的正式 keystore，并在 Play Console 配置 App Signing；密码与密钥文件不得入库。
+完整步骤与校验见 [`docs/release-build.md`](docs/release-build.md)。自签名证书只用于验证链路，不能用于 Play 上传。
 
 ---
 
@@ -846,98 +802,31 @@ GIT_SSH_COMMAND="ssh -i ~/.ssh/id_ed25519_github_platojobs_platojobsdemacbook-ai
 - 先说明后申请：前两步的「继续」只翻页，最后一步「继续」才调用 `RequestMultiplePermissions`；扫描/连接前的补授权也先弹 `PermissionRationale` 说明框（`ui/common/PermissionRationale.kt`），点「继续」才弹系统框。
 - 拒绝后不是死路：结果页展示三项真实授权状态；缺少扫描/连接时显示「仅本机可用：无法扫描或连接设备，不能从设备读取实时读数」，并给出「设置 → 应用 → BLE 设备面板 → 权限」路径与「打开应用设置」按钮；返回后自动刷新状态。仅缺通知时只提示告警不提醒，不判定为仅本机。
 - 首页空态统一：无设备时只有「还没有设备」+「开始扫描」一套文案（`home_devices_empty_*`），扫描弹窗复用同一句提示；已删除旧的 `home_empty_*` / `devices_empty_*` 重复文案。
-- 测试：`OnboardingPolicyTest`（扫描缺失→仅本机、仅通知缺失→非仅本机、全授权→能力完整）；`AppSettingsTest` 覆盖 `onboardingCompleted` 默认值与持久化；`TerminologyAuditTest` 校验高频文案。真机走查见 `docs/acceptance.md` §A0 与 §4 P1/P3。
+- 测试：`OnboardingPolicyTest`（扫描缺失→仅本机、仅通知缺失→非仅本机、全授权→能力完整）；`AppSettingsTest` 覆盖 `onboardingCompleted` 默认值与持久化；`TerminologyAuditTest` 校验高频文案。真机走查记录见 `docs/screenshots/`。
 
-## 12. 启动性能（真实测量）
+## 12. 启动性能
 
-> 测量环境：本机 Android Emulator `Test_API35`（android-35 google_apis_playstore / arm64，headless + swiftshader 软件渲染，关闭系统动画，Debug APK），测量前执行 `cmd package compile -m speed -f` 做 AOT 编译以降低 JIT 噪声。改前/改后使用同一模拟器、同一协议。模拟器进程启动与软件渲染开销明显高于中端真机，因此同时记录 `am start -W` 的 `Displayed` 与 App 侧拆分耗时，不把模拟器数字当成真机结论。
+v0.9.0 的优化结论：移除 `awaitInitialSync()`，首帧只出应用壳 + 骨架，同步/清理/调度在首帧后投递 IO。同一模拟器、同协议下 `am start -W` TotalTime 中位数从 1098.5 ms 降到 818 ms（−25.5%），App 侧首帧 256–374 ms，其余为模拟器进程启动与软件渲染。
 
-### 测量方法
+复测方法：
 
 ```bash
 adb shell cmd package compile -m speed -f com.platojobs.pkotlinapp
 adb shell am force-stop com.platojobs.pkotlinapp
 adb shell am start -W -n com.platojobs.pkotlinapp/.ui.MainActivity
-adb logcat -d -s ActivityTaskManager:I | grep "Displayed com.platojobs"
 ```
 
-每次测量前 `force-stop`，保证进程不在后台；改前 v0.8.0 用 `/tmp/pk080` worktree 安装同签名的降级包（`adb install -r -d`），改后 v0.9.0 用当前构建，各连续测量取中位数并记录最大值。App 侧拆分通过临时 `ColdStartTrace` 日志记录 `Application.onCreate`、`MainActivity.onCreate`、首次 `onPreDraw`，**发布版已移除该日志**。
+模拟器数字不代表真机结论；诊断日志只在 debug 构建保留。
 
-### 改前（v0.8.0，10 次）
+## 13. 上架材料与术语
 
-| 指标 | 数值 |
+| 材料 | 路径 |
 | --- | --- |
-| `am start -W` TotalTime | 765 / 1489 / 981 / 959 / 1443 / 1094 / 1340 / 1103 / 1414 / 1082 ms，**中位数 1098.5 ms**，最大 1489 ms |
-| `Application.onCreate` | 9–13 ms |
-| Activity 实例化 → 首次 onPreDraw | 282–345 ms（首帧只有应用壳与 `syncLoading` 转圈，**首页内容要等网络**） |
-| 进程 fork → `Application.onCreate` | 约 1.0 s（模拟器进程启动/类加载，非 App 代码） |
+| 商店文案与截图 | [`docs/store-listing.md`](docs/store-listing.md) |
+| 隐私政策 | [`docs/privacy-policy.md`](docs/privacy-policy.md) |
+| Data safety 对照 | [`docs/data-safety.md`](docs/data-safety.md) |
 
-### 定位到的原因
-
-1. `MainActivity` 在 `lifecycleScope` 中 `awaitInitialSync()`，最多等 3 秒才挂载首页 Fragment；首帧只显示空容器与 `syncLoading` 转圈，用户看到的是“壳 + 转圈”，不是本地内容。
-2. `PKotlinApplication.onCreate` 同时启动冷启动拉取、7 天清理与 WorkManager 调度；虽在 IO 线程，但与首帧布局/渲染争抢 CPU。
-3. `Application.onCreate` 本身耗时 9–13 ms（仅容器装配 + 主题 SharedPreferences 读取），没有主线程数据库查询或网络请求；模拟器 TotalTime 的主要构成是进程启动（约 1.0 s）与软件渲染，不是应用初始化。
-
-### 改后（v0.9.0，20 次）
-
-| 指标 | 数值 |
-| --- | --- |
-| `am start -W` TotalTime（第一批 10 次） | 929 / 1183 / 1482 / 1920 / 1004 / 749 / 816 / 797 / 772 / 788 ms |
-| `am start -W` TotalTime（第二批 10 次，间隔 3 s） | 1635 / 537 / 820 / 777 / 812 / 943 / 801 / 832 / 683 / 913 ms |
-| 合并统计 | **中位数 818 ms**，最小 537 ms，最大 1920 ms，20 次中 8 次低于 800 ms |
-| `Application.onCreate` | 4–35 ms（仅容器装配 + 主题读取；同步/清理/调度不在 onCreate 执行） |
-| `MainActivity.onCreate` | 138–230 ms（`activity_main` 装配、Insets、底部导航） |
-| 首次 `onPreDraw` | 256–374 ms（只含应用壳 + `shellSkeleton`；首页 Fragment 下一帧挂载） |
-| 后台工作启动 | `binding.root.postOnAnimation { app.startBackgroundWork() }`，首帧绘制后投递到 `Dispatchers.IO` |
-
-结论：同环境、同协议下 `TotalTime` 中位数从 **1098.5 ms 降到 818 ms（−25.5%）**，App 侧首帧耗时 256–374 ms，剩余约 450–600 ms 来自模拟器进程 fork、类加载与软件渲染；波动（537–1920 ms）来自模拟器调度。期间发现首页三态容器层级缺陷（内容被整体 `GONE`）导致首页空白，该构建的 742.5 ms 数据不参与对比，修复布局后按上表重测。
-
-### 改动内容
-
-- 删除 `awaitInitialSync()` 与 `syncLoading`，首页立即渲染本地 Room 数据；网络同步不再决定首屏。
-- 首帧只装配应用壳 + `SkeletonView`，`showTab()` 延后到 `postOnAnimation` 的下一帧，避免首帧承担首页列表构建。
-- `PKotlinApplication` 新增 `startBackgroundWork()`：冷启动拉取、7 天保留清理、WorkManager 周期调度统一在首帧之后、IO 线程执行，且只执行一次。
-- `onCreate` 保持只做 `AppContainer` 装配与主题恢复，不打开数据库、不发网络请求。
-
-## 13. 上架材料与术语统一
-
-| 材料 | 路径 | 覆盖内容 |
-| --- | --- | --- |
-| 商店文案 | `docs/store-listing.md` | 中文短描述（≤80 字）、长描述（仅已实现功能）、关键词、内容分级、不含交易/广告声明、v0.9.0 版本说明 |
-| 隐私政策 | `docs/privacy-policy.md` | 逐项真实数据（BLE MAC/名称/广播名、读数与时间戳、匿名账号 ID/token、本地日志）、用途、保留期（服务端读数 90 天 / 本机 7 天）、注销即删、无广告 SDK、位置不采集不上传、系统备份关闭、导出文件边界 |
-| Data safety 对照 | `docs/data-safety.md` | 按 Play 表单逐项：收集/共享/加密传输/可删除/可选性，每项给出代码或接口证据；未实现能力不申报 |
-
-版本说明一致性：`docs/releasenotes.md` 与 README 本节的 v0.9.0 条目必须一致（版本 `0.9.0 / 17`，tag `v0.9.0`）。
-
-### 13.1 术语统一（设计规范第 8 节）
-
-| 统一使用 | 禁止/避免 | 说明 |
-| --- | --- | --- |
-| 设备 | 装置、机器 | 所有卡片、空态、错误与设置文案 |
-| 读数 | 数值、测量数据（指单条读数时） | 集合仍称「数据」，单条/指标值统一「读数」 |
-| 同步 | 上传 | 待同步条数、同步完成、重新同步；「推送/拉取」仅用于同步方向说明 |
-| 扫描 | 搜索（指发现 BLE 设备时） | 首页“搜索已保存设备”属于列表过滤，可保留「搜索」 |
-| 分组 | 分类 | 设备分组与规则分组统一「分组」 |
-| 绑定 / 解绑 | 配对（系统蓝牙配对除外） | 账号接管入口的「配对码」为既有产品名，保留 |
-| 最后在线 | 最后在线时间/最后活跃 | 统一「最后在线」 |
-
-落地方式：`TerminologyAuditTest` 直接解析 `strings.xml`，对 9 条高频文案（扫描按钮、首页空态、同步状态、读数标题/空态、首启降级文案等）断言不含「装置/机器/上传/策略/参数/最后在线/数值」；另断言扫描按钮含「扫描」、待同步以「待同步」开头、读数标题为「读数」。
-
-### 13.2 中英术语对照（v0.12.0）
-
-| 中文 | English | 说明 |
-| --- | --- | --- |
-| 设备 | Device | 卡片、空态、错误与设置 |
-| 读数 | Reading | 单条读数；集合用 Readings |
-| 同步 | Sync | 不使用 Upload 表示整条同步链路 |
-| 扫描 | Scan | 发现 BLE 设备；列表过滤仍用 Search |
-| 分组 | Group | 设备分组与规则分组统一 |
-| 房间 | Room | 本机房间分区；与云端 Group 不是同一概念 |
-| 告警 | Alert | 通知渠道、今日告警、最近触发 |
-| 接管码 | **Transfer Code** | 8 位账号迁移码；**英文禁用 pairing code**；蓝牙重新配对用 re-pair |
-| 分桶 | Bucket | 图表聚合单元 |
-
-`BilingualAuditTest` 额外断言英文资源中不出现 `pairing code`，且包含 `Transfer Code`。
+术语由测试锁定，不再维护手工表格：`TerminologyAuditTest` 校验 9 条高频文案与「设备 / 读数 / 同步 / 扫描 / 分组 / 绑定 / 最后在线」口径，`BilingualAuditTest` 校验中英资源 key、占位符与术语（英文统一 Device / Reading / Sync / Scan / Group / Alert / Transfer Code / Bucket，禁止 pairing code）。
 
 ## 14. 游标失效与全量重同步（v0.10.0）
 
@@ -979,14 +868,7 @@ Content-Type: application/json
 - **列表上限**：readings 500、export 5000、changes 500。客户端读数分页固定 100、导出按 `EXPORT_MAX=5000` 分片、changes 显式传 `limit=500`，均在超限前收敛（`ApiLimits`）。
 - **错误码映射补齐**：`RESYNC_REQUIRED` → `RESYNC`、`TIMEOUT` → `BUSY`、`IDEMPOTENCY_CONFLICT` → `CONFLICT`，见 `SyncErrorMappingTest`。
 
-### 14.4 测试
-
-- `SyncEngineTest`：410 → 游标归零、第二次请求用 `cursor=0`、`pending` 保留且不被较旧服务端数据覆盖、服务端墓碑不删较新 pending、连续两次 410 只处理一次；
-- `RemoteSyncTokenTest`：fake transport 下 410 → `CursorExpiredException`、503 `TIMEOUT` → `ServerBusyException`（不重登、不清游标）、changes `limit=500`、登录保存 `expiresAt`；
-- `SyncErrorMappingTest`：HTTP 状态与三个错误码到 `SyncErrorKind` 的映射；
-- `TerminologyAuditTest`：410/401/503 三条 UI 文案分别包含「已重新全量同步」「登录已失效」「服务端繁忙」。
-
-## 15. 真存储契约联调（v0.10.0）
+## 15. 真存储契约联调
 
 `scripts/e2e-postgres.sh` 一条命令完成：起栈 → seed → 跑契约套件 → 410 分支 → 停栈。
 
@@ -996,109 +878,22 @@ Content-Type: application/json
 
 流程：
 
-1. 调 `PJGoIoT/scripts/stack-for-e2e.sh`：Docker 起 `postgres:16-alpine`（自动选空闲端口）、迁移到最新版本、Go 进程以 `STORE=postgres` 启动 API，输出 `BASE_URL`；
-2. 调 `scripts/seed-for-e2e.sh`：写入真实迁移 seed 关联的 ESP32-C3-DevKitM-1 与 24 条读数，并从 API 读回校验；
-3. 跑 `:app:e2ePostgres`：与 fixture 套件共用用例，另加 postgres 专属断言——匿名登录/claim 的 `expiresAt`（180 天）、push 设备+读数、changes、readings/changes/export 的 limit 边界（500/500/5000 通过，501/501/5001 返回 400）、series/metrics、注销 204 后 401；家庭链路在两种存储下一致覆盖：服务端计数、邀请码列表无明文、撤销后 claim 404、重排缺项 409、owner 带成员退出 409、移除成员后对方 404、owner 退出 204；结构同步链路（v0.17.0）覆盖：建房/改名/建房/重排后两个账号各自收到 role 正确的 `household` upsert 与最新 `room.sortOrder`、无关账号零结构行、新成员只收到加入时 upsert 不回放房间、转让后双方角色、移除后不再收到新结构但保留离开前历史；
-4. 410 分支：匿名登录 → 先建家庭/房间并改名（让最早一条变更是 `household`）→ push 2 台设备 → SQL 把该用户最老结构变更的 `server_ts` 改到 100 天前 → 跑 `cmd/cleanup`（change_log 保留 90 天）→ `cursor=最老seq-1` 断言 `410 RESYNC_REQUIRED` → `cursor=0` 断言 200 且返回剩余 `household/room` 变更；
-5. 无论成功失败都停栈；失败时把 `api.log` 复制到 `E2E_LOG_DIR`，供 CI artifact 上传。
+1. `PJGoIoT/scripts/stack-for-e2e.sh` 起 `postgres:16-alpine`、迁移到最新、以 `STORE=postgres` 启动 API；
+2. `scripts/seed-for-e2e.sh` 写入真实 seed 关联设备与 24 条读数，并从 API 读回校验；
+3. `:app:e2ePostgres` 与 fixture 共用用例，另加 Postgres 专属断言：`expiresAt`、push、changes、limit 边界、series/metrics、注销 401、家庭与结构同步链路；
+4. 410 分支：把用户最老结构变更的 `server_ts` 改到 100 天前 → 跑 `cmd/cleanup` → 旧游标返回 `410 RESYNC_REQUIRED`，`cursor=0` 拉回剩余变更；
+5. 无论成败都停栈；失败时 `api.log` 复制到 `E2E_LOG_DIR` 供 CI artifact。
 
-本机真实执行输出（2026-11-06，Docker 29.5.2，`cursor` 为该次实际 seq）：
+CI 的 `e2e-postgres` job 跑同一脚本，日志与报告见 <https://github.com/platojobs/PKotlinApp/actions/workflows/android.yml>。
 
-```text
-[E2E:pg] 用户 c5820d8b-90d8-45be-8f3c-85172a40693f 最老结构变更 seq=55（也是整体最老），把 server_ts 改到 100 天前
-[E2E:pg] 运行 cleanup（change_log 保留 90 天）
-清理完成 readings_deleted=0 readings_cutoff=2016-11-07T17:07:40Z retention_days=3650
-change_log_deleted=1 change_log_cutoff=2026-08-07T17:07:40Z change_log_retention_days=90
-idempotency_keys_deleted=0 idempotency_cutoff=2026-10-29T17:07:40Z idempotency_retention_days=7
-tokens_deleted=0 pairing_codes_deleted=0
-[E2E:pg] 410 校验通过：cursor=54 → RESYNC_REQUIRED
-cursor=0 changes=4 nextCursor=59 entities=['household', 'room', 'user_device']
-[E2E:pg] cursor=0 从未返回 410，剩余结构变更已拉回
-[E2E:pg] 通过：postgres @ http://127.0.0.1:56293
-```
+## 16. 界面截图
 
-CI：GitHub Actions 的 `e2e-postgres` job 与该次运行同一脚本，日志与测试报告见
-<https://github.com/platojobs/PKotlinApp/actions/workflows/android.yml>。
+截图都在 `docs/screenshots/`，按版本分目录；全部来自 Android 模拟器 + 本机 `PJGoIoT` 真 Postgres 后端 + `scripts/seed-screenshots.py` 造的演示数据，不是设计稿或拼图。
 
-## 16. 界面截图（v0.31.3）
+- `docs/screenshots/*.png`：首页、设备详情、场景、产品、市场、我的、家庭、房间、扫描日志、会话、反馈，以及 200% 字号两张；
+- `docs/screenshots/verify-v0.32.*`：布局与字号走查的原始截图；
+- `docs/screenshots/play/`：6 张 1080×1920 商店图与 Feature Graphic，由 `scripts/make-store-screenshots.py` 基于真实截图排版。
 
-以下截图全部来自 **Android 模拟器（Pixel_10a，Android 37）+ 本机 PJGoIoT v0.22.0 后端（真 Postgres）+ `scripts/seed-screenshots.py` 造的演示数据**，不是设计稿、拼图或真机生产环境。
+商店图只加标题与底框，不改界面内容；标题只描述图中真实可见的元素。演示数据与构造脚本见 `scripts/seed-screenshots.py`、`scripts/seed-local-db.py`。
 
-| 截图 | 页面 |
-| --- | --- |
-| [home.png](docs/screenshots/home.png) | 首页（scroll 0）：从「首页」标题开始，3 个家庭 Chip（7/3/2 台）、搜索与排序/分组 Chip、今日概览（2400 条读数、峰值 23 点 100 条）、设备状态（10 在线 / 2 离线 / 0 未分配房间 / 0 低电量）完整可见；底部切点在「设备状态」卡底与「最近活动」卡顶之间，不切字 |
-| [device_detail.png](docs/screenshots/device_detail.png) | 设备详情：连接状态与设备信息统一为「未连接 / 当前未连接」，24 小时视图 48 个桶、折线与 min–max 区间带可见，横轴 `11-05` / `11-06`，导出说明与按钮完整位于手势条上方 |
-| [scenes.png](docs/screenshots/scenes.png) | 智能：4 个场景，含 `rejected` 与 `deviceMissing` 徽标、1 个定时场景 |
-| [scene_detail.png](docs/screenshots/scene_detail.png) | 场景详情（编辑弹窗）：定时触发与动作列表 |
-| [products.png](docs/screenshots/products.png) | 产品列表：按型号分组与设备数量 |
-| [product_detail.png](docs/screenshots/product_detail.png) | 产品详情：说明、可解析指标、兼容性 |
-| [market.png](docs/screenshots/market.png) | 市场：兼容性查询与服务入口 |
-| [profile.png](docs/screenshots/profile.png) | 我的：同步状态、权限、告警设置 |
-| [profile_household.png](docs/screenshots/profile_household.png) | 我的 · 家庭区：视图从「家庭」卡顶部开始（不再残留「后台采集」卡的最后一行），当前家庭 7 台设备、3 个房间、成员显示「成员 1 · 所有者（我）」与「成员 2 · 普通成员」；最后完整元素为「加入家庭」按钮，下方只保留卡片底边留白，不再露出「迁移到新设备」的半句 |
-| [profile_scan_logs.png](docs/screenshots/profile_scan_logs.png) | 我的 · 扫描日志：最近 12 条真实扫描记录（在线/离线设备、RSSI -45 ~ -88 dBm） |
-| [rooms.png](docs/screenshots/rooms.png) | 房间管理：当前家庭的 3 个房间（客厅/主卧/次卧），排序与删除 |
-| [sessions.png](docs/screenshots/sessions.png) | 会话管理：当前会话与其他会话的吊销入口 |
-| [feedback_list.png](docs/screenshots/feedback_list.png) | 我的反馈记录：3 条反馈（1 条已关闭） |
-| [feedback_detail.png](docs/screenshots/feedback_detail.png) | 反馈详情：状态、状态说明、更新时间与描述 |
-| [home_font200.png](docs/screenshots/home_font200.png) | 系统字号 200% 的首页（大字号不炸） |
-| [scenes_font200.png](docs/screenshots/scenes_font200.png) | 系统字号 200% 的场景页（徽标独立成行，不挤场景名） |
-
-数据口径：3 个家庭（12 台设备按 7/3/2 分布）、6 个房间（按家庭分别建 3/2/1 个，设备归属各自家庭）、12 台设备（5 种 `deviceType`，2 台离线，MAC 为 `C8:47:8C:` 开头的假地址）、4 个场景（1 个 `rejected`、1 个定时、1 个引用已删除设备的 `deviceMissing`）、3 条服务端反馈（1 条已关闭）、12 条本地扫描日志。家庭设备是服务端共享关系，seed 脚本按家庭分别创建房间并通过 `PATCH /my/devices` 写归属，可重复执行（每次新建匿名账号）。读数在服务端保留 7 天，`seed-screenshots.py` 每 10 分钟写一条原始读数（正弦 + 噪声 + 偶发尖峰，电量每小时），24 小时视图由客户端拉原始读数后聚合成 30 分钟桶（48 个），7 天视图走服务端 `1h` 分桶（168 个），每桶内 3/6 个样本足以画出折线与 min–max 区间带；首页与详情离线兜底读本地 Room，`seed-local-db.py` 按同一表结构写入 7 天读数、12 条扫描日志与设备在线状态/房间归属。`rejected` 场景是本地 `syncState` 的展示态（服务端不会持久化被拒状态），截图时让本地字段更新时间晚于服务端快照，避免启动同步把它拉回 `synced`；这属于演示数据构造，不是产品行为。
-
-本版（v0.31.3）在 `v0.31.2` 已发布后补充 Data safety 申报精度，不移动已发布 tag：① 设备型号字段按实际 payload 改为 `deviceType`，不再泛写厂商/固件（厂商/固件来自服务端型号目录，不作为设备数据上传）；② 核实后端删除语义——家庭/房间为硬删除，移除设备与删除场景只写 `deleted_at` tombstone，行内别名/扫描记录、触发/动作 JSONB 保留至注销账号，申报与隐私政策按软删除语义写明「完整擦除需注销账号」；③ `rules` 自动化规则确认不上传（`PushDeviceDto.rules` 恒为空映射），与 `rule_events`、`scene_runs` 一并列入仅本机；④ 反馈联系方式明确为「电子邮件地址 / 电话号码」选填项。版本递增至 `versionCode = 43` / `versionName = 0.31.3`，界面与六张商店素材同 v0.31.2（未改动）。
-
-本版（v0.31.2）补齐 Data safety 申报并统一六图设备框。**申报补齐**：`docs/data-safety.md` 与 `docs/store-listing.md` §5/§6 由「仅健康信息、设备标识与传感器读数」扩为六类实际收集——健康信息、设备或其他 ID、应用内其他操作（读数与 RSSI、家庭/成员/房间/设备别名分组、场景规则与动作）、用户内容（反馈正文）、个人信息（反馈选填邮箱/手机号）、诊断信息（反馈上下文 `appVersion/buildType/osVersion/deviceModel`），逐项写明收集/共享/加密/删除/用途；推送令牌按代码如实维持「不收集」。**与代码核对后的修正**：① 旧文档「个人信息：无」与反馈联系方式提示「邮箱或手机号」矛盾，改为申报电子邮件地址/电话号码（选填、开发者通讯）；② 补家庭与场景元数据、反馈正文与诊断上下文，旧文档漏报；③ 旧文档「本仓库无后端代码」不成立，后端 `../PJGoIoT` 的 `cmd/cleanup`（读数 90 天、change_log 90 天、幂等键 7 天、推送投递 7 天、inactive 推送设备 30 天）与 `account.go`（注销按 `user_id` 删除反馈/设备/读数/场景/家庭/令牌/用户）作为保留与删除依据；④ 扫描日志明细、规则触发、场景执行记录、目录缓存、`rawSnapshot` 只在本机，明确列为「不收集」；⑤ 推送令牌的平台/token/appVersion/deviceModel 仅在 `UnavailablePushTokenProvider` 未配置时不产生、不上报。**英文文案**：`values-en` 的 `household_role_member` 由 `Member` 改为 `Regular member`，与中文「普通成员」对齐，消除 `Member 2 · Member` 同构重复；`BilingualAuditTest` 新增「家庭普通成员文案不与序号同构重复」断言，锁定中英文取值与序号/角色不重复。**六图统一**：`scripts/make-store-screenshots.py` 固定 `FRAME_WIDTH = 695`（源宽 1080 等比缩放），外框宽 716px（695 + 10×2 白边）、外框圆角 40px、屏幕圆角 30px，六张图实测白框均为 x=182–897；03/04/05 裁短后不再比 02/06 宽。
-
-本版（v0.31.1）修正商店素材的真实性与底部构图。**Feature Graphic 文案**由「无需账号密码 · 数据保存在本机」改为「无需账号密码 · 本地优先，支持匿名同步」：应用会把设备、读数、家庭与场景同步到服务端，家庭多人共享、配对码由服务端签发，「数据保存在本机」是不存在的隐私承诺。**listing 逐句核对**改了 5 处：完整说明「场景仅保存在本机，不参与云端同步」→「先写本机，联网时按匿名账号同步」；「读数与设备信息保存在本机 Room 数据库」补「联网时按匿名账号同步到服务端」；「使用匿名账号同步设备与读数」→「同步设备、读数、家庭与场景」；Feature Graphic 文案与 `README` 里的旧表述同步。**应用内同类绝对化表述**：`intelligence_scenes_hint` 改为「场景按匿名账号同步；离线时先保存在本机，恢复网络后上传」，`home_scenes_local` 的「仅本机」改为「本机执行」。**六张图底部复查**：`05-household.png` 裁到「加入家庭」所在卡片下边距（源 2040），不再露出「迁移到新设备」半句与 Tab；`03-scenes.png` 重截并裁到第三张场景卡底（源 2000）；`04-products.png` 重截到滚动顶部并裁到第三张类型卡底（源 2000）；`01-home.png`、`02-device-detail.png`、`06-scan-logs.png` 底部原本完整，未改。
-
-本版（v0.31.0）修正商店截图标题与补 Feature Graphic。逐张核对六张图后，标题改为只描述画面真实可见的元素：`01-home.png` →「首页 · 今日概览与设备状态」（原「设备卡片与实时读数」画面无设备卡）、`02-device-detail.png` →「设备详情 · 历史曲线与 24 小时汇总」、`03-scenes.png` →「智能 · 本机场景一键执行」、`04-products.png` →「产品 · 设备类型目录」、`05-household.png` →「我的 · 家庭与成员」（原「家庭与房间」画面无房间行）、`06-scan-logs.png` →「我的 · 扫描日志」。同时把家庭成员角色文案 `household_role_member` 由「成员」改为「普通成员」，修复「成员 2 · 成员」重复，`profile_household.png` 因此从模拟器重截。新增 `docs/screenshots/play/feature-graphic.png`（1024×500），文案为应用名「BLE 设备数据面板」+「扫描连接 BLE 设备 / 实时读数与本地告警」+「无需账号密码 · 数据保存在本机」，只使用 `colors.xml` 设计令牌绘制抽象信号柱，不含界面截图或虚构 UI。
-
-v0.30.0 首次新增 Google Play 商店截图：`docs/screenshots/play/` 下 6 张 1080×1920，由 `scripts/make-store-screenshots.py` 基于上面的真实截图排版（只加标题与卡片背景，不改界面内容、不合并功能），对应 `home` / `device_detail` / `scenes` / `products` / `profile_household` / `profile_scan_logs`。上架文案与 Data safety 答案见 `docs/store-listing.md`。
-
-v0.28.1 只补两张图的构图，不改功能。**首页回到滚动顶部**：`home.png` 原停点从「客厅温湿度计」卡开始，把「今日概览」（2400 条读数）与「设备状态」（10 在线 / 2 离线）整块滚没了；重截为 scroll 0，从「首页」标题开始，两张卡完整可见，底部切点落在「设备状态」卡底 2060 与「最近活动」卡顶 2081 之间的卡片间隙（裁剪到 2073），不切字。**家庭区止于「加入家庭」**：原图底部露出「迁移到新设备」描述半句「在旧设备生成 8 位配对码，10 分钟内在新设备输入该」；停点保持「家庭」卡顶部，裁剪到卡片底边后的留白（裁剪到 2020），「加入家庭」按钮是最后一个完整元素，下一张卡完全不出现。两张图都通过 `scripts/check-screenshot-top.py`：`home.png` 输出「首个可见文字『今日概览』卡片 top=1014，视口 top=993（间隙 21px）」；`profile_household.png` 输出「『家庭』卡片 top=394，视口 top=394（间隙 0px）」，均 PASS。
-
-v0.28.0 修了两个问题。**截图停点残留上一张卡的尾巴**——首页原停点让「今日概览」只剩「今日读数按小时分布…」一行露在筛选 chip 下，家庭区原停点让「后台采集」只剩「断开自动停止。」一句露在「我的」标题下。现在停点统一落在整卡顶部或区块标题：首页停在「客厅温湿度计」卡顶部（上方不再有半截卡），家庭区停在「家庭」卡顶部。停点由 `scripts/check-screenshot-top.py` 自动断言，不靠肉眼：脚本用 `adb shell uiautomator dump` 解析节点树，取视口内**第一个带 `text` 的节点**（不取 `contentDescription`，它会覆盖整卡而排在标题前），要求它的文字等于 `--expect-top` 指定的完整卡片标题/区块标题，且其所属 `CardView` 的 top 不高于视口 top（容差 2dp）。`home.png` 断言输出「首个可见文字『客厅温湿度计』卡片 top=1024，视口 top=993（间隙 31px）」，`profile_household.png` 输出「『家庭』卡片 top=394，视口 top=394（间隙 0px）」。**峰值小时口径**——「今日读数按小时分布，峰值 0 点 100 条」不是零点真峰值：本地今日 0–22 点每小时恰好 100 条、23 点 25 条，旧实现 `maxByOrNull` 并列时取首个（即 0 点）。新增 `List<HourCount>.peakHour()`，并列时取最晚出现的小时（今日实际显示「峰值 22 点 100 条」），`HourlyPeakTest` 覆盖并列、单峰、无数据三种情况。
-
-v0.27.0 截图走查修复了四个问题：**导出按钮遮挡正文**——设备详情导出说明与「导出 CSV」从同一行改为纵向排列（说明独占整行、按钮另起一行右对齐），可滚动容器底部 padding 由 48dp 起步再叠加 `systemBars.bottom`，滚到底时按钮与卡片完整位于手势条上方；全仓没有 `FloatingActionButton`，首页扫描与场景新建都在固定 header 内，无同类悬浮遮挡。**连接状态矛盾**——新增 `ConnectionUi` 作为唯一状态源，连接状态与设备信息提示都由 `ConnectionUi.from(state, mac)` 派生：连接中显示「正在连接…」+「取消」、隐藏 RSSI；已连接显示 `已连接` + RSSI；已断开显示「未连接」+「重新连接」；设备信息卡在连接中提示「正在连接，连接成功后会…」而不是「当前未连接」。**截图切字**——逐页滚动到关键卡片完整可见的位置再截，首页最近活动、家庭区加入家庭、场景页说明，以及产品列表/产品详情 GATT、市场明细卡、房间管理与会话弹窗的底部内容均不再被 Tab、手势条切断。**MAC 占位值**——seed 的设备 MAC 从 `AA:BB:CC:` 改为 `C8:47:8C:` 开头的假地址，`seed-local-db.py` 改按设备名匹配房间/离线状态，不再复制 MAC 常量。原仓库与 `PJGoIoT` 主干未提交内容均未改动，后端跑在 `v0.22.0` 的干净 worktree。
-
-## 17. 版本记录
-
-- `v0.31.3`：Data safety 申报精度补充（`v0.31.2` 已发布 tag 不移动）。设备型号按实际 payload 改为 `deviceType`；核实后端删除语义并在 `docs/data-safety.md`、`docs/store-listing.md`、`docs/privacy-policy.md` 同步：家庭/房间硬删除，移除设备/删除场景为 `deleted_at` tombstone，别名/扫描记录与触发/动作保留到注销账号时才硬删；`rules` 自动化规则确认不上传，与 `rule_events`/`scene_runs` 列为仅本机；反馈联系方式明确申报为电子邮件地址/电话号码（选填、开发者通讯）。版本 `versionCode = 43` / `versionName = 0.31.3`，界面与六张素材同 v0.31.2。单测 407 全绿、`lintDebug` 0 error（11 warning），tag `v0.31.3`。
-- `v0.31.2`：Data safety 申报补齐、英文成员文案去重、六图设备框统一。`docs/data-safety.md` 与 `docs/store-listing.md` §5/§6 改为逐项表，申报六类实际收集：健康信息（心率）、设备或其他 ID（蓝牙 MAC/广播名/安装 UUID/匿名 userId/设备型号元数据）、应用内其他操作（读数与 RSSI、家庭/成员/房间/设备别名分组、场景规则与动作）、用户内容（反馈正文）、个人信息（反馈选填邮箱/手机号）、诊断信息（反馈上下文 `appVersion`/`buildType`/`osVersion`/`deviceModel`），每项列明是否收集、是否共享、传输加密、删除路径、用途与是否可选。与代码核对修正 5 处：个人信息由「无」改为「电子邮件地址/电话号码」；补家庭/场景与反馈/诊断上下文；「本仓库无后端代码」改为引用 `../PJGoIoT` 的真实保留期与注销实现；仅本机的扫描明细/规则触发/场景执行/目录缓存/`rawSnapshot` 明确列为不收集；推送令牌按 `UnavailablePushTokenProvider` 维持「不收集」并说明字段仅为预留。`values-en` 的 `household_role_member` 改为 `Regular member`，`BilingualAuditTest` 新增「家庭普通成员文案不与序号同构重复」。`scripts/make-store-screenshots.py` 固定 `FRAME_WIDTH = 695`，六图外框统一 716px、圆角 40px/30px，实测白框均为 x=182–897。单测 407 全绿、`lintDebug` 0 error（11 warning），tag `v0.31.2`（`versionCode = 42`）。
-- `v0.31.1`：商店素材真实性与底部构图修正。Feature Graphic 底部文案「无需账号密码 · 数据保存在本机」改为「无需账号密码 · 本地优先，支持匿名同步」——应用会把设备、读数、家庭、场景同步到服务端，家庭多人共享、配对码由服务端签发，旧文案承诺了不存在的隐私属性。`docs/store-listing.md` 逐句核对后修正：完整说明里的「场景仅保存在本机，不参与云端同步」改为「场景先写本机，联网时按匿名账号同步」；「读数与设备信息保存在本机 Room 数据库」补充「联网时按匿名账号同步到服务端」；「使用匿名账号同步设备与读数」扩为「设备、读数、家庭与场景」；Feature Graphic 文案与 README 描述同步。应用内同类绝对化表述一并修正：`intelligence_scenes_hint` 由「场景仅保存本机，不会同步到云端」改为「场景按匿名账号同步；离线时先保存在本机，恢复网络后上传」，`home_scenes_local` 的「仅本机」改为「本机执行」（英文资源同步）。六张图底部逐一复查：`05-household.png` 裁剪到「加入家庭」所在卡片的下边距（源 2040），不再出现「迁移到新设备」半句与 Tab；`03-scenes.png` 重截为「场景」区块完整可见并裁到第三张场景卡底（源 2000）；`04-products.png` 重截为滚动顶部、首卡完整并裁到第三张类型卡底（源 2000）；`01-home.png`、`02-device-detail.png`、`06-scan-logs.png` 原始底部完整，未改。`scripts/make-store-screenshots.py` 的 `SHOTS` 增加可选 `crop_bottom`，只裁多出的底部，不改界面内容。单测 406 全绿、`lintDebug` 0 error（11 warning），tag `v0.31.1`（`versionCode = 41`）。
-- `v0.31.0`：商店截图标题与 Feature Graphic 收口。逐张核对六张图后，把标题改成只描述画面真实可见的元素：`01-home.png`「首页 · 今日概览与设备状态」（原「设备卡片与实时读数」，画面无设备卡）、`02-device-detail.png`「设备详情 · 历史曲线与 24 小时汇总」（原「阈值告警」，画面无阈值/告警规则）、`04-products.png`「产品 · 设备类型目录」（原「型号与 GATT 服务」，画面无 GATT 服务表）、`05-household.png`「我的 · 家庭与成员」（原「家庭与房间」，画面无房间行）；`03-scenes.png` 与 `06-scan-logs.png` 原标题与画面对应，保持不变。修复成员角色重复：`household_role_member` 由「成员」改为「普通成员」，`成员 2 · 成员` 变为 `成员 2 · 普通成员`；英文 `values-en` 当时仍为 `Member`，同样的 `Member 2 · Member` 重复留到 v0.31.2 改为 `Regular member`。`profile_household.png` 因此从模拟器重截，商店图 `05-household.png` 同步重建。新增 `docs/screenshots/play/feature-graphic.png`（1024×500 PNG），由 `scripts/make-store-screenshots.py` 的 `make_feature_graphic()` 只使用 `colors.xml` 设计令牌绘制：应用名「BLE 设备数据面板」+「扫描连接 BLE 设备 / 实时读数与本地告警」+「无需账号密码 · 数据保存在本机」，右侧为抽象信号柱与弧线，不含界面截图或虚构 UI；`docs/store-listing.md` 补充尺寸、用途与文案说明。单测 406 全绿、`lintDebug` 0 error（11 warning），tag `v0.31.0`（`versionCode = 40`）。
-- `v0.30.0`：签名构建与发布产物验收。新增 `scripts/make-upload-keystore.sh`：keytool 生成 PKCS12 自签名 keystore（别名/密码走环境变量或交互，密码用 `-storepass:env` 传递，不硬编码、不打印），写出被忽略的 `keystore.properties`；`.gitignore` 显式排除 `keystore.properties`、`upload-keystore.jks`、`*.jks/*.keystore/*.p12`。`app/build.gradle.kts` 仅在四字段齐全且密钥文件存在时创建 release signingConfig，缺失时 `preReleaseBuild` 直接失败并提示运行脚本，不再静默产出 `app-release-unsigned.apk`。CI release job 改为 runner 现场生成一次性自签名密钥（`openssl rand`），构建后校验 `apksigner verify`、`mapping.txt` 存在与 `application-debuggable` 缺失，上传 APK/AAB/mapping。实测同版本对照：debug `11,830,090 B` / 18 dex / 15,048 类 / 135,283 方法 → release `4,203,892 B` / 1 dex / 5,812 类 / 39,565 方法（dex −75.5%、类 −61.4%），资源条目 7,198 → 6,018；`mapping.txt` 314,861 行、含 1,000 行 `com.platojobs.pkotlinapp` 类映射；release dex 中 `StartupDiagnostics`/`cold-start.log` 均为 0（debug 为 21/2），`apkanalyzer manifest debuggable` 为 false，badging 无 `application-debuggable`；`apksigner` v2 通过，证书 SHA-256 `0C:9B:1E:5C:…:15:20`；AAB `6,531,839 B`，bundletool 1.18.2 生成 APKS 且 `splits/base-master.apk`（3,491,927 B）签名校验通过。商店材料：`scripts/make-store-screenshots.py` 基于真实截图生成 6 张 1080×1920 截图到 `docs/screenshots/play/`，`docs/store-listing.md` 补齐标题/短描述（31 字符）/完整说明/分类/内容分级/Data safety 逐项答案，`docs/data-safety.md` 同步推送令牌「不收集」。自签名证书仅用于本机/CI 验证，**不能用于 Play 上传**；未上传、未审核、未真机安装。单测 406 全绿、`lintDebug` 0 error，tag `v0.30.0`（`versionCode = 39`）。
-- `v0.29.0`：接入后端 v0.23.0（契约 0.18.0）的推送令牌注册。新增 `PushTokenProvider` + `PushRegistrationRepository`：会话就绪/配对码领取后注册、token 变化重注册并注销旧 token、启动补齐未注册项、登出与删号前先 DELETE 再清本地。Room v22（`MIGRATION_21_22`）新增 `push_devices`（token 唯一、status/lastError/retryCount/nextRetryAt），`PushDeviceMigrationTest` 用真实 SQLite 验证旧数据保留。网络/5xx 指数退避（30s 起、6h 封顶）并保留 pending；400 终态记录可读原因不重试；401/403 等重新登录后由会话就绪再注册；注销 404 视为已不存在。Android 13+ 通知权限与注册完全解耦：拒绝权限仍完成注册，界面如实提示「未授权通知，告警与推送都不会展示」。工程无 `google-services.json`，默认 `UnavailablePushTokenProvider` 不虚构 token，界面显示「未配置推送服务，告警目前只在本机提醒」，接入点集中在 `AppContainer.createPushTokenProvider()`。预留 `PushMessageHandler`/`PushIntentRouter`：解析 `alertId/kind/mac`，设备类跳详情、场景类跳场景页。单测 406 全绿、`lintDebug` 0 error、fixture 与真 Postgres e2e（注册/幂等/跨用户 404/注销/400）全绿，tag `v0.29.0`（`versionCode = 38`）。
-- `v0.28.1`：截图构图收口（不改功能）。**首页** `home.png` 重截为 scroll 0，从「首页」标题开始，今日概览（2400 条读数、峰值 23 点 100 条）与设备状态（10 在线 / 2 离线 / 0 未分配房间 / 0 低电量）完整可见；底部裁剪到 2073，切点落在「设备状态」卡底 2060 与「最近活动」卡顶 2081 之间。**家庭区** `profile_household.png` 停点保持「家庭」卡顶部（top=394），裁剪到 2020，最后完整元素为「加入家庭」按钮，卡片底边下保留留白，不再露出「迁移到新设备」的半句。两张图断言：`home.png`「今日概览」卡 top=1014 / 视口 top=993（间隙 21px），`profile_household.png`「家庭」卡 top=394 / 视口 top=394（间隙 0px），均 PASS。单测 385 全绿、`lintDebug` 0 error、fixture e2e 与真 Postgres e2e 全绿，tag `v0.28.1`（`versionCode = 37`）。
-- `v0.28.0`：截图层收口。**停点**：首页原停点让「今日概览」只剩「今日读数按小时分布…」一行、家庭区原停点让「后台采集」只剩「断开自动停止。」一句；改为整卡顶部/区块标题（首页「客厅温湿度计」卡、家庭区「家庭」卡），并新增 `scripts/check-screenshot-top.py` 用 uiautomator 节点树自动断言（首个可见 `text` 节点须以 `--expect-top` 开头，其 `CardView` top 不高于视口 top，容差 2dp），不靠肉眼。**峰值口径**：`maxByOrNull` 并列取首个导致均匀数据下「峰值 0 点」；新增 `List<HourCount>.peakHour()` 并列取最晚小时，今日显示「峰值 22 点 100 条」，补 `HourlyPeakTest`（并列/单峰/无数据）。重截 `home.png`、`profile_household.png`。单测 385 全绿、`lintDebug` 0 error、fixture e2e 与真 Postgres e2e 全绿，tag `v0.28.0`（`versionCode = 36`）。
-- `v0.27.0`：截图验收四项修复。**导出遮挡**：设备详情导出说明与按钮改为纵向布局，滚动容器底部 padding = 48dp + `systemBars.bottom`，正文与按钮不再落在手势条下方；确认全仓无 `FloatingActionButton`。**连接状态**：新增 `ConnectionUi` 单一状态源，连接中/已连接/已断开分别对应「正在连接… + 取消」「已连接 + 断开连接 + RSSI」「未连接 + 重新连接」，「设备信息」提示同源派生，补 `ConnectionUiTest` 覆盖三态与跨设备状态。**截图切字**：逐页滚动到关键卡片完整可见再截，重截首页、设备详情、场景、家庭区、扫描日志、产品列表、产品详情（GATT 末行）、市场明细、房间管理、会话与两张 200% 字号截图。**MAC**：seed 设备 MAC 改为 `C8:47:8C:` 开头的假地址，`seed-local-db.py` 按设备名匹配，不再复制 MAC。单测、lint、fixture e2e 与真 Postgres e2e 全绿，tag `v0.27.0`（`versionCode = 35`）。
-- `v0.26.0`：截图验收五项修复。**图表数据**：`scripts/seed-screenshots.py` 改为 7 天、每 10 分钟一条原始读数（温度/湿度/气压/心率，正弦 + 噪声 + 偶发尖峰；电量每小时），24 小时视图不再依赖服务端白名单里的 `30m`，由 `ReadingPager` 分页拉原始读数后经 `ReadingSeriesBucketing.aggregateRemote` 聚合成 48 个 30 分钟桶，7 天视图走服务端 `1h` 共 168 桶；修复 `ReadingChartView` 折线 `Paint` 默认 `FILL` 把开放路径隐式闭合、盖住 min–max 区间带的问题。**横轴标签**：新增 `ChartAxisLabelFormatter`，按跨度选 `MM-dd`/`HH:mm`/`HH:mm:ss`，首尾同串时加细到 `MM-dd HH:mm`/`HH:mm:ss`/`HH:mm:ss.SSS`，补 `ChartAxisLabelFormatterTest` 覆盖三种跨度与同串细分。**成员显示名**：`HouseholdMember.displayName` 优先，缺失时回落「成员 N · 角色」，原始用户 ID 只在长按/转让提示等排障场景出现，补 `HouseholdMemberLabelTest`。**造数**：`scripts/seed-local-db.py` 注入 7 天本地读数、12 条扫描日志（含在线/离线设备）与设备在线状态/房间归属，可重复执行且不污染已有账号；重新截图并把 `household.png` 重命名为 `profile_household.png`，新增 `profile_scan_logs.png`，共 16 张。单测、lint、fixture e2e 与真 Postgres e2e 全绿，tag `v0.26.0`（`versionCode = 34`）。
-- `v0.25.0`：截图验收三项修复。**底部 inset**：新增 `applyBottomInsetPadding()`/`applyBottomInsetHeight()`，首页、智能、产品、市场、我的、产品详情、设备详情、反馈记录等可滚动容器统一 `clipToPadding=false` + 底部 `systemBars.bottom` padding；底部导航固定 56dp 高度改为「高度 = 56dp + inset、inset 作为 padding」，修复固定高度下把 item 压成 21px 的问题，最后一项可完整滚到手势条上方。**指标展示名**：`ReadingMetrics.displayAlias()` 补 `temperature_celsius`/`relative_humidity`/`pressure_hpa`/`battery_percent`/`co2_ppm` 等服务端 key，详情页、场景/规则摘要、通知文案与首页今日概览统一走该映射；未知 key 回落「其他（原始 key）」便于排查，`MetricThreshold.displayUnit` 同步识别别名单位。**造数**：`scripts/seed-screenshots.py` 改为 3 个家庭 7/3/2、按家庭分别创建 6 个房间并通过 `PATCH /my/devices` 写家庭/房间归属，可重复执行；另修 200% 字号下场景徽标挤占标题的问题（徽标独立成行）。重截首页、设备详情、家庭、房间、场景、场景详情、产品/产品详情、市场、我的、会话、反馈与两张 200% 字号截图，共 15 张。单测、lint、fixture e2e 与真 Postgres e2e 全绿，tag `v0.25.0`（`versionCode = 33`）。
-- `v0.24.0`：真 Postgres e2e 补齐场景与会话链路。场景侧覆盖首次上传并写回 `remoteId`、LWW 双端改不同字段都保留、软删后列表排除且 owner/陌生人均 404、引用设备软删后 `deviceMissing` 置真且不级联删场景；会话侧覆盖 refresh 轮换后旧 token 401、吊销非当前会话后该 token 401、跨用户访问 404。联调中发现 Go `time.Time` 输出 RFC3339Nano（小数位 0–9 位）且 create 返回 `Z`、list 返回 `+08:00`，客户端只接受固定 3 位毫秒且把 `Z` 当字面量，导致场景响应被整条丢弃；`SceneTimestamps` 改为统一补齐/截断到毫秒并用 `XXX` 解析时区，补 `SceneTimestampsTest`。新增 `scripts/seed-screenshots.py`（3 家庭/6 房间/12 设备/4 场景/3 反馈，含离线、`deviceMissing` 与定时场景），产出 14 张模拟器真实截图（含 200% 字号两张），图片清单与数据口径见上节。截图过程中修复三个界面问题：Material `Chip` 设置 `isSingleLine=false` 会抛异常导致市场/设备详情崩溃、二级页 `Toolbar` 固定高度叠加状态栏内边距导致标题被压扁、场景编辑弹窗输入框固定高度导致文字裁切。单测、lint、fixture e2e 与真 Postgres e2e 全绿，tag `v0.24.0`（`versionCode = 32`）。
-- `v0.19.0`：把意见反馈从「本地待发队列」接成真实发送链路（后端 PJGoIoT v0.16.0 / 契约 0.12.0）。`feedback_drafts` 增加 `retryCount/lastError/lastErrorCode/lastErrorRetryAfterSeconds/remoteFeedbackId/lastAttemptAt`，状态机 `pending→sending→sent/failed`，只有 2xx 且拿到 `feedbackId` 才标 sent；用草稿本地 ID 作 `Idempotency-Key`，断网重试复用同一键不产生重复记录，同 key 不同内容映射 409 `IDEMPOTENCY_CONFLICT`。失败后台只安排有界指数退避（10s 起、5 分钟封顶、最多 5 次自动重试），429 按 `Retry-After` 提示手动稍后再试、不自动狂重试；失败草稿永久保留，前台可无限手动重试。上下文自动填充 `BuildConfig.VERSION_NAME/BUILD_TYPE`、系统版本与 `Build.MODEL`。新增「我的反馈记录」页：`GET /feedback/mine` 游标分页、下拉刷新、触底加载更多，空/加载/错误复用 `ThreeStateHost`；列表 DTO 不含 contact/diagnostics。Room v17（`MIGRATION_16_17`）迁移旧草稿；新增 `FeedbackStoreTest`（状态机/幂等键/429/失败保留/退避上限/上下文）、`FeedbackDtoContractTest`、`FeedbackSyncMigrationTest`（真实 SQLite v16→v17）；fixture e2e 补提交、幂等重放、409、400、本人列表、游标分页与跨账号隔离。单测全绿、`lintDebug` 0 issue、`assembleDebug`、fixture e2e 全绿，tag `v0.19.0`（`versionCode = 27`）。
-- `v0.18.0`：把「智能」场景接成引擎真正执行的闭环，并把首页改成真实聚合。场景触发复用 `rules`（`sceneId` 非空即场景规则），与普通自动化共用阈值/防抖/60 秒冷却；命中时引擎改走 `RuleTriggerObserver`，由 `SceneTriggerRunner` 执行动作并写入真实 `scene_runs`（时间/场景名/触发值/动作结果/失败原因），界面只读可清空。新增通知、记录日志、标记设备三种动作（`markDevice` 写 `devices.markedAt`）；新增 `RuleType.SCHEDULE` + `intervalMinutes`，WorkManager 15 分钟与冷启动驱动；停用场景同步禁用绑定规则，场景级冷却防止重复。Room v16（`MIGRATION_15_16`）扩展 `rules/scenes/devices` 并新建 `scene_runs`。首页今日读数总量、按指标/小时 `GROUP BY`、越界次数、最近告警全部来自 `readings/rule_events`；在线/离线/未分配走 SQL `COUNT`，低电量用每设备最新电量；最近同步/告警/场景触发来自真实记录，无记录显示空态。状态卡四格可下钻并在再次点击时取消，下拉刷新触发一次同步并重算本地零点窗口。新增 `SceneEngineLoopTest`（越界读数 → 触发 → 写记录 → 通知仅一次、冷却不重复、停用不执行）、`SceneEngineMigrationTest`（真实 SQLite v15→v16）、`HomeAggregationTest`（真实 Room 验证窗口与 `GROUP BY`）、`SceneRepositoryTest` 触发落库断言。单测 286 全绿、`lintDebug` 0 issue、`assembleDebug`、fixture e2e 全绿，tag `v0.18.0`。
-- `v0.17.0`：接入后端 v0.15.0（openapi 0.11.0）的家庭结构增量同步，并把「市场」改成不造假的产品内容。`change_log` 解析按 `entity` 显式分派：`household`/`room` 进入 `StructuralChange`，未知 entity 直接丢弃但 `nextCursor` 无条件前进（`SyncUnknownEntityTest` 用固定 JSON 锁定）。`household upsert` 更新名称/接收者角色/成员数，本地缺该家庭时同一次内跑 `GET /households` 全量基线；`household delete` 整段移除房间、共享设备、归属与家庭行；`room upsert` 按 `sortOrder` 落序，`room delete` 删房间并清空设备归属但保留设备本身。Room v15（`MIGRATION_14_15`）为 `rooms` 增加 `pendingEdit/serverName/serverSortOrder`：本地未同步房间编辑优先，收到同房间结构 upsert 只暂存服务端值，下次同步先上传本地值再合并；重排 409 先放弃 pending。成员移除后不再收到新结构、离开前历史仍可读，按正常语义处理；`410 RESYNC_REQUIRED` 仍清游标后 `cursor=0` 全量重拉。市场删除虚构商品与 `MarketAdapter`：兼容性由 `ProductCatalog` 服务 UUID + `ReadingUuids.supported` 推导指标/GATT 服务/限制（NUS 逐行输出），选购指南按健康/环境/组网给出带证据的推荐，无匹配如实为空；配对向导、连接排障、采集省电三条入口直达真实功能；示例条目默认隐藏且固定标注「示例数据，不代表真实在售」。新增 `HouseholdStructuralSyncTest`、`SyncUnknownEntityTest`、`RoomStructuralMigrationTest`（v14→v15 真实 SQLite）、`MarketInsightsTest`；e2e 补结构同步全链路（改名/建房/删房/转让/移除后可见性/新成员不回放历史），真 Postgres 410 分支改为结构缺口（过期一条 `household` 后旧游标 410、`cursor=0` 拉回 household/room）。单测 278 全绿、`lintDebug` 0 issue、`assembleDebug`、fixture 与真 Postgres e2e 全绿，tag `v0.17.0`。
-- `v0.16.0`：接入后端 v0.14.0 的所有权转让与 `isSelf`，产品页升级为真实产品目录，「我的」补齐帮助中心 / 意见反馈 / 关于三入口。Room v14（`MIGRATION_13_14`）新增 `feedback_drafts` 表（id/category/description/contact/createdAt/state，默认 `pending`）。成员 DTO 增加 `isSelf`，本机不再按用户名/id 猜「这一行是我」；owner 长按其他成员行可并列选择「移除成员 / 转让所有权」，`isSelf` 为真或非 owner 时两者都不出现。转让二次确认写明降级后果；403/404/409 统一可读提示并刷新家庭与成员；成功及失败后都重拉成员与能力矩阵，入口随角色收起。老后端成员列表全缺 `isSelf` 或转让返回 405 时静默隐藏入口。产品页按 `deviceType` 分组为健康/环境/网关·中继/其他（Chip 带 catalog 数量徽标），详情页展示类型说明、`ReadingUuids.supported` 判定的可解析指标、兼容性/固件/GATT 服务与同类型「我的设备」，列表与详情复用 `ThreeStateHost`。帮助中心为 5 条可展开 FAQ（答案对齐 409 退出、7 天读数保留、冲突以服务端为准）；意见反馈落本地待发队列，无远端时如实标注「未发送」并支持重试/删除；关于页版本号/构建类型取 `BuildConfig`，许可/隐私/数据安全复用现有文档。新增 `FeedbackStoreTest`、`FeedbackMigrationTest`（v13→v14，真实 SQLite）、`ProductCatalogTest`、`ProductsUiStateTest`、`HouseholdDtoContractTest`（`isSelf` 缺失/真假与转让请求序列化）；e2e 补「isSelf 双视角 → member 转让 403 → 未知目标 404 → 转让成功降级 → 旧 owner 改名/签发 403 → 新 owner 移除并退出」，fixture 与真 Postgres 均通过。单测 266 全绿、`lintDebug` 0 issue、`assembleDebug`，tag `v0.16.0`。
-- `v0.15.0`：接入后端 v0.13.0 的家庭管理能力。Room v13（`MIGRATION_12_13`）为 `households` 增加 `roomCount`，统一保存服务端 `memberCount/deviceCount/roomCount` 真实数字，首页 Chip 与家庭卡片不再数本地缓存。新增 `DELETE /households/{id}/members/{userId}`（owner 移除成员，本地刷新计数并重拉设备清理共享行）、`POST /households/{id}/leave`（成员退出，owner 有其他成员时 409；本地删除该家庭房间/共享设备/归属并回落个人家庭）、`GET /households/{id}/invitations`（只取 `codeHashPrefix`/状态/过期时间，绝无明文）与 `DELETE .../invitations/{invitationId}`、`PUT /households/{id}/rooms/order`（整段集合排序）。409 机读判定为 HTTP 409 + `error.code`（后端 v0.13.0 无 `ROOM_SET_MISMATCH`），重排冲突自动重拉并提示「房间列表已变化，已刷新」，离线保留本地顺序标「未同步」。`householdCapabilities()` 统一 owner/member 可见性：member 看不到重命名、邀请码签发/撤销与成员移除，owner 带成员退出时提示「请先转让所有权或移除其他成员」。新增 `HouseholdRepositoryTest`（成员移除清理、退出回落、邀请码列表/撤销、重排 409 重试、离线排序）、`HouseholdMigrationTest` v12→v13 与 owner/member 能力单测；fixture 与真 Postgres e2e 补「服务端计数 → 邀请码列表无明文 → 撤销后 claim 404 → 重排缺项 409 → owner 带成员退出 409 → 移除成员后对方 404 → owner 退出 204」。单测 245 全绿、`lintDebug` 0 issue、`assembleDebug`、两套 e2e 全绿，tag `v0.15.0`。
-- `v0.14.0`：家庭接上后端，房间真正归属家庭并支持成员共享。Room v12（`MIGRATION_11_12`）新增 `households` 表，`rooms` 增加 `remoteId/householdId`，`devices` 增加 `householdId/remoteRoomId/pendingRoomPatch/pendingRoomLocalId/pendingHouseholdRemoteId/shared`；设备归属选择反规范化 `devices.remoteRoomId` 而不是映射表（单一可选属性、PATCH 按设备粒度，理由见 §6.12）。登录/手动同步/重登三条路径拉 `GET /households` 并持久化当前家庭，切换家庭按家庭拉房间与设备。首次接入按规范化名称认领服务端同名房间、其余按本地顺序上传，绝不静默丢弃本机房间，`planRoomMerge` + `HouseholdMigrationTest` 覆盖。设备房间归属只走 `PATCH /my/devices`（不塞 push，避免 LWW），失败保留 pending 重试，4xx 清 pending 并回读服务端。「我的」新增家庭管理（角色/成员、创建、8 位邀请码 + 服务端倒计时 + 复制 + 重新生成、加入家庭复用配对码规范化与 404/429 文案）；首页仅在多家庭时显示可见切换 Chip；服务端房间为权威来源，未上传房间与离线状态明确标注「未同步」；403/404/429/离线全部降级为可读提示。fixture 与真 Postgres e2e 均跑通「创建家庭 → 邀请码 → 第二账号领取 → 成员可见设备 → member 改房间 403 → 跨家庭 404」；单测 235 全绿、`lintDebug` 0 issue、`assembleDebug` 全绿，tag `v0.14.0`。
-- `v0.13.0`：本机房间与首页分区。Room v11 新增 `rooms(id, name, sortOrder, createdAt)` 与可空 `devices.roomId`（`MIGRATION_10_11`），旧设备保持未分配、`deviceGroup` 原样保留；`RoomMigrationTest` 用真实 SQLite 验证升级。首页按房间分段、房间头可折叠、「未分配」固定最后；搜索时平铺结果并忽略折叠，排序只在房间内生效，分组 Chip 仅按 `deviceGroup` 过滤并隐藏空房间（决策见 §6.11）。房间支持新建/重命名/删除（二次确认，删除后设备回到未分配），设备可长按或详情页移入移出；空态区分「还没有房间」与「房间内无设备引导扫描」。房间仅本机、不参与同步，扫描/编辑/拉取均保留 `roomId`。`RoomRepositoryTest` 覆盖排序、重命名与删除落点；单测 227 全绿、`lintDebug` 0 issue、`assembleDebug`、fixture 与真 Postgres e2e 全绿，tag `v0.13.0`。
-- `v0.12.0`：与 iOS 配平的双语、超大字号与无障碍。全部文案拆为默认中文 `values/strings.xml` 与 `values-en/strings.xml`（457 条字符串 + 8 组 `plurals`，占位符全部命名参数），英文统一 Device/Reading/Sync/Scan/Group/Alert/**Transfer Code**/Bucket，禁止 pairing code；新增 `BilingualAuditTest` 校验两份资源 key/占位符/空值一致性、UI 层 Kotlin 无中文字面量、英文术语、配色对比度与 48dp 触控区。界面日期/数字改用 `Locale.getDefault()`，CSV 仍固定 `Locale.US`。200% 字号下首页降为单列、卡片与详情行自适应换行、规则弹窗可滚动、图表 Y 轴缩为 3 刻度且标签宽度自适应、市场 Chip 换行不省略；`FontScaleLayoutTest` 用 Robolectric 实测高度与父宽。无障碍补规则开关 `stateDescription`、图标 `contentDescription`、图表整图/选中摘要，`text_tertiary` 调深满足 `surface_sunken` 上 ≥4.5:1。单测 222 全绿、`lintDebug` 0 issue、`assembleDebug`、fixture 与真 Postgres e2e 全绿，tag `v0.12.0`。
-- `v0.11.0`：与 iOS 对齐的「有厚度」功能，Android 以规则模板替代 CSV 入口。**指标阈值规则**：`rules` 支持指标 + 比较符（`>`/`<`/`>=`/`<=`）+ 阈值 + 连续 N 条（1–5，默认 1）防抖，接入现有 `RuleEngine` 与读数入库链路（含后台采集），恢复通知只在确实触发过且通知已投递时发一条，节流沿用 `ruleId + mac`；命中事件落库并携带 `metric/value/thresholdValue/unit`，展示 `℃`/`%`/`bpm`。Room v10（`MIGRATION_9_10`）旧规则 `type/threshold` 不变并回填指标字段，旧规则升级后仍触发。**图表点选**：点按/长按选中最近桶，展示区间（本地时区）、min/max/avg/last/条数，点空白取消，不改 Y 轴、只用现有语义色；整图与选中态更新 `contentDescription`；命中几何为纯函数并补单测。**推荐规则**：智能页按设备真实出现过的指标生成模板（温度>30℃/湿度>70%/电量<20%/心率>120/CO₂>1000），一键写入 Room 立即生效；无读数显示真实空态。单测 211 全绿、`lintDebug` 0 issue、`assembleDebug`、fixture 与真 Postgres e2e 全绿，tag `v0.11.0`。
-- `v0.10.0`：跟随后端新增契约并升级真存储联调。`GET /sync/changes` 游标早于最老保留行时返回 `410 RESYNC_REQUIRED`（`cursor=0` 永不 410）；客户端收到后清空游标、只用 `cursor=0` 全量重拉一次，`pending` 设备/读数不丢弃并重新上传，服务端墓碑不覆盖更新的本地 pending；「我的」展示「云端变更记录已过期，已重新全量同步」，该分支与 401（重登）、503 `TIMEOUT`（指数退避）独立。`/auth/anonymous` 与 claim 返回 `expiresAt`（180 天 TTL），「我的」只读展示会话到期日；错误码映射补齐 `RESYNC_REQUIRED`/`TIMEOUT`/`IDEMPOTENCY_CONFLICT`；readings/changes/export 的 limit 在客户端收敛到 500/500/5000。新增 `scripts/e2e-postgres.sh` 与 `:app:e2ePostgres`，用 `stack-for-e2e.sh` + `seed-for-e2e.sh` 起真 Postgres，覆盖登录/push/changes/410（SQL 改 server_ts + cleanup）/series/metrics/export/注销 401；CI 新增并行 `e2e-postgres` job。单测新增 410/503/错误码/limit/expiresAt 用例；`testDebugUnitTest`、`lintDebug` 0 issue、`assembleDebug`、两套 e2e 全绿，tag `v0.10.0`。
-- `v0.9.0`：首次使用路径 + 冷启动性能 + 上架材料。新增 `OnboardingActivity` 三步首启引导（蓝牙/通知/位置的真实用途，可跳过，状态持久化在 `AppSettings.onboardingCompleted`，中途返回不写），权限改为「先说明后申请」（最后一步「继续」才弹系统框，扫描/连接补授权先弹 `PermissionRationale`），拒绝后展示逐项授权状态、「仅本机可用」能力边界与「打开应用设置」入口，返回自动刷新；仅缺通知不算仅本机。首页无设备时只保留「还没有设备」+「开始扫描」一套文案，删除重复空态串，网络不可用只由顶部横幅说明；修复首页三态容器层级缺陷（根布局被整体 `GONE`）。冷启动移除 `awaitInitialSync()`/`syncLoading`，首帧只出应用壳 + 骨架、首页下一帧挂载，同步/清理/调度在首帧后投递 IO，同环境实测 TotalTime 中位数 1098.5 ms → 818 ms（20 次，见 §12）。新增 `docs/store-listing.md`、`docs/privacy-policy.md`、`docs/data-safety.md`；按设计规范第 8 节统一术语并在 §13.1 列表，新增 `TerminologyAuditTest` 检查 9 条高频文案。新增 `OnboardingPolicyTest`、`TerminologyAuditTest`，`AppSettingsTest` 补 `onboardingCompleted`；单测 182 全绿，`assembleDebug`、`lintDebug` 0 issue。
-- `v0.8.0`：设计令牌与信息架构升级。新增 `colors.xml` / `values-night/colors.xml` / `dimens.xml` / 10 级 `TextAppearance` / `res/color` 状态选择器与 `Widget.App.Card`（1dp 描边、零阴影、12dp 圆角），删除布局与代码中的硬编码色值与字号，`windowBackground`/系统栏跟随语义色；自绘大标题 96→56（12dp 阈值、200ms 插值）、行高 56/72/88、页边距 16；统一浅色 6% / 深色 8% 按压遮罩，按钮只变色、卡片按下 0.98；读数/阈值/计数改用 `tnum` 等宽数字；`ChartColorAuditTest` 扩展为同时禁止硬编码字号。底部导航按米家重组为**首页 / 智能 / 产品 / 市场 / 我的**：首页改为设备卡片网格 + 分组分段 + 今日告警摘要 + 快捷场景；新增智能页承载自动化规则与场景；原「设备」Tab 与其规则入口删除。场景为仅本机的有序动作组合（连接/断开设备、开始/停止后台采集、静音告警 10/30/60 分钟、刷新同步），Room v9（`MIGRATION_8_9`）、`SceneExecutor` 顺序执行且失败不阻断、逐动作反馈与汇总；首页展示前 3 个场景。五模块统一骨架（延迟 300ms）/真实空态/可重试错误块。新增场景执行器、持久化、v8→v9 迁移与汇总口径单测；`assembleDebug`、`testDebugUnitTest`、`lintDebug` 全绿。
-- `v0.7.0`：账号迁移与注销 + 后台采集。「我的」新增**迁移到新设备**（`POST /auth/pairing-code`，8 位码 + 服务端 `expiresAt` 真实倒计时、复制、重新生成使旧码立即失效）与**从旧设备接管**（`POST /auth/pairing-code/claim` 换同 `userId` 新 token，保留本地设备/读数并全量重置 `pending` 后重新上传）；输入框按 `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` 自动大写/过滤/截断 8 位；404 统一「码无效或已过期」，429 显示剩余冷却秒数。新增**导出我的数据**（`GET /me/export` 按 `hasMore`/`nextCursor` 循环，cursor 只透传不解析，`devices` 去重、`readings` 拼接，写 `cacheDir/exports/` 后经 FileProvider 分享，显示真实进度与可重试）与**注销账号**（二次确认写明「设备与读数将永久删除且不可恢复」，`DELETE /me` 成功后清 token/游标/同步状态/`clearAllTables()`，401 与网络错误分别提示）。新增**后台采集**前台服务：连接后开关控制，`foregroundServiceType=connectedDevice` + `FOREGROUND_SERVICE_CONNECTED_DEVICE`（Android 14+），通知渠道「数据采集」常驻（设备名 + 已采集条数 + 停止动作），Android 13+ 拒绝通知权限不阻断采集，断开/退出自动停止，开关持久化。单测 168（配对码/导出分页/注销顺序/服务会话/通知构建/Robolectric），e2e 新增账号契约 12 项；lint 0 issue。Room 无 schema 变更（仍为 v8）。
-- `v0.6.0`：四项真实可用功能。**告警通知**：独立渠道「设备告警」、Android 13+ `POST_NOTIFICATIONS` 动态申请与「我的」拒绝提示、真实开关、1/5/30 分钟节流（SharedPreferences 持久化）、信号恢复通知只发一次、点击通知进设备详情、正文不含敏感信息。**CSV 导出**：详情按当前设备+指标+区间导出，≤7 天读 Room、>7 天服务端 cursor 分页（上限 5 万条），UTF-8 BOM / `recordedAt,metric,value,unit` / ISO8601 UTC / RFC 4180 转义，写 `cacheDir/exports/` 并用 `FileProvider` + `ACTION_SEND` 分享，真实进度与可重试错误。**设备列表**：别名/广播名/型号/MAC 即时搜索、四种排序持久化、真实分组 Chip（含未分组）、无设备与筛选无结果两种空状态。**深色模式**：`values-night/colors.xml` + 图表颜色全部走主题资源，`ChartColorAuditTest` 防硬编码回归。Room v8 新增 `devices.createdAt`（`MIGRATION_7_8`）；单测 139，lint 0 issue。
-- `v0.5.0`：详情页数据区升级为产品级长周期图表。新增区间切换（1 小时 / 24 小时 / 7 天 / 30 天，默认 24 小时）与 `1m/1h/1d` 分桶映射、500 桶自动降级；接入 `GET .../readings/series`（UTC RFC3339 网格）与 `GET .../readings/metrics`（count/lastAt/unit，倒序）。图表按桶 `start` 的真实时间比例定位，空桶不返回时折线断开不连线，每个桶画 avg 折线 + min–max 区间带，Y 轴与单位自适应；网络失败回退本地分桶，30 天提示「离线：仅本地 7 天数据」。指标 Chip 改为服务端真值并展示「指标名 · N 条」，24h 汇总固定窗口、单位随指标。单测 96 个（新增区间映射/分桶/缺口几何/Y 轴/离线降级/指标排序），e2e 新增 series/metrics/空区间/非法 bucket 4 项。
-- `v0.4.1`：与 iOS 统一读数解析口径：NUS 改为按 `\n` 逐行解析（整包 ≤256 字节、单行 ≤64 字符，单行失败只丢该行）；温度 2 字节优先 sint16 × 0.01℃、否则回退 IEEE-754 half，4 字节走 float32，范围统一 −50..150℃；心率 uint16 明确小端；电池 0% 视为合法。清理逻辑修正为只删除 `syncState = 'synced'` 且超过 7 天的记录，pending 无论多旧都保留。新增黄金字节表单测（总单测 79 个），lint 0 issue。
-- `v0.4.0`：接入设备读数全链路：GATT 订阅心率 `0x2A37`、电池 `0x2A19`、温度 `0x2A6E`、NUS TX `6E400003-…` 并按特征解析（失败静默丢弃 + 本地日志）；Room v7 新增 `readings` 表（`MIGRATION_6_7`），指标白名单 + 未知指标 `other` + 原始快照，本地保留 7 天（服务端 90 天）；读数以 ≤200/批复用 `/sync/push` 按 id 幂等同步，断网累积、恢复补传；详情页新增「数据」区（真实指标 Chip、自绘 60 点折线图、24h min/max/avg/last、最近记录、离线/空状态/权限引导）。单测 73 个、e2e 新增读数契约 6 项（推送/重复 skipped/倒序查询/summary/NaN 400）。
-- `v0.3.7`：修复「清空别名无效」：Room v6 新增 `aliasDirty`（`MIGRATION_5_6`），详情页显式清空别名时上报 `"alias":""`，扫描路径永不置脏，服务端空别名拉回后清空本地并按广播名展示；复核分组 `NULL`/`""` 三态链路不复活；`lintDebug` 从 62 条 warning 清理到 0（硬编码文案抽 strings、未用资源删除、KTX/无障碍/备份规则修复，仅 4 个版本提示类检查在 `lint.xml` 显式抑制并写明理由）；新增 `DeviceAliasPersistenceTest`、v5→v6 迁移测试与 e2e 清空别名断言（e2e 扩到 24 项），单测 51 个。
-- `v0.3.6`：跟随 PJGoIoT openapi 0.3.3：Room v5 新增 `advertisedName`（广播名）并与用户别名 `name` 隔离 + `MIGRATION_4_5`，列表/详情按「别名 → 广播名 → 型号名」展示；扫描只写广播名、编辑只写别名；DTO 引入 `Reported<String>?` 三态（absent / `""` / 值）与 Moshi adapter，删除分组显式上报 `"group":""`、未修改则省略；幂等键只哈希实际上报字段；冲突/拉取缺省字段按 absent 处理并保留本地值；新增三态序列化、别名隔离、清空不复活、幂等键稳定性测试，e2e 扩到 22 项。
-- `v0.3.5`：离线降级修复：Room v4 新增 `deviceTypeName`（catalog 展示名）与 `deviceGroup`（真实分组）可空列 + `MIGRATION_3_4`；离线型号优先展示缓存名，缺失时回退型号键并标注「未识别的型号」；设备编辑（别名/分组）落库并即时离线可见，设备列表展示分组与分组统计；扫描写入不再覆盖已缓存 enrich/分组；市场筛选 Chip 补 contentDescription、选中态 stateDescription 与 200% 字号换行；新增离线展示名/分组与 v3→v4 迁移测试。
-- `v0.3.4`：接入 PJGoIoT openapi 0.3.2 enrich 字段（`UserDevice.deviceType/vendor/firmwareVersion/compatibility`、catalog 配件/固件 `vendor/compatibility`）；设备详情优先云端并支持本地缓存降级，市场新增厂商/兼容性筛选，push 支持可选 `deviceType` 且不上报时不覆盖旧值；Room v2→v3 迁移；扩展 e2e 断言；CI action 升级到 checkout@v7 / setup-java@v6 / setup-go@v7 / setup-gradle@v6 / upload-artifact@v7。
-- `v0.3.3`：把 `e2e-contract` 纳入 GitHub Actions（与 verify 并行，push/PR 触发），失败上传测试报告与 Go 服务日志；`e2eContract` 强制每次真实执行；README 新增「CI 里的契约联调」。
-- `v0.3.2`：产品 / 市场 / 设备详情改用 `GET /device-types/{type}/catalog`（一次返回 firmware + accessories），设备详情复合键查询改用 `GET /my/devices/android/{externalId}`；新增 `CatalogMappingTest`。同时新增验收 / 排障 / 发布说明文档，401 改为「停止同步 + 用户确认重新登录」（与 iOS 对齐），同步错误分类展示，权限被拒后提供「打开应用设置」，Debug 构建允许明文 HTTP。
-- `v0.3.1`：按 `PJGoIoT/api/openapi.yaml` 修正同步 DTO（`{clientId,devices}` / `{applied,conflicts,nextCursor}` / `changes[].payload`），时间统一 RFC 3339，新增 `scripts/e2e-contract.sh` 与本机 Go 后端端到端契约联调（含幂等重放、LWW 冲突、401、跨用户 404）。
-- `v0.3.0`：接入多设备同步客户端（匿名登录、加密 token、增量拉取、幂等批量推送、冲突上报、tombstone），Room v1→v2 迁移，WorkManager 后台同步与纯本地降级，「我的」同步状态卡片，同步单测。
-- `v0.2.0`：项目定位改为 BLE 设备数据面板；五模块底部导航、BLE 扫描/连接、Room、Retrofit、规则引擎、Android 16 适配、签名 Release、GitHub Actions CI。
-- `v0.1.0`：初始纯 Kotlin + View 待办 Demo（已被本版本覆盖）。
+版本记录见 [`docs/releasenotes.md`](docs/releasenotes.md)。

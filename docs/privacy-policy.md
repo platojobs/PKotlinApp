@@ -1,7 +1,7 @@
 # 隐私政策（BLE 设备数据面板）
 
 生效日期：2026-11-05  
-适用版本：0.9.0（`versionCode 17`）
+适用版本：0.32.14（`versionCode 58`）
 
 本政策只描述**当前版本实际实现**的数据处理行为。未实现的能力（账号密码、云备份、广告、支付、位置上传）不在本政策承诺范围内。
 
@@ -86,16 +86,6 @@ Android 11 及以下的位置权限仅用于满足系统 BLE 扫描限制，不�
 - 政策变更会在仓库 `docs/privacy-policy.md` 与版本说明中记录，并在新版本生效前更新本文件。
 - 隐私问题与数据删除协助：https://github.com/platojobs/PKotlinApp/issues
 
-## 10. 代码证据索引
+## 10. 代码证据
 
-| 事项 | 文件 |
-| --- | --- |
-| 同步接口与字段 | `app/src/main/java/com/platojobs/pkotlinapp/data/remote/SyncApi.kt` |
-| 设备/读数 Room 实体 | `app/src/main/java/com/platojobs/pkotlinapp/data/local/Entities.kt` |
-| 7 天保留与仅清 synced | `domain/reading/ReadingModels.kt`、`data/repository/ReadingRepositoryImpl.kt`、`data/local/Daos.kt` |
-| token 加密存储 | `data/sync/SecureTokenStore.kt` |
-| 安装 UUID | `data/sync/SyncPrefs.kt` |
-| 注销流程 | `domain/account/AccountService.kt` |
-| 导出 CSV/JSON | `domain/export/ReadingCsv.kt`、`domain/account/AccountExportJson.kt`、`ui/common/FileSharing.kt` |
-| 权限声明 | `app/src/main/AndroidManifest.xml`、`ui/common/BlePermissions.kt` |
-| 无崩溃/广告 SDK | `app/build.gradle.kts` 依赖列表 |
+与 Data safety 声明共用一份证据索引，见 [`data-safety.md`](data-safety.md) §5。

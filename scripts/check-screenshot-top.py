@@ -6,7 +6,7 @@
     adb exec-out cat /sdcard/ui.xml > /tmp/ui.xml
     python3 scripts/check-screenshot-top.py /tmp/ui.xml --expect-top 客厅
 
-断言规则（与 docs/acceptance.md「截图停点」一致）：
+断言规则（与 docs/screenshots/ 的走查一致）：
 1. 视口顶部第一个可见文字必须是 `--expect-top` 指定的完整卡片标题或区块标题，
    用来识别「上一张卡被滚掉上半截、只剩一行尾巴」；
 2. 若该文字属于某张 CardView，该卡片顶部不得高于视口顶部（容差 tolerance-dp，

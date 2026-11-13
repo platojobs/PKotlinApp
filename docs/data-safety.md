@@ -1,4 +1,4 @@
-# Google Play Data safety 对照（v0.32.7）
+# Google Play Data safety 对照
 
 按 Play Console「Data safety」表单逐项对照本项目**实际实现**。每一行都给出客户端与服务端代码证据；
 未实现的能力不申报，实际不存在的数据类型也不申报。
@@ -91,36 +91,14 @@
 - **Purposes**：应用功能（同步与展示）、开发者通讯（反馈）。本应用无分析 SDK，不申报「分析」用途。
 - **Ads / IAP**：均无。
 
-## 5. 申报与代码核对记录（本轮修正）
-
-| 旧申报/旧文档 | 代码事实 | 处理 |
-| --- | --- | --- |
-| `store-listing.md` §5 写「仅健康信息、设备标识与传感器读数」 | 家庭/成员/房间/场景/设备别名与分组均经 `/households…`、`/scenes` 上传；反馈正文、联系方式与诊断上下文经 `/feedback` 上传 | 已补齐三类数据，见 §1.1 |
-| 「个人信息：无」 | 反馈联系方式提示为「邮箱或手机号」，`contact` 随 `POST /feedback` 上传 | 改为申报「个人信息 → 电子邮件地址 / 电话号码」，标注选填、开发者通讯 |
-| 未列反馈正文与诊断信息 | `FeedbackCreateRequest.body` 与 `context{appVersion,buildType,osVersion,deviceModel}` 均上传；`diagnostics` 字段存在但客户端未赋值 | 申报正文（用户内容）与上下文（诊断信息）；不申报未赋值的 `diagnostics` 自由文本 |
-| 「推送令牌：否」但未解释字段 | 本地 `push_devices`、服务端 `push_devices` 与 `/push/devices` 端点存在，但 `UnavailablePushTokenProvider` 始终 `NotConfigured`，无 `google-services.json` | 维持「不收集」，并在 §1.2 列明平台/token/appVersion/deviceModel 仅在未接入时为空值，不产生上传 |
-| §3「本仓库无后端代码」 | 后端代码位于 `../PJGoIoT`，`cmd/cleanup` 与 `account.go` 可核验保留期/删除 | 替换为真实路径，见 §2、§6 |
-| 未区分仅本机数据 | `scan_logs`、`rules`、`rule_events`、`scene_runs`、目录缓存、`rawSnapshot` 均不上传 | 在 §1.2 明确列为「不收集」 |
-| 旧文档按硬删除描述设备/场景 | 服务端 `user_devices` 与 `scenes` 通过 `deleted_at` 软删除，行内别名/扫描记录/触发与动作 JSONB 保留到注销账号 | 在 §2 标明 tombstone 语义；「可要求删除」以注销账号硬删为准 |
-| 文档停在 v0.31.3，未覆盖契约 0.21.0 新增的 `lastSeenAt` / `presence` | `SyncDeviceDto.lastSeenAt`、`UserDeviceDto.lastSeenAt` 均从 `/sync/changes`、`/my/devices` 读取；Room v25 新增 `devices.lastSeenAt`；`RoomSyncLocalStore.applyServerPresence` 只写列，不上报；`presence` 仅在响应中读取 | 按代码路径归入「应用活动 → 应用内其他操作」，`presence` 不落库不单列；§2 补保留期，§6 补证据。本轮仅新增这两个字段，无其它漏报数据 |
-
-## 6. 代码证据索引
+## 5. 代码证据索引
 
 | 证据 | 位置 |
 | --- | --- |
-| 权限声明与 `neverForLocation`、`maxSdkVersion=30` | `app/src/main/AndroidManifest.xml` |
-| 运行时权限集合 | `app/src/main/java/com/platojobs/pkotlinapp/ui/common/BlePermissions.kt` |
-| 同步与反馈请求/响应字段 | `app/src/main/java/com/platojobs/pkotlinapp/data/remote/SyncApi.kt` |
-| 设备/读数/家庭/场景同步映射 | `app/src/main/java/com/platojobs/pkotlinapp/data/sync/RemoteSyncDataSource.kt`、`data/household/HouseholdRepository.kt`、`data/scene/RemoteSceneDataSource.kt` |
-| presence / lastSeenAt 契约字段（只读、不上报） | `data/remote/SyncApi.kt`（`SyncDeviceDto.lastSeenAt`）、`data/remote/Dtos.kt`、`data/sync/RoomSyncLocalStore.kt`、`../PJGoIoT/db/migrations/000020_device_presence.up.sql` |
-| 反馈提交字段 | `app/src/main/java/com/platojobs/pkotlinapp/data/feedback/RemoteFeedbackDataSource.kt` |
-| Room 实体与保留字段 | `app/src/main/java/com/platojobs/pkotlinapp/data/local/Entities.kt` |
-| 本机读数 7 天保留、仅清 synced | `domain/reading/ReadingModels.kt`、`data/repository/ReadingRepositoryImpl.kt`、`data/local/Daos.kt` |
-| token 加密 | `data/sync/SecureTokenStore.kt` |
-| 安装 UUID | `data/sync/SyncPrefs.kt` |
-| 注销流程（服务端 + 本机清表） | `domain/account/AccountService.kt`、`di/AppContainer.kt`（`wipeLocalData`） |
-| 推送未配置（不产生 token） | `di/AppContainer.kt`（`createPushTokenProvider`）、`domain/push/PushTokenProvider.kt`、`data/push/PushRegistrationRepository.kt` |
-| 无广告/崩溃/分析 SDK | `app/build.gradle.kts`、`gradle/libs.versions.toml` |
-| 服务端表结构 | `../PJGoIoT/db/migrations/000011_households.up.sql`、`000013_feedback.up.sql`、`000017_scenes.up.sql`、`000018_push_and_alerts.up.sql` |
-| 服务端保留期 | `../PJGoIoT/cmd/cleanup/main.go`（读数 90 天、change_log 90 天、幂等键 7 天、推送投递 7 天、inactive 推送设备 30 天） |
-| 服务端账号删除 | `../PJGoIoT/internal/store/postgres/account.go` |
+| 权限声明（`neverForLocation`、`maxSdkVersion=30`） | `app/src/main/AndroidManifest.xml` |
+| 同步/反馈字段与 presence 契约 | `data/remote/SyncApi.kt`、`data/remote/Dtos.kt`、`data/sync/RoomSyncLocalStore.kt` |
+| 设备/读数/家庭/场景同步映射 | `data/sync/RemoteSyncDataSource.kt`、`data/household/HouseholdRepository.kt`、`data/scene/RemoteSceneDataSource.kt` |
+| Room 实体与保留期 | `data/local/Entities.kt`、`domain/reading/ReadingModels.kt`、`data/local/Daos.kt` |
+| 注销与清表 | `domain/account/AccountService.kt`、`di/AppContainer.kt` |
+| 推送未配置、无广告/崩溃/分析 SDK | `di/AppContainer.kt`、`app/build.gradle.kts`、`gradle/libs.versions.toml` |
+| 服务端表结构、保留期与账号删除 | `../PJGoIoT/db/migrations/`、`../PJGoIoT/cmd/cleanup/main.go`、`../PJGoIoT/internal/store/postgres/account.go` |

@@ -1,4 +1,4 @@
-# Google Play 商店上架材料（v0.31.3）
+# Google Play 商店上架材料
 
 > 状态：**材料已补齐，但尚未上传 Play Console、尚未提交审核、未上架**。
 > 本仓库的 release 签名使用**本地自签名测试证书**（`scripts/make-upload-keystore.sh` 生成），
@@ -13,7 +13,7 @@
 | --- | --- |
 | 应用名称 | `BLE 设备数据面板`（9 个字符，Play 上限 30） |
 | 包名 | `com.platojobs.pkotlinapp` |
-| 版本 | `versionCode = 43`、`versionName = 0.31.3` |
+| 版本 | `versionCode = 58`、`versionName = 0.32.14` |
 | 默认语言 | 中文（简体），另含英文 `values-en` |
 | 分类 | 工具（Tools）；次要分类建议「健康与健身」，因部分设备上报心率 |
 | 联系方式 | https://github.com/platojobs/PKotlinApp/issues |
@@ -100,26 +100,18 @@ PY
 目录：[`docs/screenshots/play/`](screenshots/play/)，共 **6 张**，均为 **1080×1920（16:9）**，
 符合 Play「手机截图 2–8 张、16:9 或 9:16、最短边 ≥320px、最长边 ≤3840px」要求。
 
-截图由 `scripts/make-store-screenshots.py` 基于 `docs/screenshots/` 中的**真实模拟器截图**
-排版生成；不使用设计稿、不合成界面、不虚构功能。每张图的文案只描述该图中实际可见的内容：
+截图由 `scripts/make-store-screenshots.py` 基于 `docs/screenshots/` 中的真实模拟器截图排版生成，不使用设计稿、不合成界面；文案只描述图中真实可见的内容：
 
-| 文件 | 源截图 | 文案 |
-| --- | --- | --- |
-| `01-home.png` | `home.png` | 首页 · 今日概览与设备状态 |
-| `02-device-detail.png` | `device_detail.png` | 设备详情 · 历史曲线与 24 小时汇总 |
-| `03-scenes.png` | `scenes.png` | 智能 · 本机场景一键执行 |
-| `04-products.png` | `products.png` | 产品 · 设备类型目录 |
-| `05-household.png` | `profile_household.png` | 我的 · 家庭与成员 |
-| `06-scan-logs.png` | `profile_scan_logs.png` | 我的 · 扫描日志 |
+| 文件 | 文案 |
+| --- | --- |
+| `01-home.png` | 首页 · 今日概览与设备状态 |
+| `02-device-detail.png` | 设备详情 · 历史曲线与 24 小时汇总 |
+| `03-scenes.png` | 智能 · 本机场景一键执行 |
+| `04-products.png` | 产品 · 设备类型目录 |
+| `05-household.png` | 我的 · 家庭与成员 |
+| `06-scan-logs.png` | 我的 · 扫描日志 |
 
-标题只写图中真实可见的元素：`home.png` 没有设备卡片，故不写「设备卡片」；`device_detail.png`
-没有阈值告警，故不写「阈值告警」；`products.png` 只有设备类型目录，没有 GATT 服务表；
-`profile_household.png` 只有家庭与成员行，没有房间行。
-
-底部统一停到完整卡片边界，不出现被 Tab 条切断的半句或半张卡：`03-scenes.png` 裁到第三张
-场景卡底、`04-products.png` 裁到第三张设备类型卡底、`05-household.png` 裁到「加入家庭」所在
-卡片的下边距，三张均不含 Tab 条；`01-home.png`、`02-device-detail.png`、`06-scan-logs.png`
-的原始截图底部本身完整（`06` 含完整 Tab 条）。
+底部统一停在完整卡片边界，不出现被 Tab 条切断的半句或半张卡。
 
 ### Feature Graphic
 
@@ -177,49 +169,14 @@ python3 scripts/make-store-screenshots.py
 | 是否遵循 Families Policy | **否（不面向儿童）** |
 | 是否包含广告 / 内购 | **均否** |
 
-### 6.1 已收集的数据类型
+逐项数据类别、字段、保留期与代码证据见 [`data-safety.md`](data-safety.md)，两份文档必须保持一致。
 
-| Play 类型 | 具体数据 | 收集 | 共享 | 加密 | 可要求删除 | 用途 | 可选 |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| 健康与健身 → 健康信息 | 心率值、单位、时间戳 | 是 | 否 | 是 | 是 | 应用功能 | 设备上报 `0x2A37` 才产生 |
-| 设备或其他 ID | 蓝牙 MAC、广播名、安装 UUID、匿名账号 ID、匹配到的 `deviceType` 型号标识 | 是 | 否 | 是 | 是（注销硬删；移除设备为 tombstone） | 应用功能 | 不联网可纯本地 |
-| 应用活动 → 应用内其他操作 | 传感器读数（温度/湿度/电量/CO2/气压/其他）、RSSI 与扫描记录时间 | 是 | 否 | 是 | 是 | 应用功能 | 连接设备后才产生 |
-| 应用活动 → 应用内其他操作 | 家庭名称、成员关系与角色、房间名称/排序、设备别名/分组/房间归属、场景规则与动作（含目标设备 MAC、静音时长、通知文案） | 是 | 否 | 是 | 是（家庭/房间硬删；删除场景为 tombstone；注销硬删） | 应用功能 | 使用家庭/场景并联网时产生 |
-| 用户内容 → 其他用户生成内容 | 反馈类型、反馈正文、提交时间与处理状态 | 是 | 否 | 是 | 是 | 开发者通讯 | 用户主动提交 |
-| 个人信息 → 电子邮件地址 / 电话号码 | 反馈中的可选联系方式 | 是（仅填写时） | 否 | 是 | 是 | 开发者通讯 | 选填 |
-| 应用信息与性能 → 诊断信息 | 反馈上下文 `appVersion`/`buildType`/`osVersion`/`deviceModel` | 是（仅提交反馈时） | 否 | 是 | 是 | 开发者通讯 | 随反馈提交 |
+## 7. 发布产物与签名
 
-### 6.2 未收集的数据类型
-
-| Play 类型 | 数据 | 是否收集 | 说明 |
-| --- | --- | --- | --- |
-| 设备或其他 ID → 推送通知令牌 | 平台、token、appVersion、deviceModel | **否** | `UnavailablePushTokenProvider` 始终 `NotConfigured`，无 `google-services.json`；本地只写 `unconfigured` 空 token 行，不调用 `/push/devices` |
-| 位置 | 精确/粗略位置 | 否 | 不调用定位 API；`ACCESS_FINE_LOCATION` 仅 `maxSdkVersion=30` 用于 BLE 扫描限制 |
-| 个人信息（除可选联系方式） | 姓名、地址、账号密码 | 否 | 仅匿名登录，无登录表单 |
-| 财务信息 | 支付、订单、订阅 | 否 | 无内购 |
-| 消息 / 通讯录 / 日历 / 照片 / 视频 / 音频 / 文件 / 网页浏览 | — | 否 | 无对应权限与 API |
-| 广告标识符 | Advertising ID | 否 | 无广告 SDK |
-| 应用信息与性能 → 崩溃日志 | Crash logs | 否 | 无崩溃上报 SDK；错误只留本机 |
-| 仅本机数据（不离开设备） | 扫描日志明细、自动化规则、规则触发记录、场景执行记录、目录缓存、`rawSnapshot`、`lastError`/Logcat | 否 | 只在本机 Room/SharedPreferences 使用 |
-
-填写时以 Play Console 实际选项为准；若控制台提供更贴切的类别，按控制台口径选择，并同步更新
-`docs/data-safety.md`，保持两份文档逐项一致。
-
-## 7. 发布产物与签名（详细验证见 `docs/release-build.md`）
-
-| 产物 | 路径 |
-| --- | --- |
-| release APK | `app/build/outputs/apk/release/app-release.apk` |
-| release AAB | `app/build/outputs/bundle/release/app-release.aab` |
-| R8 映射 | `app/build/outputs/mapping/release/mapping.txt` |
-
-⚠️ 这些产物由**自签名测试证书**签署，仅用于验证签名构建链路与产物真实性，
-**不能上传 Play Console**。正式上架必须使用 Play App Signing 或正式上传密钥。
+见 [`release-build.md`](release-build.md)。本仓库产物由自签名测试证书签署，**不能上传 Play Console**。
 
 ## 8. 仍未验证的部分
 
-- **真机安装/运行**：本轮产物只在模拟器与 JVM/CI 中验证，未在真机安装 release APK。
-- **Play Console 上传**：未上传，未做内部测试轨道验证。
-- **Play 审核**：未提交，未经过 Google 审核。
-- **Feature Graphic（1024×500）**：已生成并随文档入库，但未随应用实际提交到 Play Console。
-- **隐私政策公网 URL**：`docs/privacy-policy.md` 尚未发布为公网可访问地址。
+- release APK 未在真机安装；Play Console 未上传、未走内部测试、未提交审核。
+- Feature Graphic 已入库但未提交到 Play Console。
+- `docs/privacy-policy.md` 尚未发布为公网可访问 URL。

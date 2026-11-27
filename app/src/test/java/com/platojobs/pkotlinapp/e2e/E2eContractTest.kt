@@ -76,6 +76,13 @@ class E2eContractTest {
             ?: System.getenv("E2E_STORE")
             ?: "fixture"
         ).lowercase()
+
+    /** 固定后端版本：脚本按 tag 校验源码，这里再用 health.version 校验实际运行的二进制。 */
+    private val backendVersion = (
+        System.getProperty("e2eBackendVersion")
+            ?: System.getenv("E2E_BACKEND_VERSION")
+            ?: "0.26.0"
+        ).removePrefix("v")
     private val apiBase = "$baseUrl/api/v1"
 
     /**
@@ -122,14 +129,15 @@ class E2eContractTest {
     fun `contract against local go backend`() {
         println("[E2E] baseUrl=$baseUrl")
 
-        step("health 200 + store=$store") {
+        step("health 200 + store=$store + version=$backendVersion") {
             val result = get("/health")
             assertEquals(200, result.code)
             val health = parseMap(result.body)
             assertEquals("ok", health["status"])
             val actualStore = health["store"] as? String ?: error("missing store")
             assertEquals(store, actualStore)
-            assertNotNull(health["version"])
+            // 后端版本必须与 pin 一致，避免 e2e 悄悄跑到别的主体上。
+            assertEquals(backendVersion, health["version"])
         }
 
         val user = captureStep("anonymous login returns userId + token") {
@@ -871,14 +879,13 @@ class E2eContractTest {
                 assertEquals("online", backfilled["presence"])
                 assertNotNull(backfilled["lastSeenAt"])
             } else {
-                assertTrue(
-                    "presence must be present in payload",
-                    reported["presence"] in setOf("unknown", "online", "offline"),
-                )
-                assertTrue(
-                    "backfill presence must be present in payload",
-                    backfilled["presence"] in setOf("unknown", "online", "offline"),
-                )
+                // fixture store 不模拟读数上报、不维护 last_seen_at，派生结果固定为 unknown/null。
+                // 这里断言 fixture 的真实行为，而不是「字段属于某个枚举」；online/offline 的
+                // 真实派生在 Postgres 链断言（下方 postgres 分支 + scripts/e2e-postgres.sh 回拨 last_seen_at）。
+                assertEquals("unknown", reported["presence"])
+                assertNull(reported["lastSeenAt"])
+                assertEquals("unknown", backfilled["presence"])
+                assertNull(backfilled["lastSeenAt"])
             }
 
             // 从未上报：unknown 是独立一档，不能并进 offline；lastSeenAt 必须为 null。

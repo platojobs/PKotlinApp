@@ -8,6 +8,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GO_DIR="${PJGOIOT_DIR:-$ROOT/../PJGoIoT}"
+ORIG_GO_DIR="$GO_DIR"
+PINNED_DIR=""
 LOG_DIR="${E2E_LOG_DIR:-}"
 LOG="$(mktemp "${TMPDIR:-/tmp}/pjgoiot-e2e-log.XXXXXX")"
 RATE_LOG="$(mktemp "${TMPDIR:-/tmp}/pjgoiot-e2e-ratelimit.XXXXXX")"
@@ -34,6 +36,10 @@ cleanup() {
     [[ -n "$BIN" ]] && rm -f "$BIN"
     [[ -n "$LOG" ]] && rm -f "$LOG"
     [[ -n "$RATE_LOG" ]] && rm -f "$RATE_LOG"
+    if [[ -n "$PINNED_DIR" ]]; then
+        git -C "$ORIG_GO_DIR" worktree remove --force "$PINNED_DIR" >/dev/null 2>&1 \
+            || rm -rf "$PINNED_DIR"
+    fi
 }
 trap cleanup EXIT INT TERM
 
@@ -48,6 +54,33 @@ fail() {
     exit 1
 }
 
+# 把后端物化到固定 tag 上：HEAD 已在该 tag 时直接用，否则建临时 worktree。
+# CI 只 checkout 默认分支，因此不能依赖调用方手动切 tag。结果写入 GO_DIR / PINNED_DIR。
+resolve_backend_dir() {
+    local src="$1" ref="$2" want have tmp
+    git -C "$src" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+        || fail "无法确认后端版本：${src} 不是 git 仓库（期望 ${ref}）"
+    want="$(git -C "$src" rev-parse --verify --quiet "${ref}^{commit}" || true)"
+    if [[ -z "$want" ]]; then
+        echo "[E2E] 本地缺少 ${ref}，尝试 fetch" >&2
+        git -C "$src" fetch --force --depth=1 origin "refs/tags/${ref}:refs/tags/${ref}" >/dev/null 2>&1 || true
+        want="$(git -C "$src" rev-parse --verify --quiet "${ref}^{commit}" || true)"
+    fi
+    [[ -n "$want" ]] || fail "后端缺少标签 ${ref}，请先执行：git -C ${src} fetch --tags"
+    have="$(git -C "$src" rev-parse HEAD)"
+    if [[ "$have" == "$want" ]]; then
+        GO_DIR="$src"
+        PINNED_DIR=""
+        return 0
+    fi
+    tmp="$(mktemp -d "${TMPDIR:-/tmp}/pjgoiot-${ref//[^A-Za-z0-9._-]/_}.XXXXXX")"
+    echo "[E2E] 后端 HEAD=${have:0:12} 不在 ${ref}，使用临时 worktree：${tmp}" >&2
+    git -C "$src" worktree add --detach "$tmp" "$want" >/dev/null 2>&1 \
+        || fail "无法创建 ${ref} 的临时 worktree：${tmp}"
+    GO_DIR="$tmp"
+    PINNED_DIR="$tmp"
+}
+
 port_in_use() {
     lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1
 }
@@ -55,6 +88,13 @@ port_in_use() {
 command -v go >/dev/null 2>&1 || fail "未找到 go，可安装 Go 1.22+ 后重试"
 command -v curl >/dev/null 2>&1 || fail "未找到 curl"
 [[ -f "$GO_DIR/go.mod" ]] || fail "未找到 Go 后端：${GO_DIR}（可用 PJGOIOT_DIR 指定）"
+
+# 后端版本 pin：e2e 必须跑在固定 tag 上，否则「哪个后端都能过」。
+# HEAD 不在 tag 时由 resolve_backend_dir 用临时 worktree 物化，退出时清理。
+BACKEND_REF="${E2E_BACKEND_REF:-v0.26.0}"
+BACKEND_VERSION="${BACKEND_REF#v}"
+resolve_backend_dir "$ORIG_GO_DIR" "$BACKEND_REF"
+echo "[E2E] 后端版本：${BACKEND_REF}"
 
 # 统一使用 JDK 21，避免本机默认 JDK 过高导致 AGP 失败。
 if [[ -x /usr/libexec/java_home ]]; then
@@ -156,6 +196,7 @@ echo "[E2E] 执行 Gradle 契约测试：:app:e2eContract"
 set +e
 (cd "$ROOT" && ./gradlew --console=plain :app:e2eContract \
     -Pe2eBaseUrl="$BASE_URL" \
+    -Pe2eBackendVersion="$BACKEND_VERSION" \
     -Pe2eFeedbackLimitBaseUrl="$RATE_BASE_URL")
 STATUS=$?
 set -e

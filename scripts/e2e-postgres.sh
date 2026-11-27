@@ -11,10 +11,12 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GO_DIR="${PJGOIOT_DIR:-$ROOT/../PJGoIoT}"
-STATE_DIR="${E2E_STATE_DIR:-$GO_DIR/.e2e}"
+ORIG_GO_DIR="$GO_DIR"
+PINNED_DIR=""
+STATE_DIR=""
 LOG_DIR="${E2E_LOG_DIR:-}"
-STACK="$GO_DIR/scripts/stack-for-e2e.sh"
-SEED="$GO_DIR/scripts/seed-for-e2e.sh"
+STACK=""
+SEED=""
 
 fail() {
     echo "[E2E:pg] 失败：$*" >&2
@@ -24,22 +26,64 @@ fail() {
 cleanup() {
     local rc=$?
     # 失败时保留 API 日志，供 CI artifact 上传排查。
-    if [[ $rc -ne 0 && -n "$LOG_DIR" && -f "$STATE_DIR/api.log" ]]; then
+    if [[ $rc -ne 0 && -n "$LOG_DIR" && -n "$STATE_DIR" && -f "$STATE_DIR/api.log" ]]; then
         mkdir -p "$LOG_DIR"
         cp "$STATE_DIR/api.log" "$LOG_DIR/postgres-api.log"
     fi
-    (cd "$GO_DIR" && bash "$STACK" --stop) >/dev/null 2>&1 || true
+    if [[ -n "$STACK" ]]; then
+        (cd "$GO_DIR" && bash "$STACK" --stop) >/dev/null 2>&1 || true
+    fi
+    if [[ -n "$PINNED_DIR" ]]; then
+        git -C "$ORIG_GO_DIR" worktree remove --force "$PINNED_DIR" >/dev/null 2>&1 \
+            || rm -rf "$PINNED_DIR"
+    fi
     exit "$rc"
 }
 trap cleanup EXIT INT TERM
+
+# 把后端物化到固定 tag 上：HEAD 已在该 tag 时直接用，否则建临时 worktree。
+# CI 只 checkout 默认分支，因此不能依赖调用方手动切 tag。结果写入 GO_DIR / PINNED_DIR。
+resolve_backend_dir() {
+    local src="$1" ref="$2" want have tmp
+    git -C "$src" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+        || fail "无法确认后端版本：${src} 不是 git 仓库（期望 ${ref}）"
+    want="$(git -C "$src" rev-parse --verify --quiet "${ref}^{commit}" || true)"
+    if [[ -z "$want" ]]; then
+        echo "[E2E:pg] 本地缺少 ${ref}，尝试 fetch" >&2
+        git -C "$src" fetch --force --depth=1 origin "refs/tags/${ref}:refs/tags/${ref}" >/dev/null 2>&1 || true
+        want="$(git -C "$src" rev-parse --verify --quiet "${ref}^{commit}" || true)"
+    fi
+    [[ -n "$want" ]] || fail "后端缺少标签 ${ref}，请先执行：git -C ${src} fetch --tags"
+    have="$(git -C "$src" rev-parse HEAD)"
+    if [[ "$have" == "$want" ]]; then
+        GO_DIR="$src"
+        PINNED_DIR=""
+        return 0
+    fi
+    tmp="$(mktemp -d "${TMPDIR:-/tmp}/pjgoiot-${ref//[^A-Za-z0-9._-]/_}.XXXXXX")"
+    echo "[E2E:pg] 后端 HEAD=${have:0:12} 不在 ${ref}，使用临时 worktree：${tmp}" >&2
+    git -C "$src" worktree add --detach "$tmp" "$want" >/dev/null 2>&1 \
+        || fail "无法创建 ${ref} 的临时 worktree：${tmp}"
+    GO_DIR="$tmp"
+    PINNED_DIR="$tmp"
+}
 
 command -v docker >/dev/null 2>&1 || fail "未找到 docker"
 docker info >/dev/null 2>&1 || fail "Docker daemon 不可用"
 command -v go >/dev/null 2>&1 || fail "未找到 go"
 command -v curl >/dev/null 2>&1 || fail "未找到 curl"
 command -v python3 >/dev/null 2>&1 || fail "未找到 python3"
+
+# 后端版本 pin：fixture / Postgres 两条链必须跑同一固定版本。
+BACKEND_REF="${E2E_BACKEND_REF:-v0.26.0}"
+BACKEND_VERSION="${BACKEND_REF#v}"
+resolve_backend_dir "$ORIG_GO_DIR" "$BACKEND_REF"
+STATE_DIR="${E2E_STATE_DIR:-$GO_DIR/.e2e}"
+STACK="$GO_DIR/scripts/stack-for-e2e.sh"
+SEED="$GO_DIR/scripts/seed-for-e2e.sh"
 [[ -f "$STACK" ]] || fail "未找到 ${STACK}（可用 PJGOIOT_DIR 指定后端仓库）"
 [[ -f "$SEED" ]] || fail "未找到 ${SEED}"
+echo "[E2E:pg] 后端版本：${BACKEND_REF}"
 
 # 统一使用 JDK 21，避免本机默认 JDK 过高导致 AGP 失败。
 if [[ -x /usr/libexec/java_home ]]; then
@@ -67,7 +111,9 @@ bash "$SEED" || fail "seed 失败"
 
 echo "[E2E:pg] 执行 Gradle 契约套件：:app:e2ePostgres"
 set +e
-(cd "$ROOT" && ./gradlew --console=plain :app:e2ePostgres -Pe2eBaseUrl="$BASE_URL")
+(cd "$ROOT" && ./gradlew --console=plain :app:e2ePostgres \
+    -Pe2eBaseUrl="$BASE_URL" \
+    -Pe2eBackendVersion="$BACKEND_VERSION")
 STATUS=$?
 set -e
 [[ "$STATUS" -eq 0 ]] || fail "Postgres 契约套件未通过（exit=${STATUS}）"

@@ -327,6 +327,8 @@ app/src/main/java/com/platojobs/pkotlinapp/
 - JDK 21；
 - 与本仓库同级的 `PJGoIoT` 目录（也可用 `PJGOIOT_DIR=/path/to/PJGoIoT` 指定）。
 
+脚本会固定到后端 `v0.26.0`：HEAD 已在该 tag 时直接使用；否则自动创建临时 worktree 物化该版本（不改动你的工作区），退出时清理。可用 `E2E_BACKEND_REF` 覆盖版本。测试还会比对 `health.version`，确保实际运行的二进制也是该版本。
+
 ```bash
 ./scripts/e2e-contract.sh
 ```
@@ -359,7 +361,7 @@ JVM 测试用 OkHttp 直连本地服务，不依赖模拟器，覆盖：
 - catalog：`firmwares` / `accessories` 均带 `vendor` 与 `compatibility`，未注册型号 catalog 返回 404；
 - 生产 Retrofit `SyncApi` 的匿名登录、changes 解析与 push（`toPushDto` 映射）实际调用通过。
 
-本机实跑结果（2026-11-05，PJGoIoT v0.3.3）：上述 22 项全部通过；另验证了 8080 被占用时自动回退 18080。
+本机实跑结果（2026-11-27，PJGoIoT v0.26.0）：全部用例通过；另验证了 8080 被占用时自动回退 18080。
 
 ### CI 里的契约联调
 
@@ -367,7 +369,7 @@ GitHub Actions 的 `e2e-contract` job 与 `verify` job **并行**执行，不会
 
 job 做了这些事：
 
-1. checkout 本仓库，并用 `actions/checkout@v7` 的 `path` 把 `platojobs/PJGoIoT` 放到 `PJGoIoT/`；
+1. checkout 本仓库，并用 `actions/checkout@v7` 的 `path` 把 `platojobs/PJGoIoT` 放到 `PJGoIoT/`；脚本检测到默认分支 HEAD 不在 `v0.26.0` 时会自动用临时 worktree 物化该 tag；
 2. `actions/setup-go@v7` 按 `PJGoIoT/go.mod` 安装 Go 1.22+，`actions/setup-java@v6` 安装 JDK 21；
 3. 以 `PJGOIOT_DIR=${{ github.workspace }}/PJGoIoT` 执行 `./scripts/e2e-contract.sh`（脚本自带 8080 → 18080 端口回退与 health 轮询）；
 4. 无论成败上传 `app/build/reports/tests/e2eContract` 与 `app/build/test-results/e2eContract`；
@@ -870,7 +872,7 @@ Content-Type: application/json
 
 ## 15. 真存储契约联调
 
-`scripts/e2e-postgres.sh` 一条命令完成：起栈 → seed → 跑契约套件 → 410 分支 → 停栈。
+`scripts/e2e-postgres.sh` 一条命令完成：起栈 → seed → 跑契约套件 → presence 三态 → 410 分支 → 停栈。后端同样固定在 `v0.26.0`。
 
 ```bash
 ./scripts/e2e-postgres.sh
@@ -881,8 +883,9 @@ Content-Type: application/json
 1. `PJGoIoT/scripts/stack-for-e2e.sh` 起 `postgres:16-alpine`、迁移到最新、以 `STORE=postgres` 启动 API；
 2. `scripts/seed-for-e2e.sh` 写入真实 seed 关联设备与 24 条读数，并从 API 读回校验；
 3. `:app:e2ePostgres` 与 fixture 共用用例，另加 Postgres 专属断言：`expiresAt`、push、changes、limit 边界、series/metrics、注销 401、家庭与结构同步链路；
-4. 410 分支：把用户最老结构变更的 `server_ts` 改到 100 天前 → 跑 `cmd/cleanup` → 旧游标返回 `410 RESYNC_REQUIRED`，`cursor=0` 拉回剩余变更；
-5. 无论成败都停栈；失败时 `api.log` 复制到 `E2E_LOG_DIR` 供 CI artifact。
+4. presence 三态真实派生：push 后 `online` → SQL 把 `last_seen_at` 回拨 20 分钟 → `offline`（`lastSeenAt` 保留）→ 从未上报 `unknown`（`lastSeenAt` 为 null）；
+5. 410 分支：把用户最老结构变更的 `server_ts` 改到 100 天前 → 跑 `cmd/cleanup` → 旧游标返回 `410 RESYNC_REQUIRED`，`cursor=0` 拉回剩余变更；
+6. 无论成败都停栈；失败时 `api.log` 复制到 `E2E_LOG_DIR` 供 CI artifact。
 
 CI 的 `e2e-postgres` job 跑同一脚本，日志与报告见 <https://github.com/platojobs/PKotlinApp/actions/workflows/android.yml>。
 

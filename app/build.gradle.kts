@@ -56,8 +56,8 @@ android {
         applicationId = "com.platojobs.pkotlinapp"
         minSdk = 24
         targetSdk = 36
-        versionCode = 60
-        versionName = "0.32.16"
+        versionCode = 61
+        versionName = "0.32.17"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
     }
@@ -151,6 +151,11 @@ tasks.register<Test>("e2eContract") {
         "e2eBaseUrl",
         providers.gradleProperty("e2eBaseUrl").orNull ?: "http://127.0.0.1:8080",
     )
+    // 后端版本 pin：脚本按 tag 校验源码，测试再按 health.version 校验运行时。
+    systemProperty(
+        "e2eBackendVersion",
+        providers.gradleProperty("e2eBackendVersion").orNull ?: "0.26.0",
+    )
     // 低限流 fixture（账号 3/min）；未提供时对应用例自动跳过。
     systemProperty(
         "e2eFeedbackLimitBaseUrl",
@@ -191,6 +196,10 @@ tasks.register<Test>("e2ePostgres") {
         providers.gradleProperty("e2eBaseUrl").orNull ?: "http://127.0.0.1:8080",
     )
     systemProperty("e2eStore", "postgres")
+    systemProperty(
+        "e2eBackendVersion",
+        providers.gradleProperty("e2eBackendVersion").orNull ?: "0.26.0",
+    )
     testLogging {
         showStandardStreams = true
         events("passed", "failed", "skipped")

@@ -136,6 +136,20 @@ interface RuleRepository {
 
     suspend fun setEnabled(id: Long, enabled: Boolean)
 
+    /**
+     * 编辑规则内容（类型/阈值/指标参数）；保留 id、启用状态与触发历史。
+     * 指标规则传 metric/comparator/thresholdValue/consecutive，其他类型只传 threshold。
+     */
+    suspend fun updateRule(
+        id: Long,
+        type: RuleType,
+        threshold: Int,
+        metric: String? = null,
+        comparator: RuleComparator = RuleComparator.GREATER,
+        thresholdValue: Double = 0.0,
+        consecutive: Int = 1,
+    )
+
     suspend fun deleteRule(id: Long)
 
     suspend fun markTriggered(id: Long, timestamp: Long)

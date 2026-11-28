@@ -529,6 +529,22 @@ interface RuleDao {
     @Query("UPDATE rules SET enabled = :enabled WHERE id = :id")
     suspend fun setEnabled(id: Long, enabled: Boolean)
 
+    /** 编辑规则内容：保留 id、启用状态、创建时间与触发历史，场景绑定由场景编辑器维护。 */
+    @Query(
+        "UPDATE rules SET type = :type, threshold = :threshold, comparator = :comparator, " +
+            "metric = :metric, thresholdValue = :thresholdValue, consecutive = :consecutive " +
+            "WHERE id = :id",
+    )
+    suspend fun update(
+        id: Long,
+        type: String,
+        threshold: Int,
+        comparator: String,
+        metric: String?,
+        thresholdValue: Double,
+        consecutive: Int,
+    )
+
     @Query("DELETE FROM rules WHERE id = :id")
     suspend fun delete(id: Long)
 

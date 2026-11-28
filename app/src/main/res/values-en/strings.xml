@@ -90,6 +90,7 @@
     <string name="rule_bond_lost">Bond information lost</string>
     <string name="rule_threshold_value">Threshold %1$d dBm</string>
     <string name="rule_add_title">New local rule</string>
+    <string name="rule_edit_title">Edit local rule</string>
     <string name="rule_type_label">Rule type</string>
     <string name="rule_threshold_hint">RSSI threshold (-100 to 0)</string>
     <string name="rule_threshold_error">Enter an integer between -100 and 0</string>

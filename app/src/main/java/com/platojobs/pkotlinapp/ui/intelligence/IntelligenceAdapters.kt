@@ -74,6 +74,7 @@ private fun metricLabel(context: android.content.Context, metric: String?): Stri
 class RuleAdapter(
     private val onToggle: (DeviceRule, Boolean) -> Unit,
     private val onDelete: (DeviceRule) -> Unit,
+    private val onEdit: (DeviceRule) -> Unit,
 ) : ListAdapter<DeviceRule, RuleAdapter.ViewHolder>(DIFF) {
 
     init {
@@ -84,7 +85,7 @@ class RuleAdapter(
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
         val binding = ItemRuleBinding.inflate(LayoutInflater.from(parent.context), parent, false)
-        return ViewHolder(binding, onToggle, onDelete)
+        return ViewHolder(binding, onToggle, onDelete, onEdit)
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
@@ -95,6 +96,7 @@ class RuleAdapter(
         private val binding: ItemRuleBinding,
         private val onToggle: (DeviceRule, Boolean) -> Unit,
         private val onDelete: (DeviceRule) -> Unit,
+        private val onEdit: (DeviceRule) -> Unit,
     ) : RecyclerView.ViewHolder(binding.root) {
 
         fun bind(rule: DeviceRule) {
@@ -149,6 +151,7 @@ class RuleAdapter(
                 onToggle(rule, isChecked)
             }
             binding.deleteRuleButton.setOnClickListener { onDelete(rule) }
+            binding.root.setOnClickListener { onEdit(rule) }
         }
     }
 

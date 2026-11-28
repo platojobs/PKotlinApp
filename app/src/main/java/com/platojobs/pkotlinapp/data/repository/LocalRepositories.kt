@@ -194,6 +194,24 @@ class RuleRepositoryImpl(
 
     override suspend fun setEnabled(id: Long, enabled: Boolean) = dao.setEnabled(id, enabled)
 
+    override suspend fun updateRule(
+        id: Long,
+        type: RuleType,
+        threshold: Int,
+        metric: String?,
+        comparator: RuleComparator,
+        thresholdValue: Double,
+        consecutive: Int,
+    ) = dao.update(
+        id = id,
+        type = type.name,
+        threshold = threshold,
+        comparator = comparator.name,
+        metric = metric,
+        thresholdValue = thresholdValue,
+        consecutive = MetricThreshold.sanitizeConsecutive(consecutive),
+    )
+
     override suspend fun deleteRule(id: Long) = dao.delete(id)
 
     override suspend fun markTriggered(id: Long, timestamp: Long) =

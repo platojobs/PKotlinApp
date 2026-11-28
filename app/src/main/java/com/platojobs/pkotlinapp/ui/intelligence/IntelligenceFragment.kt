@@ -28,6 +28,7 @@ import com.platojobs.pkotlinapp.databinding.DialogSceneEditBinding
 import com.platojobs.pkotlinapp.databinding.FragmentIntelligenceBinding
 import com.platojobs.pkotlinapp.databinding.ItemSceneEditActionBinding
 import com.platojobs.pkotlinapp.domain.model.Device
+import com.platojobs.pkotlinapp.domain.model.DeviceRule
 import com.platojobs.pkotlinapp.domain.model.RuleComparator
 import com.platojobs.pkotlinapp.domain.model.RuleType
 import com.platojobs.pkotlinapp.domain.model.displayName
@@ -48,6 +49,7 @@ import com.platojobs.pkotlinapp.ui.common.SkeletonView
 import com.platojobs.pkotlinapp.ui.common.ThreeStateHost
 import com.platojobs.pkotlinapp.ui.common.applyBottomInsetPadding
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 /**
  * 智能模块：自动化（规则与最近触发）+ 场景（仅本机）。
@@ -79,6 +81,7 @@ class IntelligenceFragment : Fragment(R.layout.fragment_intelligence) {
         ruleAdapter = RuleAdapter(
             onToggle = { rule, enabled -> viewModel.setRuleEnabled(rule, enabled) },
             onDelete = { rule -> viewModel.deleteRule(rule) },
+            onEdit = { rule -> showRuleDialog(rule) },
         )
         eventAdapter = RuleEventAdapter()
         sceneAdapter = SceneAdapter(
@@ -110,7 +113,7 @@ class IntelligenceFragment : Fragment(R.layout.fragment_intelligence) {
                 setIcon(R.drawable.ic_intelligence)
                 setTitle(getString(R.string.intelligence_rules_empty_title))
                 setHint(getString(R.string.intelligence_rules_empty_hint))
-                setAction(getString(R.string.intelligence_rules_add)) { showAddRuleDialog() }
+                setAction(getString(R.string.intelligence_rules_add)) { showRuleDialog() }
             }
         }
         bindSectionEmpty(binding.scenesEmptyContainer) {
@@ -129,7 +132,7 @@ class IntelligenceFragment : Fragment(R.layout.fragment_intelligence) {
             }
         }
 
-        binding.addRuleButton.setOnClickListener { showAddRuleDialog() }
+        binding.addRuleButton.setOnClickListener { showRuleDialog() }
         binding.recommendRulesButton.setOnClickListener { showRecommendationsDialog() }
         binding.addSceneButton.setOnClickListener { showSceneDialog(null) }
         binding.clearRunsButton.setOnClickListener { confirmClearRuns() }
@@ -224,14 +227,18 @@ class IntelligenceFragment : Fragment(R.layout.fragment_intelligence) {
         )
     }
 
-    private fun showAddRuleDialog() {
+    /** 打开规则弹窗；[existing] 非空时是编辑，空时是新增。 */
+    private fun showRuleDialog(existing: DeviceRule? = null) {
         viewLifecycleOwner.lifecycleScope.launch {
             // 只有真实采集过的指标才出现在下拉里；无读数时隐藏指标阈值选项。
-            buildAddRuleDialog(viewModel.availableMetrics())
+            // 编辑中的规则若指标暂时没有本地读数，也要保留在列表里，避免无法保存。
+            val metrics = viewModel.availableMetrics().toMutableList()
+            existing?.metric?.takeIf { it.isNotBlank() && it !in metrics }?.let(metrics::add)
+            buildRuleDialog(metrics, existing)
         }
     }
 
-    private fun buildAddRuleDialog(metrics: List<String>) {
+    private fun buildRuleDialog(metrics: List<String>, existing: DeviceRule?) {
         val dialogBinding = DialogRuleAddBinding.inflate(layoutInflater)
         dialogBinding.typeMetric.visibility = if (metrics.isEmpty()) View.GONE else View.VISIBLE
 
@@ -287,8 +294,39 @@ class IntelligenceFragment : Fragment(R.layout.fragment_intelligence) {
         dialogBinding.typeGroup.setOnCheckedChangeListener { _, _ -> renderType() }
         renderType()
 
+        existing?.let { rule ->
+            dialogBinding.typeGroup.check(
+                when (rule.type) {
+                    RuleType.DISCONNECTED,
+                    RuleType.DEVICE_OFFLINE,
+                    -> R.id.typeDisconnected
+                    RuleType.BOND_LOST -> R.id.typeBondLost
+                    RuleType.METRIC_THRESHOLD -> R.id.typeMetric
+                    else -> R.id.typeLowRssi
+                },
+            )
+            dialogBinding.thresholdInput.setText(
+                String.format(Locale.getDefault(), "%d", rule.threshold),
+            )
+            dialogBinding.metricSpinner.setSelection(
+                metrics.indexOf(rule.metric.orEmpty()).coerceAtLeast(0),
+            )
+            dialogBinding.comparatorSpinner.setSelection(
+                comparators.indexOf(rule.comparator).coerceAtLeast(0),
+            )
+            dialogBinding.metricThresholdInput.setText(
+                MetricThreshold.formatValue(rule.thresholdValue),
+            )
+            dialogBinding.consecutiveInput.setText(
+                String.format(Locale.getDefault(), "%d", rule.consecutive),
+            )
+            renderType()
+        }
+
         val dialog = MaterialAlertDialogBuilder(requireContext())
-            .setTitle(R.string.rule_add_title)
+            .setTitle(
+                if (existing == null) R.string.rule_add_title else R.string.rule_edit_title,
+            )
             .setView(dialogBinding.root)
             .setNegativeButton(R.string.action_cancel, null)
             .setPositiveButton(R.string.action_save, null)
@@ -315,12 +353,26 @@ class IntelligenceFragment : Fragment(R.layout.fragment_intelligence) {
                         }
                         dialogBinding.metricThresholdLayout.error = null
                         dialogBinding.consecutiveLayout.error = null
-                        viewModel.addMetricRule(
-                            metric = metric,
-                            comparator = comparators[dialogBinding.comparatorSpinner.selectedItemPosition],
-                            threshold = threshold,
-                            consecutive = consecutive,
-                        )
+                        val comparator =
+                            comparators[dialogBinding.comparatorSpinner.selectedItemPosition]
+                        if (existing == null) {
+                            viewModel.addMetricRule(
+                                metric = metric,
+                                comparator = comparator,
+                                threshold = threshold,
+                                consecutive = consecutive,
+                            )
+                        } else {
+                            viewModel.updateRule(
+                                rule = existing,
+                                type = RuleType.METRIC_THRESHOLD,
+                                threshold = 0,
+                                metric = metric,
+                                comparator = comparator,
+                                thresholdValue = threshold,
+                                consecutive = consecutive,
+                            )
+                        }
                     }
 
                     else -> {
@@ -336,11 +388,15 @@ class IntelligenceFragment : Fragment(R.layout.fragment_intelligence) {
                         } else {
                             0
                         }
-                        viewModel.addRule(type, threshold)
+                        if (existing == null) {
+                            viewModel.addRule(type, threshold)
+                        } else {
+                            viewModel.updateRule(existing, type, threshold)
+                        }
                     }
                 }
                 dialog.dismiss()
-                requestNotificationIfNeeded()
+                if (existing == null) requestNotificationIfNeeded()
             }
         }
         dialog.show()

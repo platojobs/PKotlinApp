@@ -90,6 +90,7 @@
     <string name="rule_bond_lost">绑定信息丢失</string>
     <string name="rule_threshold_value">阈值 %1$d dBm</string>
     <string name="rule_add_title">新增本地规则</string>
+    <string name="rule_edit_title">编辑本地规则</string>
     <string name="rule_type_label">规则类型</string>
     <string name="rule_threshold_hint">RSSI 阈值（-100 ~ 0）</string>
     <string name="rule_threshold_error">请输入 -100 到 0 之间的整数</string>

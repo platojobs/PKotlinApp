@@ -197,6 +197,36 @@ class IntelligenceViewModel(
         }
     }
 
+    fun updateRule(
+        rule: DeviceRule,
+        type: RuleType,
+        threshold: Int,
+        metric: String? = null,
+        comparator: RuleComparator = RuleComparator.GREATER,
+        thresholdValue: Double = 0.0,
+        consecutive: Int = 1,
+    ) {
+        viewModelScope.launch {
+            runCatching {
+                ruleRepository.updateRule(
+                    id = rule.id,
+                    type = type,
+                    threshold = threshold,
+                    metric = metric,
+                    comparator = comparator,
+                    thresholdValue = thresholdValue,
+                    consecutive = consecutive,
+                )
+            }
+                .onSuccess { ruleEngine.refresh() }
+                .onFailure {
+                    _messages.tryEmit(
+                        it.message ?: appContext.getString(R.string.intelligence_rule_save_failed),
+                    )
+                }
+        }
+    }
+
     fun setRuleEnabled(rule: DeviceRule, enabled: Boolean) {
         viewModelScope.launch {
             runCatching { ruleRepository.setEnabled(rule.id, enabled) }

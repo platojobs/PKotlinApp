@@ -44,6 +44,16 @@ class RuleEngineTest {
 
         override suspend fun setEnabled(id: Long, enabled: Boolean) = Unit
 
+        override suspend fun updateRule(
+            id: Long,
+            type: RuleType,
+            threshold: Int,
+            metric: String?,
+            comparator: RuleComparator,
+            thresholdValue: Double,
+            consecutive: Int,
+        ) = Unit
+
         override suspend fun deleteRule(id: Long) = Unit
 
         override suspend fun markTriggered(id: Long, timestamp: Long) {

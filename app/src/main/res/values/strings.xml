@@ -156,7 +156,8 @@
     <string name="device_remove_message">将从账号中移除该设备，并删除本机记录。设备再次上报后可重新添加。</string>
     <string name="device_remove_confirm">移除</string>
     <string name="device_remove_in_progress">正在移除…</string>
-    <string name="device_remove_success">设备已移除</string>
+    <string name="device_remove_queued">已加入待解绑，联网后自动重试</string>
+    <string name="device_pending_delete_hint">待解绑 · 联网后自动重试</string>
     <string name="device_remove_failed">移除失败，请检查网络后重试</string>
     <string name="device_edit_group_hint">留空表示未分组</string>
     <string name="device_edit_save">保存</string>

@@ -34,6 +34,8 @@ class SyncManager(
     private val householdSyncer: HouseholdSyncer? = null,
     /** 场景同步（可选）；失败保留本地 pending，不阻塞设备/读数同步。 */
     private val sceneSyncer: com.platojobs.pkotlinapp.data.scene.SceneSyncer? = null,
+    /** 待解绑队列（可选）：每次同步前先补做未完成的 DELETE。 */
+    private val pendingUnbind: PendingUnbindProcessor? = null,
     scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
 ) {
 
@@ -54,6 +56,7 @@ class SyncManager(
     suspend fun coldStartPull(): Boolean = mutex.withLock {
         if (statusStore.state.value.authExpired) return@withLock false
         try {
+            pendingUnbind?.process()
             engine.pullChanges()
             applyStructuralSafely()
             if (engine.lastPullWasResync) {
@@ -78,6 +81,8 @@ class SyncManager(
     suspend fun syncNow(): SyncOutcome = mutex.withLock {
         if (statusStore.state.value.authExpired) throw AuthExpiredException()
         try {
+            // 先补做已确认但未成功的解绑，再推送/拉取，避免「待解绑」设备又出现在列表。
+            pendingUnbind?.process()
             val outcome = engine.syncAll()
             applyStructuralSafely()
             // 设备先落服务端，再补传读数；同一 push 契约、独立 200/批的幂等批次。
@@ -121,6 +126,8 @@ class SyncManager(
         householdSyncer?.onRelogin()
         statusStore.resetForRelogin()
         try {
+            // 重新登录也是同步入口：先补做未完成的解绑，避免待解绑设备跟着新账号又冒出来。
+            pendingUnbind?.process()
             val outcome = engine.syncAll()
             applyStructuralSafely()
             readingSyncer.syncPending()

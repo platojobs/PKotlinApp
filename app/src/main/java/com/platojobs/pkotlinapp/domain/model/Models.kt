@@ -93,6 +93,11 @@ data class Device(
      * 服务端只读字段，只用于展示 presence 与「最近上报」，不参与 LWW，也不参与上报。
      */
     val lastSeenAt: Long? = null,
+    /**
+     * 待解绑：用户已确认删除，但服务端 DELETE 尚未成功（离线/失败）。
+     * 同步前先补做解绑，成功后物理删除本地行；该行不进入 /sync/push。
+     */
+    val pendingDelete: Boolean = false,
 ) {
     /** 共享设备不允许本机修改房间归属（服务端会对非 owner 返回 404）。 */
     val canEditRoom: Boolean get() = !shared

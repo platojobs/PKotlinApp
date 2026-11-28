@@ -57,6 +57,9 @@ data class DeviceEntity(
     @ColumnInfo(defaultValue = "0") val markedAtDirty: Boolean = false,
     // 服务端最后一次接受读数上报的接收时间；null 表示从未上报。只读，不参与上报/LWW。
     val lastSeenAt: Long? = null,
+    // 待解绑：用户已点删除但服务端 DELETE 尚未成功（离线/失败）。行保留并标注「待解绑」，
+    // 同步前先补做解绑，成功后再物理删除；该行不进入 /sync/push。
+    @ColumnInfo(defaultValue = "0") val pendingDelete: Boolean = false,
 )
 
 /** 本地家庭：remoteId 为服务端 UUID；id 为本地自增，供房间/设备外键引用。 */

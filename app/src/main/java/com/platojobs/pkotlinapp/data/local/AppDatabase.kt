@@ -372,6 +372,16 @@ internal object DeviceMarkDirtyMigrationSql {
     )
 }
 
+/**
+ * v25 -> v26：设备新增「待解绑」标记。
+ * 历史行默认 0（没有未完成的解绑请求），不改动任何既有字段。
+ */
+internal object DevicePendingDeleteMigrationSql {
+    val V25_TO_V26 = listOf(
+        "ALTER TABLE `devices` ADD COLUMN `pendingDelete` INTEGER NOT NULL DEFAULT 0",
+    )
+}
+
 @Database(
     entities = [
         DeviceEntity::class,
@@ -389,7 +399,7 @@ internal object DeviceMarkDirtyMigrationSql {
         CatalogSyncEntity::class,
         PushDeviceEntity::class,
     ],
-    version = 25,
+    version = 26,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -635,6 +645,13 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v25 -> v26：设备新增 pendingDelete；既有行默认 0，不影响任何现网数据。 */
+        val MIGRATION_25_26 = object : Migration(25, 26) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                DevicePendingDeleteMigrationSql.V25_TO_V26.forEach(db::execSQL)
+            }
+        }
+
         @Volatile
         private var instance: AppDatabase? = null
 
@@ -669,6 +686,7 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_22_23,
                     MIGRATION_23_24,
                     MIGRATION_24_25,
+                    MIGRATION_25_26,
                 )
                     .build()
                     .also { instance = it }

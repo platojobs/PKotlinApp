@@ -223,7 +223,7 @@ app/src/main/java/com/platojobs/pkotlinapp/
 - **幂等推送**：`IdempotencyKeys.forBatch` 只对**实际会上报**的字段（含 alias/广播名/型号/分组、RSSI、时间）生成稳定的 SHA-256 key；未上报字段不参与哈希，避免同内容重试被算成不同请求而 409。同一 key + 同一请求体重放会命中服务端幂等缓存（`Idempotent-Replayed: true`），同一 key + 不同请求体返回 `409 IDEMPOTENCY_CONFLICT`。
 - **冲突处理**：服务端按 LWW 返回 `conflicts`（如 `server_newer`）时以服务端版本覆盖本地，但结果会通过 `SyncOutcome.conflicts` 上报，并显示在「我的」页，**不静默覆盖**。
 - **拉取合并**：若本地记录为 `pending` 且 `updatedAt` 更新，则不被较旧的服务端版本覆盖；服务端 tombstone（`op=delete` 或 `payload.deletedAt` 非空）直接删除本地记录，同一批里以**最后一条** `op` 决定行是否存在（后到的 upsert 会让设备复活）。
-- **设备解绑（契约 0.22.0）**：设备详情「移除设备」二次确认后调用 `DELETE api/v1/my/devices/{platform}/{externalId}`。返回 `204` 成功、`404` 视为「已不存在」同样按成功处理（不弹错误），其余状态码才提示失败。成功后硬删本地行（`DeviceDao` 物理删除），服务端 tombstone 由服务端维护；账号导出仍保留 tombstone 记录，客户端不隐藏。删除后若服务端收到 `updatedAt` **严格更新**的 push，会视为重新添加并复用同一 `(user_id, platform, external_id)` 行；本地已无旧 tombstone，设备可重新出现。共享设备（非 owner）服务端返回 404，界面基于本地 `shared` 标志隐藏「移除设备」入口。
+- **设备解绑（契约 0.22.0，待解绑队列）**：设备详情「移除设备」二次确认后**先落本地 `pendingDelete`**（行保留，卡片与详情显示「待解绑 · 联网后自动重试」），该行**不进入 `/sync/push`**，也不用本地软删冒充服务端删除。每次同步入口（`syncNow` / `coldStartPull` / `relogin`）前先补做未完成的 `DELETE api/v1/my/devices/{platform}/{externalId}`：`204` 与 `404`（已不存在）都视为成功并**物理删除本地行**，其余失败保留 `pendingDelete` 由 WorkManager 联网后按退避自动重试。服务端 tombstone 由服务端维护；账号导出仍保留 tombstone 记录，客户端不隐藏。删除后若服务端收到 `updatedAt` **严格更新**的 push，会视为重新添加并复用同一 `(user_id, platform, external_id)` 行；本地已无旧 tombstone，设备可重新出现。共享设备（非 owner）服务端返回 404，界面基于本地 `shared` 标志隐藏「移除设备」入口。增量落地仍按最后一条 `op` 决定行是否存在：待解绑行不会被「服务端仍存在」的 upsert 覆盖/复活。
 - **在线口径（openapi 0.21.0）**：服务端 `presence`（`unknown/online/offline`）由「最后一次被接受的读数上报接收时间」推导，`now - lastSeenAt <= 900s` 为 `online`，与 `recordedAt` 无关；`unknown`（从未上报）单独一档。客户端展示优先级为「本机 BLE 已连接 > 服务端 15 分钟内有上报 > 上报已超时 > 从未上报」，**不写不加限定的「在线」**：首页统计、设备卡片、房间详情汇总与设备行统一使用「本机已连接 / 15 分钟内有上报 / 超时未上报 / 从未上报」，房间详情与设备详情额外给出 `lastSeenAt` 的具体时间（服务端接收时间）。
 - **`lastSeenAt` 落库**：随 `/sync/changes` 与 `/my/devices` 增量写入本机 Room（`DeviceDao.applyLastSeenAt` 单列更新）。它是服务端只读字段：即使本地 `pending` 版本在 LWW 中胜出也会单独写入；写它**不置脏、不推进本地 `updatedAt`**，老后端缺该字段时保留本地值。`presence` 只在响应中实时推导，不落库、不参与上报。
 - **WorkManager**：`SyncWorker` 在 `NetworkType.CONNECTED` 约束下批量 push，成功后置 `synced`；失败按指数退避重试。
@@ -685,12 +685,14 @@ export JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk-21.jdk/Contents/Home
 
 ./gradlew assembleDebug        # Debug APK
 ./gradlew lintDebug            # Lint
-./gradlew testDebugUnitTest    # 单元测试（当前 495 个）
+./gradlew testDebugUnitTest    # 单元测试（当前 497 个）
 ./gradlew assembleRelease      # 签名 Release APK
 ./gradlew bundleRelease        # 签名 Release AAB
 
 ./scripts/e2e-contract.sh      # 契约联调（需本地 PJGoIoT；CI 的 e2e-contract job 自动执行）
 ```
+
+单元测试统一锁定 `@Config(sdk=[33])`。Robolectric 需要的 `android-all-instrumented` 工件由 Gradle 显式依赖（`robolectricAndroidAll`）解析，并复制到 `build/robolectric-android-all`，测试任务设置 `robolectric.offline=true` 与 `robolectric.dependency.dir`，因此运行时不再临时联网下载工件，CI 网络抖动不会造成假红。
 
 Debug 包路径：`app/build/outputs/apk/debug/app-debug.apk`
 

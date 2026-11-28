@@ -464,6 +464,15 @@ class HomeAdapter(
             binding.signal.visibility =
                 if (connected) View.VISIBLE else View.GONE
             binding.signal.setRssi(device.localRssi)
+            // 待解绑：行仍保留（等联网补做 DELETE），状态行明确显示「待解绑 / 联网后自动重试」。
+            if (device.pendingDelete) {
+                binding.connectionStatus.text =
+                    context.getString(R.string.device_pending_delete_hint)
+                binding.connectionStatus.setTextColor(
+                    ContextCompat.getColor(context, R.color.text_tertiary),
+                )
+                binding.signal.visibility = View.GONE
+            }
 
             fun renderReading(text: CharSequence, primary: Boolean, label: CharSequence?) {
                 binding.readingValue.text = text

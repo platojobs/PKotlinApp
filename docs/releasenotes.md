@@ -1,9 +1,10 @@
 # 发布说明
 
-当前最新 tag：`v0.32.19`。每个 tag 只有一句话主题，逐条改动见 `git log <tag>`。
+当前最新 tag：`v0.32.20`。每个 tag 只有一句话主题，逐条改动见 `git log <tag>`。
 
 | 版本 | 主题 |
 | --- | --- |
+| v0.32.20 | 设备解绑改为「待解绑」离线队列（与 iOS 一致）；CI 的 Robolectric android-all 改为 Gradle 显式依赖 + 离线目录，消除运行时下载假红 |
 | v0.32.19 | 设备解绑（契约 0.22.0）：`DELETE /my/devices` 204/404 清理本地行，增量按 `op=delete` 删除，旧 `updatedAt` 不复活 |
 | v0.32.18 | 规则支持编辑：点按规则卡片预填弹窗，改阈值/指标参数并保留启用状态与触发历史 |
 | v0.32.17 | e2e 固定后端 v0.26.0（源码 tag + health.version 双重校验）；fixture 改为断言真实 unknown，Postgres 链覆盖 presence 三态 |

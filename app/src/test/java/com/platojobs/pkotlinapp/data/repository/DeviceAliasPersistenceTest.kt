@@ -179,9 +179,16 @@ class DeviceAliasPersistenceTest {
         }
 
         override suspend fun pendingDevices(limit: Int): List<DeviceEntity> =
-            rows.values.filter { it.syncState == "pending" }
+            rows.values.filter { it.syncState == "pending" && !it.pendingDelete }
                 .sortedBy { it.updatedAt }
                 .take(limit)
+
+        override suspend fun markPendingDelete(mac: String) {
+            rows[mac]?.let { rows[mac] = it.copy(pendingDelete = true) }
+        }
+
+        override suspend fun pendingDeletes(): List<DeviceEntity> =
+            rows.values.filter { it.pendingDelete && it.deletedAt == null }
 
         override fun observePendingCount(): Flow<Int> = flowOf(
             rows.values.count { it.syncState == "pending" },

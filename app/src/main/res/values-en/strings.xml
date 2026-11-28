@@ -154,7 +154,8 @@
     <string name="device_remove_message">This removes the device from your account and deletes its local records. It can be added back after reporting again.</string>
     <string name="device_remove_confirm">Remove</string>
     <string name="device_remove_in_progress">Removing…</string>
-    <string name="device_remove_success">Device removed</string>
+    <string name="device_remove_queued">Queued for removal. Retrying when online.</string>
+    <string name="device_pending_delete_hint">Pending removal · retries when online</string>
     <string name="device_remove_failed">Remove failed. Check your network and retry.</string>
     <string name="device_edit_group_hint">Leave empty for no group</string>
     <string name="device_edit_save">Save</string>

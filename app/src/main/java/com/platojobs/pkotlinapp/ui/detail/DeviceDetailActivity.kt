@@ -242,6 +242,10 @@ class DeviceDetailActivity : AppCompatActivity() {
                     viewModel.unbind.collect { state -> renderUnbind(state) }
                 }
                 launch {
+                    // 待解绑期间按钮显示状态且不可重复点击；同步成功后页面会随数据行一起消失。
+                    viewModel.pendingDelete.collect { renderUnbind(viewModel.unbind.value) }
+                }
+                launch {
                     combine(viewModel.rooms, viewModel.roomId) { rooms, roomId -> rooms to roomId }
                         .collect { (rooms, roomId) -> renderRoom(rooms, roomId) }
                 }
@@ -496,17 +500,19 @@ class DeviceDetailActivity : AppCompatActivity() {
     }
 
     private fun renderUnbind(state: UnbindState) {
-        binding.removeDeviceButton.isEnabled = state != UnbindState.Running
+        val pending = viewModel.pendingDelete.value
+        val running = state == UnbindState.Running
+        binding.removeDeviceButton.isEnabled = !running && !pending
         binding.removeDeviceButton.text = getString(
-            if (state == UnbindState.Running) {
-                R.string.device_remove_in_progress
-            } else {
-                R.string.device_remove_action
+            when {
+                running -> R.string.device_remove_in_progress
+                pending -> R.string.device_pending_delete_hint
+                else -> R.string.device_remove_action
             },
         )
         when (state) {
             UnbindState.Success -> {
-                Toast.makeText(this, R.string.device_remove_success, Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, R.string.device_remove_queued, Toast.LENGTH_SHORT).show()
                 CollectionLauncher.stop(this)
                 finish()
             }

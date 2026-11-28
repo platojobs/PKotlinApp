@@ -56,8 +56,8 @@ android {
         applicationId = "com.platojobs.pkotlinapp"
         minSdk = 24
         targetSdk = 36
-        versionCode = 63
-        versionName = "0.32.19"
+        versionCode = 64
+        versionName = "0.32.20"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
     }
@@ -127,11 +127,40 @@ ksp {
 }
 
 // 依赖本机 Go 服务的契约联调测试默认不进入普通单测与 CI。
+//
+// Robolectric 运行时需要 android-all 工件。默认由 Robolectric 在测试进程里临时从 Maven
+// 下载，CI 网络抖动会偶发超时导致假红。这里把它声明为 Gradle 依赖并复制到本地目录，
+// 再配合 robolectric.offline + robolectric.dependency.dir，让下载/缓存/重试都由 Gradle
+// 负责，而不是运行时的临时拉取。测试统一 @Config(sdk = [33])，因此只需 API 33 的工件。
+val robolectricAndroidAll by configurations.creating {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+    isTransitive = false
+}
+dependencies {
+    add(
+        robolectricAndroidAll.name,
+        "org.robolectric:android-all-instrumented:13-robolectric-9030017-i7",
+    )
+}
+val robolectricAndroidAllDir = layout.buildDirectory.dir("robolectric-android-all")
+val prepareRobolectricAndroidAll by tasks.registering(Copy::class) {
+    from(robolectricAndroidAll)
+    into(robolectricAndroidAllDir)
+}
+
 tasks.withType<Test>().configureEach {
     if (name == "testDebugUnitTest" || name == "testReleaseUnitTest") {
         filter {
             excludeTestsMatching("*E2eContractTest")
         }
+        dependsOn(prepareRobolectricAndroidAll)
+        // 强制离线：只从本地依赖目录取 android-all，禁止运行时联网下载。
+        systemProperty("robolectric.offline", "true")
+        systemProperty(
+            "robolectric.dependency.dir",
+            robolectricAndroidAllDir.get().asFile.absolutePath,
+        )
     }
 }
 

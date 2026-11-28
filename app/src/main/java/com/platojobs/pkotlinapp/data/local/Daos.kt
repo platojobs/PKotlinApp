@@ -44,6 +44,19 @@ interface DeviceDao {
     )
     suspend fun tombstone(mac: String, timestamp: Long)
 
+    /**
+     * 待解绑：行保留并显示「待解绑 / 联网后自动重试」，同步前先补做 DELETE，
+     * 成功后再物理删除。该标记不改 deletedAt、不改 syncState，也不进入 /sync/push。
+     */
+    @Query("UPDATE devices SET pendingDelete = 1 WHERE mac = :mac")
+    suspend fun markPendingDelete(mac: String)
+
+    @Query(
+        "SELECT * FROM devices WHERE pendingDelete = 1 AND deletedAt IS NULL " +
+            "ORDER BY lastSeenTimestamp ASC",
+    )
+    suspend fun pendingDeletes(): List<DeviceEntity>
+
     /** 本地房间归属：null 表示移出房间回到「未分配」。 */
     @Query("UPDATE devices SET roomId = :roomId WHERE mac = :mac")
     suspend fun assignRoom(mac: String, roomId: Long?)
@@ -124,7 +137,10 @@ interface DeviceDao {
     )
     suspend fun clearHouseholdLinks()
 
-    @Query("SELECT * FROM devices WHERE syncState = 'pending' ORDER BY updatedAt ASC LIMIT :limit")
+    @Query(
+        "SELECT * FROM devices WHERE syncState = 'pending' AND pendingDelete = 0 " +
+            "ORDER BY updatedAt ASC LIMIT :limit",
+    )
     suspend fun pendingDevices(limit: Int): List<DeviceEntity>
 
     @Query("SELECT COUNT(*) FROM devices WHERE syncState = 'pending'")

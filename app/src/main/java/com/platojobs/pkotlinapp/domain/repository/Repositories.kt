@@ -39,7 +39,11 @@ interface DeviceRepository {
 
     fun observeDevice(mac: String): Flow<Device?>
 
-    suspend fun deleteDevice(mac: String)
+    /**
+     * 标记「待解绑」：本地行保留并显示待解绑状态，同步前补做服务端 DELETE，
+     * 成功（204/404）后再物理删除；该行不进入 /sync/push。
+     */
+    suspend fun markPendingDelete(mac: String)
 
     /** 把设备移入房间；[roomId] 为 null 时回到「未分配」。 */
     suspend fun assignRoom(mac: String, roomId: Long?)

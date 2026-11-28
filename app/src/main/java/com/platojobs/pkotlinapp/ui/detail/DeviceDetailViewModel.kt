@@ -34,7 +34,6 @@ import com.platojobs.pkotlinapp.domain.reading.ReadingSeriesBucketing
 import com.platojobs.pkotlinapp.domain.reading.ReadingSummary
 import com.platojobs.pkotlinapp.domain.repository.DeviceInfoRepository
 import com.platojobs.pkotlinapp.domain.repository.DeviceRepository
-import com.platojobs.pkotlinapp.domain.repository.DeviceUnbindRepository
 import com.platojobs.pkotlinapp.domain.repository.ReadingRepository
 import com.platojobs.pkotlinapp.domain.repository.RoomRepository
 import com.platojobs.pkotlinapp.domain.rule.RuleEngine
@@ -121,7 +120,6 @@ class DeviceDetailViewModel(
     private val bleConnectionManager: BleConnectionManager,
     private val deviceInfoRepository: DeviceInfoRepository,
     private val deviceRepository: DeviceRepository,
-    private val deviceUnbindRepository: DeviceUnbindRepository,
     private val ruleEngine: RuleEngine,
     private val syncScheduler: SyncScheduler,
     private val readingRepository: ReadingRepository,
@@ -152,12 +150,20 @@ class DeviceDetailViewModel(
         .map { it?.shared == true }
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
+    /** 已加入待解绑队列：卡片与详情页据此显示「待解绑 / 联网后自动重试」。 */
+    val pendingDelete: StateFlow<Boolean> = deviceRepository.observeDevice(mac)
+        .map { it?.pendingDelete == true }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
     private val _unbind = MutableStateFlow<UnbindState>(UnbindState.Idle)
     val unbind: StateFlow<UnbindState> = _unbind.asStateFlow()
 
     /**
-     * 解绑本人设备：先断开会话，再调服务端；204/404 都视为已不存在。
-     * 成功后硬删本地行（不保留 tombstone），设备后续以更新 `updatedAt` 上报时可重新加回。
+     * 解绑本人设备：与 iOS 对齐的「待解绑」队列。
+     *
+     * 点击确认后先落本地 `pendingDelete`（行保留、卡片显示待解绑），再调度同步；
+     * 同步前补做 `DELETE /my/devices`，成功（204/404）后才物理删除本地行。
+     * 离线时不会失败弹错，联网后由 WorkManager 自动重试。
      */
     fun unbindDevice() {
         if (_unbind.value == UnbindState.Running) return
@@ -167,9 +173,10 @@ class DeviceDetailViewModel(
                 if ((connectionState.value as? BleConnectionState.Connected)?.mac == mac) {
                     bleConnectionManager.disconnect()
                 }
-                deviceUnbindRepository.deleteOwnedDevice(PLATFORM_ANDROID, mac)
+                // 本地落队列，不走网络：无网也能立即得到确定结果。
+                deviceRepository.markPendingDelete(mac)
+                runCatching { syncScheduler.scheduleNow() }
             }.onSuccess {
-                deviceRepository.deleteDevice(mac)
                 _unbind.value = UnbindState.Success
             }.onFailure {
                 _unbind.value = UnbindState.Error(context.getString(R.string.device_remove_failed))
@@ -647,7 +654,6 @@ class DeviceDetailViewModel(
 
     companion object {
         private const val RSSI_POLL_INTERVAL_MS = 2_000L
-        private const val PLATFORM_ANDROID = "android"
         private const val RECENT_ROWS = 10
         private const val REFRESH_DEBOUNCE_MS = 1_000L
         private const val METRICS_DEBOUNCE_MS = 600L
@@ -665,7 +671,6 @@ class DeviceDetailViewModel(
                     bleConnectionManager = container.bleConnectionManager,
                     deviceInfoRepository = container.deviceInfoRepository,
                     deviceRepository = container.deviceRepository,
-                    deviceUnbindRepository = container.deviceUnbindRepository,
                     ruleEngine = container.ruleEngine,
                     syncScheduler = container.syncScheduler,
                     readingRepository = container.readingRepository,

@@ -299,7 +299,14 @@ class RoomRepositoryTest {
         }
 
         override suspend fun pendingDevices(limit: Int): List<DeviceEntity> =
-            rows.values.filter { it.syncState == "pending" }.take(limit)
+            rows.values.filter { it.syncState == "pending" && !it.pendingDelete }.take(limit)
+
+        override suspend fun markPendingDelete(mac: String) {
+            rows[mac]?.let { rows[mac] = it.copy(pendingDelete = true) }
+        }
+
+        override suspend fun pendingDeletes(): List<DeviceEntity> =
+            rows.values.filter { it.pendingDelete && it.deletedAt == null }
 
         override fun observePendingCount(): Flow<Int> =
             flowOf(rows.values.count { it.syncState == "pending" })

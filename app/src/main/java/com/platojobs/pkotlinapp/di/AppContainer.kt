@@ -29,6 +29,7 @@ import com.platojobs.pkotlinapp.data.repository.SceneRepositoryImpl
 import com.platojobs.pkotlinapp.data.scene.SceneRuntimeImpl
 import com.platojobs.pkotlinapp.data.rule.AndroidRuleTextProvider
 import com.platojobs.pkotlinapp.data.sync.ReadingSyncer
+import com.platojobs.pkotlinapp.data.sync.PendingUnbindProcessor
 import com.platojobs.pkotlinapp.data.sync.RemoteSyncDataSource
 import com.platojobs.pkotlinapp.data.sync.RoomSyncLocalStore
 import com.platojobs.pkotlinapp.data.sync.SecureTokenStore
@@ -338,6 +339,7 @@ class AppContainer(context: Context) {
             ),
             householdSyncer = householdRepository,
             sceneSyncer = sceneSyncer,
+            pendingUnbind = PendingUnbindProcessor(database.deviceDao(), deviceUnbindRepository),
         )
     }
 

@@ -33,6 +33,9 @@ class RoomSyncLocalStore(
         }
         // 复用本地已有主键，避免 externalId 相同但 mac 大小写不同导致重复行。
         val existing = dao.findByExternalId(normalized)
+        // 待解绑行不能被服务端「仍然存在」的 upsert 覆盖/复活：解绑请求尚未完成，
+        // 保留 pendingDelete 等同步前补做 DELETE，成功后再物理删除。
+        if (existing?.pendingDelete == true) return
         val localMac = existing?.mac ?: normalized
         dao.insertOrUpdate(
             // 服务端不返回 catalog 展示名；用本地缓存补齐，避免断网降级丢失。

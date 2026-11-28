@@ -87,6 +87,8 @@ class DeviceRepositoryImpl(
                 pendingHouseholdRemoteId =
                     existing?.pendingHouseholdRemoteId ?: device.pendingHouseholdRemoteId,
                 shared = existing?.shared ?: device.shared,
+                // 待解绑只由 markPendingDelete 置位；扫描/编辑不得把它清掉。
+                pendingDelete = existing?.pendingDelete == true,
                 deviceType = device.deviceType ?: existing?.deviceType,
                 deviceTypeName = device.deviceTypeName ?: existing?.deviceTypeName,
                 vendor = device.vendor ?: existing?.vendor,
@@ -118,8 +120,8 @@ class DeviceRepositoryImpl(
     override fun observeDevice(mac: String): Flow<Device?> =
         dao.observe(mac).map { it?.toDomain() }
 
-    override suspend fun deleteDevice(mac: String) {
-        dao.tombstone(mac, System.currentTimeMillis())
+    override suspend fun markPendingDelete(mac: String) {
+        dao.markPendingDelete(mac)
     }
 
     override suspend fun assignRoom(mac: String, roomId: Long?) {
@@ -577,6 +579,7 @@ private fun DeviceEntity.toDomain() = Device(
     pendingRoomPatch = pendingRoomPatch,
     markedAt = markedAt,
     lastSeenAt = lastSeenAt,
+    pendingDelete = pendingDelete,
 )
 
 private fun Device.toEntity(
@@ -612,6 +615,7 @@ private fun Device.toEntity(
     markedAt = markedAt,
     markedAtDirty = markedAtDirty,
     lastSeenAt = lastSeenAt,
+    pendingDelete = pendingDelete,
 )
 
 private fun RuleEntity.toDomain() = DeviceRule(

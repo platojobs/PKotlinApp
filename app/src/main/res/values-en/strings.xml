@@ -149,6 +149,13 @@
     <string name="detail_device_type_unrecognized">%1$s (unrecognized model)</string>
     <string name="device_edit_action">Edit alias and group</string>
     <string name="device_edit_title">Edit device</string>
+    <string name="device_remove_action">Remove device</string>
+    <string name="device_remove_title">Remove device?</string>
+    <string name="device_remove_message">This removes the device from your account and deletes its local records. It can be added back after reporting again.</string>
+    <string name="device_remove_confirm">Remove</string>
+    <string name="device_remove_in_progress">Removing…</string>
+    <string name="device_remove_success">Device removed</string>
+    <string name="device_remove_failed">Remove failed. Check your network and retry.</string>
     <string name="device_edit_group_hint">Leave empty for no group</string>
     <string name="device_edit_save">Save</string>
     <string name="detail_alias">Alias</string>

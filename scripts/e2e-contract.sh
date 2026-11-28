@@ -91,7 +91,7 @@ command -v curl >/dev/null 2>&1 || fail "未找到 curl"
 
 # 后端版本 pin：e2e 必须跑在固定 tag 上，否则「哪个后端都能过」。
 # HEAD 不在 tag 时由 resolve_backend_dir 用临时 worktree 物化，退出时清理。
-BACKEND_REF="${E2E_BACKEND_REF:-v0.26.0}"
+BACKEND_REF="${E2E_BACKEND_REF:-v0.27.0}"
 BACKEND_VERSION="${BACKEND_REF#v}"
 resolve_backend_dir "$ORIG_GO_DIR" "$BACKEND_REF"
 echo "[E2E] 后端版本：${BACKEND_REF}"

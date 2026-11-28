@@ -75,7 +75,7 @@ command -v curl >/dev/null 2>&1 || fail "未找到 curl"
 command -v python3 >/dev/null 2>&1 || fail "未找到 python3"
 
 # 后端版本 pin：fixture / Postgres 两条链必须跑同一固定版本。
-BACKEND_REF="${E2E_BACKEND_REF:-v0.26.0}"
+BACKEND_REF="${E2E_BACKEND_REF:-v0.27.0}"
 BACKEND_VERSION="${BACKEND_REF#v}"
 resolve_backend_dir "$ORIG_GO_DIR" "$BACKEND_REF"
 STATE_DIR="${E2E_STATE_DIR:-$GO_DIR/.e2e}"

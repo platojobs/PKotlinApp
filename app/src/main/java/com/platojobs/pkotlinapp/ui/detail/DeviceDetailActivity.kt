@@ -179,6 +179,7 @@ class DeviceDetailActivity : AppCompatActivity() {
         }
         binding.infoRetryButton.setOnClickListener { viewModel.loadInfo() }
         binding.editProfileButton.setOnClickListener { showEditDeviceDialog() }
+        binding.removeDeviceButton.setOnClickListener { confirmRemoveDevice() }
         binding.readingsPermissionButton.setOnClickListener { openAppSettings() }
         binding.readingsExportButton.setOnClickListener { viewModel.exportReadings() }
         binding.readingsChart.setOnBucketSelectedListener { bucket -> renderChartSelection(bucket) }
@@ -229,6 +230,16 @@ class DeviceDetailActivity : AppCompatActivity() {
                 }
                 launch {
                     viewModel.collectionStatus.collect { status -> renderCollectionStatus(status) }
+                }
+                launch {
+                    viewModel.shared.collect { shared ->
+                        // 共享设备不能由本人解绑，服务端会 404。
+                        binding.removeDeviceButton.visibility =
+                            if (shared) View.GONE else View.VISIBLE
+                    }
+                }
+                launch {
+                    viewModel.unbind.collect { state -> renderUnbind(state) }
                 }
                 launch {
                     combine(viewModel.rooms, viewModel.roomId) { rooms, roomId -> rooms to roomId }
@@ -473,8 +484,41 @@ class DeviceDetailActivity : AppCompatActivity() {
         }
     }
 
-    private fun showEditDeviceDialog() {
-        val current = (viewModel.info.value as? DeviceDetailViewModel.InfoState.Success)?.info
+    /** 解绑后本机记录一并删除；设备再次上报时可重新加回，因此用普通确认而非恐吓式文案。 */
+    private fun confirmRemoveDevice() {
+        if (viewModel.shared.value) return
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.device_remove_title)
+            .setMessage(R.string.device_remove_message)
+            .setNegativeButton(R.string.action_cancel, null)
+            .setPositiveButton(R.string.device_remove_confirm) { _, _ -> viewModel.unbindDevice() }
+            .show()
+    }
+
+    private fun renderUnbind(state: UnbindState) {
+        binding.removeDeviceButton.isEnabled = state != UnbindState.Running
+        binding.removeDeviceButton.text = getString(
+            if (state == UnbindState.Running) {
+                R.string.device_remove_in_progress
+            } else {
+                R.string.device_remove_action
+            },
+        )
+        when (state) {
+            UnbindState.Success -> {
+                Toast.makeText(this, R.string.device_remove_success, Toast.LENGTH_SHORT).show()
+                CollectionLauncher.stop(this)
+                finish()
+            }
+
+            is UnbindState.Error ->
+                Toast.makeText(this, state.message, Toast.LENGTH_SHORT).show()
+
+            else -> Unit
+        }
+    }
+
+    private fun showEditDeviceDialog() {        val current = (viewModel.info.value as? DeviceDetailViewModel.InfoState.Success)?.info
         val dialogBinding = DialogDeviceEditBinding.inflate(layoutInflater)
         dialogBinding.aliasInput.setText(current?.alias.orEmpty())
         dialogBinding.groupInput.setText(current?.group.orEmpty())

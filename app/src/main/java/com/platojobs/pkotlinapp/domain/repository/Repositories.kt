@@ -21,9 +21,16 @@ import com.platojobs.pkotlinapp.domain.scene.SceneRun
 import com.platojobs.pkotlinapp.domain.scene.SceneTrigger
 import kotlinx.coroutines.flow.Flow
 
+/**
+ * 账号设备解绑。服务端 204 表示已软删，404 表示早已不存在；
+ * 两种情况调用方都必须清理本地行，且不向用户报错。
+ */
+interface DeviceUnbindRepository {
+    suspend fun deleteOwnedDevice(platform: String, externalId: String)
+}
+
 interface DeviceRepository {
     suspend fun saveDevice(device: Device)
-
     suspend fun getDevices(): List<Device>
 
     fun observeDevices(): Flow<List<Device>>

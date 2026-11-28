@@ -17,6 +17,7 @@ import com.platojobs.pkotlinapp.data.reading.LatestReadingCache
 import com.platojobs.pkotlinapp.data.remote.ApiClient
 import com.platojobs.pkotlinapp.data.remote.DeviceInfoRepositoryImpl
 import com.platojobs.pkotlinapp.data.remote.MarketRepositoryImpl
+import com.platojobs.pkotlinapp.data.remote.RemoteDeviceUnbindRepository
 import com.platojobs.pkotlinapp.data.remote.RemoteMarketDataSource
 import com.platojobs.pkotlinapp.data.repository.DeviceRepositoryImpl
 import com.platojobs.pkotlinapp.data.repository.ReadingRepositoryImpl
@@ -38,6 +39,7 @@ import com.platojobs.pkotlinapp.data.sync.SyncStatusStore
 import com.platojobs.pkotlinapp.domain.model.displayName
 import com.platojobs.pkotlinapp.domain.repository.DeviceInfoRepository
 import com.platojobs.pkotlinapp.domain.repository.DeviceRepository
+import com.platojobs.pkotlinapp.domain.repository.DeviceUnbindRepository
 import com.platojobs.pkotlinapp.domain.repository.MarketRepository
 import com.platojobs.pkotlinapp.domain.reading.ReadingRemote
 import com.platojobs.pkotlinapp.domain.repository.ReadingRepository
@@ -86,6 +88,11 @@ class AppContainer(context: Context) {
 
     val deviceRepository: DeviceRepository by lazy {
         DeviceRepositoryImpl(database.deviceDao())
+    }
+
+    /** 账号设备解绑：204/404 都按「已不存在」处理。 */
+    val deviceUnbindRepository: DeviceUnbindRepository by lazy {
+        RemoteDeviceUnbindRepository(apiService, secureTokenStore)
     }
 
     val ruleRepository: RuleRepository by lazy {

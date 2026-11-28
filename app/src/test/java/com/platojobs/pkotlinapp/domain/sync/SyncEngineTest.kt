@@ -278,6 +278,44 @@ class SyncEngineTest {
     }
 
     @Test
+    fun `pull applies changes in order so a later upsert revives a tombstone`() = runBlocking {
+        val local = FakeLocalStore(emptyList())
+        val remote = FakeRemote().apply {
+            pullPage = SyncPullPage(
+                changes = listOf(
+                    SyncRecord(
+                        id = "server-1",
+                        platform = "android",
+                        externalId = "AA:BB:CC:DD:EE:33",
+                        name = "已删除",
+                        lastRssi = -70,
+                        lastSeenTimestamp = 100,
+                        updatedAt = 300,
+                        deletedAt = 300,
+                    ),
+                    SyncRecord(
+                        id = "server-1",
+                        platform = "android",
+                        externalId = "AA:BB:CC:DD:EE:33",
+                        name = "重新上报",
+                        lastRssi = -60,
+                        lastSeenTimestamp = 400,
+                        updatedAt = 400,
+                    ),
+                ),
+                nextCursor = "cursor-2",
+            )
+        }
+        val engine = SyncEngine(local, remote, FakeCursorStore("cursor-1"))
+
+        assertEquals(2, engine.pullChanges())
+
+        val record = local.records.getValue("AA:BB:CC:DD:EE:33")
+        assertEquals("重新上报", record.name)
+        assertNull(record.deletedAt)
+    }
+
+    @Test
     fun `idempotency key is stable and only hashes reported fields`() {
         val base = SyncRecord(
             id = "client-1",

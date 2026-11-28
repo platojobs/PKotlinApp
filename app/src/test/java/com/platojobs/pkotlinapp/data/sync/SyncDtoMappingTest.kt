@@ -3,6 +3,7 @@ package com.platojobs.pkotlinapp.data.sync
 import com.platojobs.pkotlinapp.data.remote.ApiClient
 import com.platojobs.pkotlinapp.data.remote.PushDeviceDto
 import com.platojobs.pkotlinapp.data.remote.Reported
+import com.platojobs.pkotlinapp.data.remote.SyncChangeDto
 import com.platojobs.pkotlinapp.data.remote.SyncDeviceDto
 import com.platojobs.pkotlinapp.data.remote.SyncPushRequest
 import com.platojobs.pkotlinapp.domain.model.PLATFORM_ANDROID
@@ -363,5 +364,64 @@ class SyncDtoMappingTest {
             IdempotencyKeys.forBatch(listOf(record.copy(markedAtDirty = false))),
             IdempotencyKeys.forBatch(listOf(record.copy(markedAt = null))),
         )
+    }
+
+    @Test
+    fun `pull maps op delete to tombstone when payload omits deletedAt`() {
+        val serverTs = 1_762_300_000_000L
+        val change = SyncChangeDto(
+            seq = 7,
+            entity = "user_device",
+            entityId = "user-device-1",
+            op = "delete",
+            serverTs = Rfc3339.format(serverTs),
+            payload = SyncDeviceDto(
+                platform = "android",
+                externalId = "AA:BB:CC:00:00:77",
+                updatedAt = Rfc3339.format(serverTs - 30_000),
+            ),
+        )
+
+        val record = change.toDomain() ?: error("empty record")
+
+        assertEquals(serverTs, record.deletedAt)
+    }
+
+    @Test
+    fun `pull prefers payload deletedAt over the change op timestamp`() {
+        val deletedAt = 1_762_300_500_000L
+        val change = SyncChangeDto(
+            seq = 8,
+            entity = "user_device",
+            entityId = "user-device-1",
+            op = "delete",
+            serverTs = Rfc3339.format(1_762_300_999_000L),
+            payload = SyncDeviceDto(
+                platform = "android",
+                externalId = "AA:BB:CC:00:00:77",
+                updatedAt = Rfc3339.format(deletedAt),
+                deletedAt = Rfc3339.format(deletedAt),
+            ),
+        )
+
+        assertEquals(deletedAt, change.toDomain()?.deletedAt)
+    }
+
+    @Test
+    fun `pull does not treat a regular upsert as tombstone`() {
+        val change = SyncChangeDto(
+            seq = 9,
+            entity = "user_device",
+            entityId = "user-device-1",
+            op = "upsert",
+            serverTs = Rfc3339.format(1_762_300_000_000L),
+            payload = SyncDeviceDto(
+                platform = "android",
+                externalId = "AA:BB:CC:00:00:77",
+                updatedAt = Rfc3339.format(1_762_300_000_000L),
+            ),
+        )
+
+        assertNull(change.toDomain()?.deletedAt)
     }
 }

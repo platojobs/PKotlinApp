@@ -1,6 +1,7 @@
 package com.platojobs.pkotlinapp.data.remote
 
 import retrofit2.Response
+import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.Path
@@ -39,4 +40,16 @@ interface ApiService {
         @Path("platform") platform: String,
         @Path("externalId") externalId: String,
     ): UserDeviceDto
+
+    /**
+     * 解绑本人设备（openapi 0.22.0）。
+     * 204：本次软删并写 tombstone；404：本来就不存在（重复删除同样 204）。
+     * 用 [Response] 接住非 2xx，避免把 404 当成异常抛给用户。
+     */
+    @DELETE("api/v1/my/devices/{platform}/{externalId}")
+    suspend fun deleteMyDevice(
+        @Header("Authorization") authorization: String,
+        @Path("platform") platform: String,
+        @Path("externalId") externalId: String,
+    ): Response<Unit>
 }

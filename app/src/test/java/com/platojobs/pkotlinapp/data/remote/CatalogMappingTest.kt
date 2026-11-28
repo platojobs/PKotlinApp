@@ -302,6 +302,12 @@ class CatalogMappingTest {
                 externalId = externalId,
             )
         }
+
+        override suspend fun deleteMyDevice(
+            authorization: String,
+            platform: String,
+            externalId: String,
+        ): Response<Unit> = Response.success(204, Unit)
     }
 
     private fun httpError(code: Int) = HttpException(

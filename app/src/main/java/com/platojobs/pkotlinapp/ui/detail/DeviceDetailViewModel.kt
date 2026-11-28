@@ -34,6 +34,7 @@ import com.platojobs.pkotlinapp.domain.reading.ReadingSeriesBucketing
 import com.platojobs.pkotlinapp.domain.reading.ReadingSummary
 import com.platojobs.pkotlinapp.domain.repository.DeviceInfoRepository
 import com.platojobs.pkotlinapp.domain.repository.DeviceRepository
+import com.platojobs.pkotlinapp.domain.repository.DeviceUnbindRepository
 import com.platojobs.pkotlinapp.domain.repository.ReadingRepository
 import com.platojobs.pkotlinapp.domain.repository.RoomRepository
 import com.platojobs.pkotlinapp.domain.rule.RuleEngine
@@ -103,12 +104,24 @@ sealed interface ExportState {
     data class Error(val kind: ErrorKind, val detail: String = "") : ExportState
 }
 
+/** 解绑设备的 UI 状态；Activity 消费 Success/Error 后提示并结束页面。 */
+sealed interface UnbindState {
+    data object Idle : UnbindState
+
+    data object Running : UnbindState
+
+    data object Success : UnbindState
+
+    data class Error(val message: String) : UnbindState
+}
+
 class DeviceDetailViewModel(
     private val mac: String,
     private val deviceName: String,
     private val bleConnectionManager: BleConnectionManager,
     private val deviceInfoRepository: DeviceInfoRepository,
     private val deviceRepository: DeviceRepository,
+    private val deviceUnbindRepository: DeviceUnbindRepository,
     private val ruleEngine: RuleEngine,
     private val syncScheduler: SyncScheduler,
     private val readingRepository: ReadingRepository,
@@ -133,6 +146,36 @@ class DeviceDetailViewModel(
     val roomId: StateFlow<Long?> = deviceRepository.observeDevice(mac)
         .map { it?.roomId }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    /** 家庭成员共享的设备不能被本人解绑，UI 据此隐藏入口。 */
+    val shared: StateFlow<Boolean> = deviceRepository.observeDevice(mac)
+        .map { it?.shared == true }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    private val _unbind = MutableStateFlow<UnbindState>(UnbindState.Idle)
+    val unbind: StateFlow<UnbindState> = _unbind.asStateFlow()
+
+    /**
+     * 解绑本人设备：先断开会话，再调服务端；204/404 都视为已不存在。
+     * 成功后硬删本地行（不保留 tombstone），设备后续以更新 `updatedAt` 上报时可重新加回。
+     */
+    fun unbindDevice() {
+        if (_unbind.value == UnbindState.Running) return
+        _unbind.value = UnbindState.Running
+        viewModelScope.launch {
+            runCatching {
+                if ((connectionState.value as? BleConnectionState.Connected)?.mac == mac) {
+                    bleConnectionManager.disconnect()
+                }
+                deviceUnbindRepository.deleteOwnedDevice(PLATFORM_ANDROID, mac)
+            }.onSuccess {
+                deviceRepository.deleteDevice(mac)
+                _unbind.value = UnbindState.Success
+            }.onFailure {
+                _unbind.value = UnbindState.Error(context.getString(R.string.device_remove_failed))
+            }
+        }
+    }
 
     private val _roomMessages = MutableSharedFlow<String>(extraBufferCapacity = 4)
     val roomMessages: SharedFlow<String> = _roomMessages.asSharedFlow()
@@ -604,6 +647,7 @@ class DeviceDetailViewModel(
 
     companion object {
         private const val RSSI_POLL_INTERVAL_MS = 2_000L
+        private const val PLATFORM_ANDROID = "android"
         private const val RECENT_ROWS = 10
         private const val REFRESH_DEBOUNCE_MS = 1_000L
         private const val METRICS_DEBOUNCE_MS = 600L
@@ -621,6 +665,7 @@ class DeviceDetailViewModel(
                     bleConnectionManager = container.bleConnectionManager,
                     deviceInfoRepository = container.deviceInfoRepository,
                     deviceRepository = container.deviceRepository,
+                    deviceUnbindRepository = container.deviceUnbindRepository,
                     ruleEngine = container.ruleEngine,
                     syncScheduler = container.syncScheduler,
                     readingRepository = container.readingRepository,

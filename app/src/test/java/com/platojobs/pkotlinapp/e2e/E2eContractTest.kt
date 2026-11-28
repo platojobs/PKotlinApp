@@ -81,7 +81,7 @@ class E2eContractTest {
     private val backendVersion = (
         System.getProperty("e2eBackendVersion")
             ?: System.getenv("E2E_BACKEND_VERSION")
-            ?: "0.26.0"
+            ?: "0.27.0"
         ).removePrefix("v")
     private val apiBase = "$baseUrl/api/v1"
 
@@ -2505,6 +2505,128 @@ class E2eContractTest {
         }
 
         println("[E2E] SUMMARY: postgres sessions contract passed")
+    }
+
+    /**
+     * 设备解绑契约（fixture 与 Postgres 都跑）：
+     * 204 → 列表查不到 → 重复 204 不新增 change_log → 增量出现 op=delete（含 deletedAt）→
+     * 旧 updatedAt push 不复活 → 严格更新的 push 复用同一行复活。
+     */
+    @org.junit.Test
+    fun `delete device contract tombstone idempotency and revival`() {
+        val user = captureStep("delete: anonymous login") {
+            val result = post("/auth/anonymous")
+            assertEquals(201, result.code)
+            val body = parseMap(result.body)
+            UserSession(body["userId"] as String, body["token"] as String)
+        }
+        val suffix = UUID.randomUUID().toString().replace("-", "").take(4).uppercase()
+        val externalId = "AA:BB:CC:00:${suffix.take(2)}:${suffix.drop(2)}"
+        val baseUpdatedAt = System.currentTimeMillis() - 60_000
+
+        fun devicePush(updatedAt: Long): String = pushRequestAdapter.toJson(
+            SyncPushRequest(
+                clientId = "e2e-delete-$externalId",
+                devices = listOf(
+                    PushDeviceDto(
+                        id = UUID.randomUUID().toString(),
+                        platform = "android",
+                        externalId = externalId,
+                        mac = externalId.lowercase(),
+                        deviceType = "environmental_sensor",
+                        updatedAt = Rfc3339.format(updatedAt),
+                    ),
+                ),
+            ),
+        )
+
+        val cursorAfterPush = captureStep("delete: push owned device") {
+            val result = push(devicePush(baseUpdatedAt), user.token, "e2e-delete-${UUID.randomUUID()}")
+            assertEquals(200, result.code)
+            val response = pushResponseAdapter.fromJson(result.body) ?: error("empty body")
+            response.nextCursor!!.toString()
+        }
+
+        val upsertEntityId = captureStep("delete: capture canonical entityId from upsert") {
+            val changes = changesResponseAdapter.fromJson(
+                get("/sync/changes?cursor=0", user.token).body,
+            )!!.changes.orEmpty()
+            val upsert = changes.single { it.payload?.externalId == externalId }
+            assertEquals("upsert", upsert.op)
+            upsert.entityId ?: error("missing entityId")
+        }
+
+        var tombstoneAt = 0L
+        val deleteCursor = captureStep(
+            "delete: 204, list absent, repeat 204 adds no change, increment has op=delete",
+        ) {
+            assertEquals(204, delete("/my/devices/android/$externalId", user.token).code)
+            assertEquals(404, get("/my/devices/android/$externalId", user.token).code)
+            val listed = (parseMap(get("/my/devices", user.token).body)["items"] as? List<*>)
+                .orEmpty()
+                .map { it as? Map<*, *> }
+            assertTrue(
+                "deleted device must not be listed",
+                listed.none { it?.get("externalId") == externalId },
+            )
+
+            // 重复删除幂等：仍 204，且不新增 change_log。
+            assertEquals(204, delete("/my/devices/android/$externalId", user.token).code)
+
+            val response = changesResponseAdapter.fromJson(
+                get("/sync/changes?cursor=$cursorAfterPush", user.token).body,
+            )!!
+            val list = response.changes.orEmpty()
+            assertEquals(1, list.size)
+            val change = list.single()
+            assertEquals("user_device", change.entity)
+            assertEquals("delete", change.op)
+            assertEquals(upsertEntityId, change.entityId)
+            assertEquals(externalId, change.payload?.externalId)
+            val deletedAt = change.payload?.deletedAt ?: error("missing deletedAt")
+            tombstoneAt = Rfc3339.parse(deletedAt) ?: error("bad deletedAt: $deletedAt")
+            response.nextCursor!!.toString()
+        }
+
+        step("delete: push with old updatedAt does not revive") {
+            val result = push(
+                devicePush(baseUpdatedAt - 30_000),
+                user.token,
+                "e2e-delete-old-${UUID.randomUUID()}",
+            )
+            assertEquals(200, result.code)
+            assertEquals(404, get("/my/devices/android/$externalId", user.token).code)
+            val after = changesResponseAdapter.fromJson(
+                get("/sync/changes?cursor=$deleteCursor", user.token).body,
+            )!!
+            assertTrue(after.changes.orEmpty().isEmpty())
+        }
+
+        step("delete: strictly newer updatedAt revives the same row") {
+            val revivedAt = baseUpdatedAt + 3_600_000
+            val result = push(
+                devicePush(revivedAt),
+                user.token,
+                "e2e-delete-new-${UUID.randomUUID()}",
+            )
+            assertEquals(200, result.code)
+            val body = parseMap(get("/my/devices/android/$externalId", user.token).body)
+            assertEquals(externalId, body["externalId"])
+            assertNull(body["deletedAt"])
+
+            val changes = changesResponseAdapter.fromJson(
+                get("/sync/changes?cursor=$deleteCursor", user.token).body,
+            )!!.changes.orEmpty()
+            val revived = changes.single {
+                it.op == "upsert" && it.payload?.externalId == externalId
+            }
+            // 软删 tombstone 与复活共用同一实体行。
+            assertEquals(upsertEntityId, revived.entityId)
+            // 服务端以接收时间为主；只要求复活后的时间严格晚于 tombstone。
+            assertTrue(Rfc3339.parse(revived.payload?.updatedAt)!! > tombstoneAt)
+        }
+
+        println("[E2E] SUMMARY: delete device contract passed (store=$store)")
     }
 
     private fun pushDevice(token: String, externalId: String, idempotencyKey: String, deleted: Boolean = false) {
